@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.deps import get_qdrant_service
 from app.core.config import settings
 from app.services.qdrant_service import QdrantService
@@ -17,6 +18,7 @@ def health_check(qdrant: QdrantService = Depends(get_qdrant_service)):
         "device": settings.effective_device,
         "configured_device": settings.DEVICE,
         "qdrant_reachable": is_qdrant_healthy,
+        "face_recognition_enabled": settings.ENABLE_FACE_RECOGNITION,
         "version": settings.VERSION,
     }
 
@@ -33,3 +35,16 @@ def get_collections_status(qdrant: QdrantService = Depends(get_qdrant_service)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Abruf der Collections: {str(e)}")
+
+
+@router.post("/prune")
+def prune_database(
+    dry_run: bool = Query(default=True, description="Wenn True, wird nur analysiert ohne zu löschen"),
+    qdrant: QdrantService = Depends(get_qdrant_service),
+):
+    """
+    Prüft alle Einträge in Qdrant gegen das Archivverzeichnis und löscht verwaiste Datensätze (Art. 17 DSGVO).
+    """
+    source_dir = Path(settings.ARCHIVE_DATA_DIR).resolve()
+    stats = qdrant.prune_orphaned_records(source_dir=source_dir, dry_run=dry_run)
+    return stats

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     QDRANT_PORT: int = 6333
     QDRANT_GRPC_PORT: int = 6334
     QDRANT_PREFER_GRPC: bool = False
+    QDRANT_HTTPS: bool = False
     QDRANT_API_KEY: str | None = None
 
     # Collections (beide 512-dimensional, Cosine Distance)
@@ -36,12 +37,23 @@ class Settings(BaseSettings):
     CLIP_MODEL_NAME: str = "ViT-B-32"
     CLIP_PRETRAINED: str = "laion2b_s34b_b79k"
 
-    # InsightFace Konfiguration
+    # Biometrie & Gesichtserkennung (Opt-in nach Art. 9 DSGVO)
+    ENABLE_FACE_RECOGNITION: bool = Field(
+        default=False,
+        description="Aktiviert die biometrische Gesichtserkennung (Opt-in, standardmäßig deaktiviert zur Datensparsamkeit)."
+    )
+
+    # InsightFace Konfiguration (wird nur geladen, wenn ENABLE_FACE_RECOGNITION=True)
     INSIGHTFACE_MODEL_NAME: str = "buffalo_l"
     INSIGHTFACE_DET_SIZE: int = 640
 
     # Datenverzeichnis für historische Bilder
     ARCHIVE_DATA_DIR: str = "./data"
+    ALLOWED_IMAGE_DIRS: list[str] = ["./data", "."]
+    THUMBNAIL_CACHE_DIR: str = "./.cache/thumbnails"
+
+    # Sicherheit & CORS
+    CORS_ORIGINS: list[str] = ["http://localhost:8000", "http://127.0.0.1:8000"]
 
     @property
     def effective_device(self) -> str:

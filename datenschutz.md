@@ -1,8 +1,8 @@
 # Datenschutzkonzept & DSGVO-Hinweise
 
-**Projekt:** Lokales Bildarchiv-Suchsystem für historische Bestände  
+**Projekt:** Lokales Bildarchiv-Suchsystem für historische Bestände (GLAM)  
 **Betreiber / Verantwortliche Stelle:** Archiv / Museum  
-**Stand:** September 2026
+**Stand:** Oktober 2026
 
 ---
 
@@ -13,13 +13,17 @@ Dieses Bildarchiv-Suchsystem wurde nach den Grundsätzen des Art. 5 DSGVO (*Rech
 ### Technische Kernmerkmale
 1. **100 % Lokale Datenverarbeitung:**
    * Weder Bilddateien noch Berechnungen (Embeddings, Vektoren) verlassen das lokale System.
-   * Keine Anbindung an externe Cloud-Dienste, kommerzielle KI-APIs (wie OpenAI, Google Vision oder Microsoft Azure) oder Tracking-Dienste.
-2. **Keine Speicherung von Rohbildern in der Datenbank:**
+   * Keine Anbindung an externe Cloud-Dienste, kommerzielle KI-APIs oder Tracking-Dienste.
+   * **Vollständiger Offline-Betrieb des Web-Frontends:** Sämtliche Stylesheets (CSS) und Schriften sind lokal gebündelt. Es werden keine Verbindungen zu externen Content Delivery Networks (wie Google Fonts oder Tailwind CDN) aufgebaut.
+2. **Datenschutzfreundliche Voreinstellung (Privacy by Default, Art. 25 Abs. 2 DSGVO):**
+   * Die biometrische Gesichtserkennung ist standardmäßig **deaktiviert** (`ENABLE_FACE_RECOGNITION=false`).
+   * Das System startet rein als semantische Motiv- und Metadaten-Suchmaschine ohne Erfassung biometrischer Merkmale.
+3. **Keine Speicherung von Bilddaten in der Datenbank:**
    * Die Vektordatenbank Qdrant speichert ausschließlich mathematische Vektoren (512 Gleitkommazahlen) und technische Referenzpfade.
-   * Die Originalbilder verbleiben unverändert in ihren geschützten Archivverzeichnissen.
-3. **Keine Personenprofile:**
+   * Die Originalbilder verbleiben unverändert in ihren geschützten Dateisystem-Archivverzeichnissen.
+4. **Keine demografischen Personenprofile:**
    * Es werden keine demografischen Merkmale wie Ethnie, Geschlecht oder Alter geschätzt oder persistiert.
-   * Es werden ausschließlich geometrische Koordinaten (Bounding Boxes) und abstrakte ArcFace-Vektoren gespeichert.
+   * Es werden ausschließlich geometrische Koordinaten (Bounding Boxes) und mathematische Ähnlichkeitsvektoren verarbeitet.
 
 ---
 
@@ -33,43 +37,32 @@ Gesichts-Embeddings (ArcFace 512-dim) stellen nach Art. 4 Nr. 14 DSGVO **biometr
 * **Wahrung berechtigter Interessen (Art. 6 Abs. 1 lit. f DSGVO):**
   Erschließung, Dokumentation und Auffindbarkeit von historischem Kulturgut und Bildzeugnissen der Zeitgeschichte.
 * **Schutzfristen & Gemeinfreiheit:**
-  Für Personen der Zeitgeschichte bzw. bei verstorbenen Personen gilt: Das allgemeine Persönlichkeitsrecht schützt Verstorbene postmortal; die DSGVO selbst findet auf Verstorbene grundsätzlich keine direkte Anwendung (Erwägungsgrund 27 DSGVO), landesrechtliche Archivschutzfristen bleiben unberührt.
+  Für Personen der Zeitgeschichte bzw. bei verstorbenen Personen gilt: Das allgemeine Persönlichkeitsrecht schützt Verstorbene postmortal; die DSGVO selbst findet auf Verstorbene grundsätzlich keine direkte Anwendung (Erwägungsgrund 27 DSGVO). Landesrechtliche Archivschutzfristen bleiben unberührt.
 
 ### Schutzmaßnahmen
-* **Zugangsbeschränkungen:** Der Zugriff auf das Backend und die Datenbank ist auf das lokale Netzwerk bzw. autorisierte Archivare beschränkt.
-* **Cluster-Zuordnung:** Klarnamen werden nicht automatisiert aus dem Internet bezogen, sondern bedürfen der manuellen Kuratierung und Freigabe durch das Archivpersonal.
+* **Zweistufige Aktivierung (Opt-in):** Die Gesichtsvektorisierung erfordert eine bewusste Konfiguration (`ENABLE_FACE_RECOGNITION=true` in der `.env` oder `--enable-faces` im CLI-Indexer).
+* **Zugangsbeschränkungen:** Der Zugriff auf Backend und Datenbank ist auf autorisierte Rechner beschränkt; ein Pfad-Sandbox-Filter (`validate_safe_image_path`) verhindert unbefugten Zugriff außerhalb der freigegebenen Archivpfade.
+* **Kuratierte Namensvergabe:** Klarnamen werden nicht automatisiert aus externen Quellen bezogen, sondern bedürfen der manuellen Zuweisung durch Archivpersonal.
 
 ---
 
-## 3. Betroffenenrechte (Art. 15–21 DSGVO)
+## 3. Betroffenenrechte & Recht auf Vergessenwerden (Art. 15–21 DSGVO)
 
 Sollten auf historischen oder zeitgeschichtlichen Fotografien lebende Personen abgebildet sein, stehen diesen die gesetzlichen Betroffenenrechte zu:
 
 1. **Recht auf Auskunft (Art. 15 DSGVO):** Auskunft darüber, ob und welche Bilder/Merkmale verarbeitet werden.
 2. **Recht auf Löschung („Recht auf Vergessenwerden“, Art. 17 DSGVO):**
-   * Das System ermöglicht über die Qdrant-API das punktgenaue Löschen einzelner Gesichts-Points (`archive_faces`) anhand der Bild-ID oder Personen-ID.
-   * Wird ein Bild aus dem Quellverzeichnis entfernt, kann der Vektoreintrag über den Indexer oder Qdrant bereinigt werden.
+   * **API-Löschung:** Über den Endpunkt `DELETE /images/record?path=...` können einzelne Bildvektoren und alle damit verknüpften Gesichtsvektoren sofort und unwiderruflich aus Qdrant entfernt werden.
+   * **Automatisches Pruning:** Wird ein Bild aus dem Dateisystem entfernt, bereinigt der Befehl `indexer.py --prune` oder der Endpunkt `POST /api/system/prune` alle verwaisten Vektoreinträge aus der Datenbank.
 3. **Recht auf Einschränkung der Verarbeitung (Art. 18 DSGVO):**
-   * Markierung von sensiblen Bildern oder Ausschluss bestimmter Ordner über die Indexierungs-Filter (`--skip-faces`).
+   * Gezielter Ausschluss bestimmter Sammlungen oder Ordner von der Gesichtserkennung über `--skip-faces`.
 4. **Widerspruchsrecht (Art. 21 DSGVO):**
-   * Betroffene können der Verwendung ihrer Abbildung widersprechen. Das Archiv prüft hierbei den Ausgleich zwischen Schutzinteressen der betroffenen Person und dem öffentlichen Dokumentationsinteresse.
+   * Betroffene können der Verwendung ihrer Abbildung widersprechen. Das Archiv prüft hierbei den Ausgleich zwischen Schutzinteressen der Person und dem öffentlichen Dokumentationsauftrag.
 
 ---
 
 ## 4. Technische und organisatorische Maßnahmen (TOM, Art. 32 DSGVO)
 
-| Bereich | Maßnahme |
-| :--- | :--- |
-| **Netzwerksicherheit** | Der Server lauscht auf `0.0.0.0:8000` bzw. `127.0.0.1:8000`. Für den Produktivbetrieb im Museumsnetzwerk sollte eine Firewall oder ein Reverse Proxy (z. B. Nginx mit TLS/HTTPS und Authentifizierung) vorgeschaltet werden. |
-| **Datenbankzugriff** | Der Qdrant-Port `6333` kann optional mit einem API-Schlüssel (`QDRANT_API_KEY`) gesperrt werden. |
-| **Dateisystem-Rechte** | Das Storage-Volume `./qdrant_storage` und die Quellbilder sind mit restriktiven Dateisystemrechten des Betriebssystems (`chmod 700` bzw. `chown museum:museum`) geschützt. |
-| **Keine Telemetrie** | Sämtliche Tracking- und Analytik-Komponenten der Bibliotheken sind deaktiviert. |
-
----
-
-## 5. Löschkonzept & Datenbereinigung
-
-1. **Löschen von Gesichts-Clustern:**
-   Wird ein Personen-Cluster im Archiv gelöscht, werden alle assoziierten Einträge in der Collection `archive_faces` unwiderruflich entfernt.
-2. **Bereinigung bei Deindexierung:**
-   Wird ein Archivbestand physisch gelöscht, werden bei einem Neuaufbau oder über gezielte Bereinigungsskripte alle zugehörigen Vektoren aus `archive_images` und `archive_faces` gelöscht.
+* **Sicherheit der Pfade:** Striktes Verbot von Pfad-Traversierungen (`../`); Anfragen nach Dateien außerhalb der konfigurierten Archivverzeichnisse werden mit HTTP 403 abgewiesen.
+* **CORS-Einschränkung:** Das Backend ist nicht für beliebige Web-Ursprünge geöffnet, sondern beschränkt Anfragen auf die in `CORS_ORIGINS` definierten Domains.
+* **Sichere Hash-Speicherung im Cache:** Temporäre Bild-Thumbnails werden unter MD5-Hash-Namen abgelegt, um Rückschlüsse im Cache zu minimieren.

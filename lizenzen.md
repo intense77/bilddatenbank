@@ -1,7 +1,7 @@
 # Lizenzübersicht & Drittanbieter-Lizenzen
 
-**Projekt:** Lokales Bildarchiv-Suchsystem für historische Bestände  
-**Stand:** September 2026
+**Projekt:** Lokales Bildarchiv-Suchsystem für historische Bestände (GLAM)  
+**Stand:** Oktober 2026
 
 Dieses Dokument bietet eine vollständige Übersicht über die im System eingesetzten Software-Bibliotheken, Frameworks und vortrainierten KI-Modelle sowie deren lizenzrechtliche Rahmenbedingungen.
 
@@ -11,20 +11,20 @@ Dieses Dokument bietet eine vollständige Übersicht über die im System eingese
 
 | Komponente | Lizenz | Verwendung im Projekt | Projekt-URL |
 | :--- | :--- | :--- | :--- |
-| **FastAPI** | MIT License | Web-Framework & REST-API | [fastapi.tiangolo.com](https://fastapi.tiangolo.com/) |
+| **FastAPI** | MIT License | Asynchrones Web-Framework & REST-API | [fastapi.tiangolo.com](https://fastapi.tiangolo.com/) |
 | **Uvicorn** | BSD 3-Clause | Asynchroner ASGI-Webserver | [www.uvicorn.org](https://www.uvicorn.org/) |
-| **Qdrant** | Apache 2.0 | Vektordatenbank (Docker-Instanz) | [qdrant.tech](https://qdrant.tech/) |
-| **Qdrant Client** | Apache 2.0 | Python SDK für Datenbankabfragen | [github.com/qdrant/qdrant-client](https://github.com/qdrant/qdrant-client) |
-| **PyTorch** | BSD-Style | Deep-Learning-Framework (Inferenz) | [pytorch.org](https://pytorch.org/) |
+| **Qdrant** | Apache 2.0 | Vektordatenbank (lokale Container-Instanz) | [qdrant.tech](https://qdrant.tech/) |
+| **Qdrant Client** | Apache 2.0 | Python SDK für Vektoroperationen & Payload-Indexe | [github.com/qdrant/qdrant-client](https://github.com/qdrant/qdrant-client) |
+| **PyTorch** | BSD-Style | Deep-Learning-Framework (Inferenz für CLIP & ArcFace) | [pytorch.org](https://pytorch.org/) |
 | **Torchvision** | BSD 3-Clause | Bildverarbeitungs-Pipelines für PyTorch | [github.com/pytorch/vision](https://github.com/pytorch/vision) |
-| **OpenCLIP** | MIT License | Multimodale Text- und Bild-Embeddings | [github.com/mlfoundations/open_clip](https://github.com/mlfoundations/open_clip) |
-| **ONNX Runtime** | MIT License | Leistungsoptimierte Inferenz-Engine | [onnxruntime.ai](https://onnxruntime.ai/) |
-| **Pillow (PIL)** | HPND License | Bilddekodierung, Skalierung & Konvertierung | [python-pillow.org](https://python-pillow.org/) |
+| **OpenCLIP** | MIT License | Multimodale Text- und Bild-Embeddings (ViT-B-32) | [github.com/mlfoundations/open_clip](https://github.com/mlfoundations/open_clip) |
+| **ONNX Runtime** | MIT License | Leistungsoptimierte Inferenz-Engine für Gesichtsmodelle | [onnxruntime.ai](https://onnxruntime.ai/) |
+| **Pillow (PIL)** | HPND License | Bilddekodierung, EXIF/IPTC-Extraktion, Caching | [python-pillow.org](https://python-pillow.org/) |
 | **NumPy** | BSD 3-Clause | Mathematische Vektoroperationen | [numpy.org](https://numpy.org/) |
-| **Scikit-learn** | BSD 3-Clause | DBSCAN-Clustering für Personengruppen | [scikit-learn.org](https://scikit-learn.org/) |
-| **Pydantic** | MIT License | Datenvalidierung & Schema-Definition | [docs.pydantic.dev](https://docs.pydantic.dev/) |
-| **Tailwind CSS** | MIT License | Frontend-Styling & Layout (via CDN) | [tailwindcss.com](https://tailwindcss.com/) |
-| **tqdm** | MIT & MPL 2.0 | CLI-Fortschrittsbalken | [github.com/tqdm/tqdm](https://github.com/tqdm/tqdm) |
+| **Scikit-learn** | BSD 3-Clause | DBSCAN-Clustering für Personengruppierung | [scikit-learn.org](https://scikit-learn.org/) |
+| **Pydantic** | MIT License | Datenvalidierung, Schemadefinition & Settings | [docs.pydantic.dev](https://docs.pydantic.dev/) |
+| **Tailwind CSS** | MIT License | Lokales Standalone-CSS (100 % offline, kein CDN) | [tailwindcss.com](https://tailwindcss.com/) |
+| **tqdm** | MIT & MPL 2.0 | CLI-Fortschrittsanzeige beim Indexieren | [github.com/tqdm/tqdm](https://github.com/tqdm/tqdm) |
 
 ---
 
@@ -40,7 +40,7 @@ Dieses Dokument bietet eine vollständige Übersicht über die im System eingese
 * **Wichtiger Hinweis zur Nutzung:**
   * Die vortrainierten Modellgewichte von InsightFace (Paket `buffalo_l` mit RetinaFace & ArcFace) werden von den Autoren unter einer **nicht-kommerziellen Lizenz für Forschung, Bildung und Gemeinnützigkeit** bereitgestellt.
   * **Museen, kirchliche Einrichtungen, öffentliche Archive und Kulturprojekte:** Die interne Erschließung und Nutzung im Rahmen des öffentlichen Kultur- und Bildungsauftrags fällt unter die freie, nicht-kommerzielle Nutzung.
-  * **Gewerbliche Weitervermarktung:** Sollte das System in einem kommerziellen Produkt weiterverkauft oder gewerblich betrieben werden, ist entweder eine kommerzielle Lizenz bei den InsightFace-Autoren (DeepInsight) anzufragen oder das Modell durch ein vollständig unter Apache 2.0 / MIT lizenziertes Gesichtsmodell (z. B. FaceNet oder MagFace) zu ersetzen.
+  * **Gewerbliche Weitervermarktung:** Sollte das System in einem kommerziellen Produkt weiterverkauft oder gewerblich betrieben werden, ist entweder eine kommerzielle Lizenz bei den InsightFace-Autoren anzufragen oder das Modell durch ein vollständig unter Apache 2.0 / MIT lizenziertes Modell (z. B. FaceNet oder MagFace) zu ersetzen.
 
 ---
 

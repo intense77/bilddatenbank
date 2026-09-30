@@ -7,9 +7,11 @@ from typing import Optional, Tuple
 from PIL import Image
 from qdrant_client.http import models as rest_models
 
+from app.core.config import settings
 from app.services.qdrant_service import QdrantService
 from app.services.clip_service import ClipService
 from app.services.face_service import FaceService
+from app.services.metadata_service import metadata_service
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ class IndexingService:
         self,
         qdrant_service: QdrantService,
         clip_service: ClipService,
-        face_service: FaceService,
+        face_service: Optional[FaceService] = None,
     ):
         self.qdrant = qdrant_service
         self.clip = clip_service
@@ -34,11 +36,13 @@ class IndexingService:
         self,
         file_path: Path,
         cluster_id_mapping: Optional[dict[str, str]] = None,
+        base_dir: Optional[Path] = None,
     ) -> Tuple[bool, int]:
         """
         Verarbeitet eine einzelne Bilddatei:
         1. CLIP-Embedding berechnen und in `archive_images` einfügen
-        2. Gesichter erkennen, ArcFace-Embeddings berechnen und in `archive_faces` einfügen
+        2. Gesichter erkennen, ArcFace-Embeddings berechnen und in `archive_faces` einfügen (optional)
+        3. Archivische Metadaten (EXIF/IPTC/XMP/Sidecar) extrahieren
 
         Gibt (Erfolg, Anzahl erkannter Gesichter) zurück.
         """
@@ -46,31 +50,57 @@ class IndexingService:
         path_str = str(abs_path)
 
         try:
+            # Relativen Pfad bestimmen (für stabile UUIDv5-Identifikation)
+            resolved_base = (base_dir or Path(settings.ARCHIVE_DATA_DIR)).resolve()
+            try:
+                rel_path = abs_path.relative_to(resolved_base).as_posix()
+            except ValueError:
+                rel_path = file_path.name
+
             # 1. CLIP Embedding (512-dim)
             clip_vector = self.clip.embed_image(path_str)
 
-            # 2. Gesichtserkennung & ArcFace Embeddings (512-dim)
-            faces_data = self.face.extract_faces(path_str)
+            # 2. Optionale Gesichtserkennung & ArcFace Embeddings (512-dim)
+            if self.face is not None:
+                faces_data = self.face.extract_faces(path_str)
+            else:
+                faces_data = []
 
             file_size = os.path.getsize(abs_path)
             with Image.open(abs_path) as img:
                 width, height = img.size
 
-            # Bild-ID deterministisch aus Dateipfad bilden (ermöglicht Re-Indizierung ohne Duplikate)
-            image_id = str(uuid.uuid5(UUID_NAMESPACE, path_str))
+            now_iso = datetime.now(timezone.utc).isoformat()
 
-            # 3. Bild-Point für archive_images
+            # 3. Metadaten extrahieren (EXIF, IPTC, XMP, Sidecar JSON)
+            meta = metadata_service.extract_metadata(file_path)
+
+            # Bild-ID deterministisch aus relativem Pfad bilden (Idempotenz analog indexer.py)
+            image_id = str(uuid.uuid5(UUID_NAMESPACE, rel_path))
+
+            # 4. Bild-Point für archive_images mit einheitlichem Payload-Schema
             image_point = rest_models.PointStruct(
                 id=image_id,
                 vector=clip_vector,
                 payload={
+                    "file_path": path_str,
+                    "relative_path": rel_path,
+                    "file_name": file_path.name,
                     "image_path": path_str,
                     "filename": file_path.name,
                     "width": width,
                     "height": height,
                     "file_size": file_size,
                     "faces_count": len(faces_data),
-                    "indexed_at": datetime.now(timezone.utc).isoformat(),
+                    "indexed_at": now_iso,
+                    "title": meta.get("title"),
+                    "creator": meta.get("creator"),
+                    "date": meta.get("date"),
+                    "description": meta.get("description"),
+                    "signature": meta.get("signature"),
+                    "copyright": meta.get("copyright"),
+                    "keywords": meta.get("keywords", []),
+                    "metadata": meta,
                 },
             )
             self.qdrant.upsert_images([image_point])
@@ -78,7 +108,7 @@ class IndexingService:
             # 4. Gesichts-Points für archive_faces
             face_points = []
             for idx, face_info in enumerate(faces_data):
-                face_id = str(uuid.uuid5(UUID_NAMESPACE, f"{path_str}#face_{idx}"))
+                face_id = str(uuid.uuid5(UUID_NAMESPACE, f"{rel_path}#face_{idx}"))
                 cluster_id = None
                 if cluster_id_mapping and face_id in cluster_id_mapping:
                     cluster_id = cluster_id_mapping[face_id]
@@ -87,6 +117,8 @@ class IndexingService:
                     id=face_id,
                     vector=face_info["embedding"],
                     payload={
+                        "file_path": path_str,
+                        "relative_path": rel_path,
                         "image_path": path_str,
                         "bbox": face_info["bbox"],
                         "face_id": face_id,
@@ -94,7 +126,7 @@ class IndexingService:
                         "det_score": face_info["det_score"],
                         "face_index": idx,
                         "parent_image_id": image_id,
-                        "indexed_at": datetime.now(timezone.utc).isoformat(),
+                        "indexed_at": now_iso,
                     },
                 )
                 face_points.append(face_point)

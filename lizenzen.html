@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lizenzübersicht & Drittanbieter-Lizenzen</title>
+  <title>Lizenzübersicht & Drittanbieter — Bildarchiv</title>
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
     :root {
-      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -19,13 +18,40 @@
       padding: 2.5rem 1rem;
     }
     .container {
-      max-width: 860px;
+      max-width: 900px;
       margin: 0 auto;
       background: #ffffff;
       padding: 3rem 3.5rem;
       border-radius: 16px;
       box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
       border: 1px solid #e2e8f0;
+    }
+    .doc-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 0.82rem;
+    }
+    .doc-nav a {
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      background: #f1f5f9;
+      color: #475569;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .doc-nav a:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .doc-nav a.active {
+      background: #f59e0b;
+      color: #0f172a;
+      font-weight: 600;
     }
     .doc-header {
       display: flex;
@@ -43,8 +69,9 @@
       letter-spacing: 0.05em;
       padding: 0.3rem 0.75rem;
       border-radius: 9999px;
-      background: #f1f5f9;
-      color: #475569;
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
     }
     .print-btn {
       font-size: 0.85rem;
@@ -62,8 +89,8 @@
       border-color: #94a3b8;
     }
     h1 { font-size: 2rem; font-weight: 700; color: #0f172a; margin-bottom: 1rem; letter-spacing: -0.02em; line-height: 1.25; }
-    h2 { font-size: 1.4rem; font-weight: 600; color: #1e293b; margin-top: 2rem; margin-bottom: 0.85rem; padding-bottom: 0.4rem; border-bottom: 1px solid #f1f5f9; }
-    h3 { font-size: 1.15rem; font-weight: 600; color: #334155; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+    h2 { font-size: 1.35rem; font-weight: 600; color: #1e293b; margin-top: 2rem; margin-bottom: 0.85rem; padding-bottom: 0.4rem; border-bottom: 1px solid #f1f5f9; }
+    h3 { font-size: 1.12rem; font-weight: 600; color: #334155; margin-top: 1.5rem; margin-bottom: 0.6rem; }
     p { margin-bottom: 1rem; }
     ul, ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
     li { margin-bottom: 0.35rem; }
@@ -128,10 +155,22 @@
       text-decoration: none;
     }
     a:hover { text-decoration: underline; }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #e2e8f0;
+      font-size: 0.82rem;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
     @media print {
       body { background: #ffffff; padding: 0; }
       .container { border: none; box-shadow: none; padding: 0; max-width: 100%; }
-      .doc-header { display: none; }
+      .doc-nav, .doc-header button, footer { display: none; }
       pre, code { background: #f8fafc !important; color: #000000 !important; border: 1px solid #cbd5e1; }
     }
     @media (max-width: 640px) {
@@ -142,17 +181,25 @@
 </head>
 <body>
   <div class="container">
+    <nav class="doc-nav">
+      <a href="README.html">Übersicht</a>
+      <a href="anleitung.html">Anleitung</a>
+      <a href="datenschutz.html">Datenschutz & DSGVO</a>
+      <a href="lizenzen.html" class="active">Lizenzen</a>
+      <a href="todo.html">Roadmap</a>
+      <a href="/">← Zurück zur Bildersuche</a>
+    </nav>
     <div class="doc-header">
-      <span class="badge">Dokumentation &mdash; Bildarchiv</span>
+      <span class="badge">Recht • Open Source Lizenzen</span>
       <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
     </div>
     <article>
-<h1>Lizenzübersicht &amp; Drittanbieter-Lizenzen</h1>
-<p><strong>Projekt:</strong> Lokales Bildarchiv-Suchsystem für historische Bestände<br />
-<strong>Stand:</strong> September 2026</p>
+<h1 id="lizenzubersicht-drittanbieter-lizenzen">Lizenzübersicht &amp; Drittanbieter-Lizenzen</h1>
+<p><strong>Projekt:</strong> Lokales Bildarchiv-Suchsystem für historische Bestände (GLAM)<br />
+<strong>Stand:</strong> Oktober 2026</p>
 <p>Dieses Dokument bietet eine vollständige Übersicht über die im System eingesetzten Software-Bibliotheken, Frameworks und vortrainierten KI-Modelle sowie deren lizenzrechtliche Rahmenbedingungen.</p>
 <hr />
-<h2>1. Software-Bibliotheken &amp; Frameworks</h2>
+<h2 id="1-software-bibliotheken-frameworks">1. Software-Bibliotheken &amp; Frameworks</h2>
 <table>
 <thead>
 <tr>
@@ -166,7 +213,7 @@
 <tr>
 <td style="text-align: left;"><strong>FastAPI</strong></td>
 <td style="text-align: left;">MIT License</td>
-<td style="text-align: left;">Web-Framework &amp; REST-API</td>
+<td style="text-align: left;">Asynchrones Web-Framework &amp; REST-API</td>
 <td style="text-align: left;"><a href="https://fastapi.tiangolo.com/">fastapi.tiangolo.com</a></td>
 </tr>
 <tr>
@@ -178,19 +225,19 @@
 <tr>
 <td style="text-align: left;"><strong>Qdrant</strong></td>
 <td style="text-align: left;">Apache 2.0</td>
-<td style="text-align: left;">Vektordatenbank (Docker-Instanz)</td>
+<td style="text-align: left;">Vektordatenbank (lokale Container-Instanz)</td>
 <td style="text-align: left;"><a href="https://qdrant.tech/">qdrant.tech</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Qdrant Client</strong></td>
 <td style="text-align: left;">Apache 2.0</td>
-<td style="text-align: left;">Python SDK für Datenbankabfragen</td>
+<td style="text-align: left;">Python SDK für Vektoroperationen &amp; Payload-Indexe</td>
 <td style="text-align: left;"><a href="https://github.com/qdrant/qdrant-client">github.com/qdrant/qdrant-client</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>PyTorch</strong></td>
 <td style="text-align: left;">BSD-Style</td>
-<td style="text-align: left;">Deep-Learning-Framework (Inferenz)</td>
+<td style="text-align: left;">Deep-Learning-Framework (Inferenz für CLIP &amp; ArcFace)</td>
 <td style="text-align: left;"><a href="https://pytorch.org/">pytorch.org</a></td>
 </tr>
 <tr>
@@ -202,19 +249,19 @@
 <tr>
 <td style="text-align: left;"><strong>OpenCLIP</strong></td>
 <td style="text-align: left;">MIT License</td>
-<td style="text-align: left;">Multimodale Text- und Bild-Embeddings</td>
+<td style="text-align: left;">Multimodale Text- und Bild-Embeddings (ViT-B-32)</td>
 <td style="text-align: left;"><a href="https://github.com/mlfoundations/open_clip">github.com/mlfoundations/open_clip</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>ONNX Runtime</strong></td>
 <td style="text-align: left;">MIT License</td>
-<td style="text-align: left;">Leistungsoptimierte Inferenz-Engine</td>
+<td style="text-align: left;">Leistungsoptimierte Inferenz-Engine für Gesichtsmodelle</td>
 <td style="text-align: left;"><a href="https://onnxruntime.ai/">onnxruntime.ai</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Pillow (PIL)</strong></td>
 <td style="text-align: left;">HPND License</td>
-<td style="text-align: left;">Bilddekodierung, Skalierung &amp; Konvertierung</td>
+<td style="text-align: left;">Bilddekodierung, EXIF/IPTC-Extraktion, Caching</td>
 <td style="text-align: left;"><a href="https://python-pillow.org/">python-pillow.org</a></td>
 </tr>
 <tr>
@@ -226,49 +273,49 @@
 <tr>
 <td style="text-align: left;"><strong>Scikit-learn</strong></td>
 <td style="text-align: left;">BSD 3-Clause</td>
-<td style="text-align: left;">DBSCAN-Clustering für Personengruppen</td>
+<td style="text-align: left;">DBSCAN-Clustering für Personengruppierung</td>
 <td style="text-align: left;"><a href="https://scikit-learn.org/">scikit-learn.org</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Pydantic</strong></td>
 <td style="text-align: left;">MIT License</td>
-<td style="text-align: left;">Datenvalidierung &amp; Schema-Definition</td>
+<td style="text-align: left;">Datenvalidierung, Schemadefinition &amp; Settings</td>
 <td style="text-align: left;"><a href="https://docs.pydantic.dev/">docs.pydantic.dev</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Tailwind CSS</strong></td>
 <td style="text-align: left;">MIT License</td>
-<td style="text-align: left;">Frontend-Styling &amp; Layout (via CDN)</td>
+<td style="text-align: left;">Lokales Standalone-CSS (100 % offline, kein CDN)</td>
 <td style="text-align: left;"><a href="https://tailwindcss.com/">tailwindcss.com</a></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>tqdm</strong></td>
 <td style="text-align: left;">MIT &amp; MPL 2.0</td>
-<td style="text-align: left;">CLI-Fortschrittsbalken</td>
+<td style="text-align: left;">CLI-Fortschrittsanzeige beim Indexieren</td>
 <td style="text-align: left;"><a href="https://github.com/tqdm/tqdm">github.com/tqdm/tqdm</a></td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2>2. Vortrainierte KI-Modelle &amp; Modellgewichte</h2>
-<h3>A. OpenCLIP (ViT-B-32 / laion2b_s34b_b79k)</h3>
+<h2 id="2-vortrainierte-ki-modelle-modellgewichte">2. Vortrainierte KI-Modelle &amp; Modellgewichte</h2>
+<h3 id="a-openclip-vit-b-32-laion2b_s34b_b79k">A. OpenCLIP (ViT-B-32 / laion2b_s34b_b79k)</h3>
 <ul>
 <li><strong>Lizenz:</strong> MIT License (Open Source)</li>
 <li><strong>Trainingsdatensatz:</strong> LAION-2B (öffentlich zugängliche Bild-Text-Paare)</li>
 <li><strong>Rechtliche Einordnung:</strong> Freie Nutzung für wissenschaftliche, kulturelle, private und kommerzielle Zwecke gestattet.</li>
 </ul>
-<h3>B. InsightFace (ArcFace / buffalo_l)</h3>
+<h3 id="b-insightface-arcface-buffalo_l">B. InsightFace (ArcFace / buffalo_l)</h3>
 <ul>
 <li><strong>Lizenz:</strong> InsightFace Non-Commercial / Research License</li>
 <li><strong>Wichtiger Hinweis zur Nutzung:</strong></li>
 <li>Die vortrainierten Modellgewichte von InsightFace (Paket <code>buffalo_l</code> mit RetinaFace &amp; ArcFace) werden von den Autoren unter einer <strong>nicht-kommerziellen Lizenz für Forschung, Bildung und Gemeinnützigkeit</strong> bereitgestellt.</li>
 <li><strong>Museen, kirchliche Einrichtungen, öffentliche Archive und Kulturprojekte:</strong> Die interne Erschließung und Nutzung im Rahmen des öffentlichen Kultur- und Bildungsauftrags fällt unter die freie, nicht-kommerzielle Nutzung.</li>
-<li><strong>Gewerbliche Weitervermarktung:</strong> Sollte das System in einem kommerziellen Produkt weiterverkauft oder gewerblich betrieben werden, ist entweder eine kommerzielle Lizenz bei den InsightFace-Autoren (DeepInsight) anzufragen oder das Modell durch ein vollständig unter Apache 2.0 / MIT lizenziertes Gesichtsmodell (z. B. FaceNet oder MagFace) zu ersetzen.</li>
+<li><strong>Gewerbliche Weitervermarktung:</strong> Sollte das System in einem kommerziellen Produkt weiterverkauft oder gewerblich betrieben werden, ist entweder eine kommerzielle Lizenz bei den InsightFace-Autoren anzufragen oder das Modell durch ein vollständig unter Apache 2.0 / MIT lizenziertes Modell (z. B. FaceNet oder MagFace) zu ersetzen.</li>
 </ul>
 <hr />
-<h2>3. Lizenzierung dieses Projekt-Quellcodes</h2>
+<h2 id="3-lizenzierung-dieses-projekt-quellcodes">3. Lizenzierung dieses Projekt-Quellcodes</h2>
 <p>Der im Rahmen dieses Projekts erstellte Quellcode (<code>app/</code>, <code>indexer.py</code>, <code>static/</code>, Skripte und Dokumentation) steht unter der <strong>MIT-Lizenz</strong>:</p>
-<pre class="codehilite"><code class="language-text">Copyright (c) 2026 Archiv &amp; Museum
+<pre><code class="language-text">Copyright (c) 2026 Archiv &amp; Museum
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the &quot;Software&quot;), to deal
@@ -289,6 +336,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 </code></pre>
     </article>
+    <footer>
+      <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>
+      <span>100 % Lokale KI &bull; Datensparsamkeit nach DSGVO</span>
+    </footer>
   </div>
 </body>
 </html>

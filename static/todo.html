@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roadmap & Offene Aufgaben — Bildarchiv</title>
+  <style>
+    :root {
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      color: #1e293b;
+      background: #f8fafc;
+      line-height: 1.65;
+      padding: 2.5rem 1rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 3rem 3.5rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+      border: 1px solid #e2e8f0;
+    }
+    .doc-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 0.82rem;
+    }
+    .doc-nav a {
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      background: #f1f5f9;
+      color: #475569;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .doc-nav a:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .doc-nav a.active {
+      background: #f59e0b;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 1rem;
+      margin-bottom: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+    .print-btn {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #334155;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .print-btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+    h1 { font-size: 2rem; font-weight: 700; color: #0f172a; margin-bottom: 1rem; letter-spacing: -0.02em; line-height: 1.25; }
+    h2 { font-size: 1.35rem; font-weight: 600; color: #1e293b; margin-top: 2rem; margin-bottom: 0.85rem; padding-bottom: 0.4rem; border-bottom: 1px solid #f1f5f9; }
+    h3 { font-size: 1.12rem; font-weight: 600; color: #334155; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+    p { margin-bottom: 1rem; }
+    ul, ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.35rem; }
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 0.15em 0.35em;
+      border-radius: 4px;
+    }
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 1.2rem 1.4rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      margin-bottom: 1.25rem;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.65rem 0.9rem;
+      border: 1px solid #e2e8f0;
+      text-align: left;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    tr:nth-child(even) { background: #fafafa; }
+    blockquote {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+      padding: 0.85rem 1.15rem;
+      margin: 1.25rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.92rem;
+      color: #78350f;
+    }
+    hr {
+      border: 0;
+      height: 1px;
+      background: #e2e8f0;
+      margin: 2rem 0;
+    }
+    a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #e2e8f0;
+      font-size: 0.82rem;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    @media print {
+      body { background: #ffffff; padding: 0; }
+      .container { border: none; box-shadow: none; padding: 0; max-width: 100%; }
+      .doc-nav, .doc-header button, footer { display: none; }
+      pre, code { background: #f8fafc !important; color: #000000 !important; border: 1px solid #cbd5e1; }
+    }
+    @media (max-width: 640px) {
+      .container { padding: 1.5rem; }
+      h1 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="doc-nav">
+      <a href="README.html">Übersicht</a>
+      <a href="anleitung.html">Anleitung</a>
+      <a href="datenschutz.html">Datenschutz & DSGVO</a>
+      <a href="lizenzen.html">Lizenzen</a>
+      <a href="todo.html" class="active">Roadmap</a>
+      <a href="/">← Zurück zur Bildersuche</a>
+    </nav>
+    <div class="doc-header">
+      <span class="badge">Entwicklung • Backlog & Roadmap</span>
+      <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
+    </div>
+    <article>
+<h1 id="offene-aufgaben-roadmap-backlog">Offene Aufgaben (Roadmap &amp; Backlog)</h1>
+<p>Dieses Dokument erfasst die noch offenen Handlungsfelder und geplanten Weiterentwicklungen für das historische Bildarchiv-Suchsystem aus Sicht von Langzeitarchivierung, Datensparsamkeit und Performance.</p>
+<hr />
+<h2 id="1-ressourcen-skalierungsoptimierung-beim-personen-clustering">1. Ressourcen- &amp; Skalierungsoptimierung beim Personen-Clustering</h2>
+<ul>
+<li><strong>Ziel:</strong> Robuste, speicherschonende Clusterbildung auch bei Beständen von über 20.000 Gesichtern.</li>
+<li><strong>Technischer Hintergrund:</strong></li>
+<li>Derzeit nutzt <a href="file:///home/norbert/Bilderdatenbank/app/services/clustering_service.py">clustering_service.py</a> <code>DBSCAN(metric='cosine')</code>, was in Scikit-Learn eine quadratische $N \times N$-Distanzmatrix im RAM anlegt ($O(N^2)$).</li>
+<li>Da ArcFace-Embeddings L2-normalisiert sind ($|u|=1$), entspricht die Cosine-Distanz mathematisch der halben quadrierten euklidischen Distanz:<br />
+    $$\text{dist}<em _text_cosine="\text{cosine">{\text{cosine}}(u, v) = 1 - \langle u, v \rangle = \frac{1}{2} |u - v|^2 \iff |u - v| = \sqrt{2 \cdot \text{dist}</em>$$}}(u, v)</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] Umstellung von <code>metric='cosine'</code> auf <code>metric='euclidean'</code> mit $\varepsilon_{\text{euclid}} = \sqrt{2 \cdot \varepsilon_{\text{cosine}}}$.</li>
+<li>[ ] Nutzung von raumteilenden Bäumen (<code>algorithm='ball_tree'</code> oder <code>'kd_tree'</code>) für $O(N \log N)$ Laufzeit und minimalen Speicherbedarf.</li>
+<li>[ ] Optional: Chunking / Batching bei sehr großen Porträtsammlungen (&gt; 50.000 Gesichter).</li>
+</ul>
+<hr />
+<h2 id="2-provenienz-revisionssicherheit-bei-personen-labels">2. Provenienz &amp; Revisionssicherheit bei Personen-Labels</h2>
+<ul>
+<li><strong>Ziel:</strong> Wissenschaftliche Nachvollziehbarkeit und Schutz vor unabsichtlichem Überschreiben bei der Zuweisung von Klarnamen.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] Speichern von Revisionsdaten im Qdrant-Payload bei Labelvergabe:<ul>
+<li><code>labeled_at</code>: ISO-Zeitstempel der Benennung.</li>
+<li><code>labeled_by</code>: Benutzer-/Archivarskennung (z. B. aus Request-Header oder Konfiguration).</li>
+<li><code>previous_labels</code>: Historie bisheriger Zuweisungen.</li>
+</ul>
+</li>
+<li>[ ] Anzeige der Benennungs-Historie und des Bearbeiters in der Personen-Detailansicht des Web-Frontends.</li>
+</ul>
+<hr />
+<h2 id="3-end-to-end-praxistest-benchmark-mit-echtdaten">3. End-to-End-Praxistest &amp; Benchmark mit Echtdaten</h2>
+<ul>
+<li><strong>Ziel:</strong> Validierung der Performanz und Benutzerfreundlichkeit unter realen Museums-/Archivbedingungen.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] Testbestand historischer Scans (z. B. Glasplattennegative, Repros, Porträtkarten) in <code>./data</code> einspielen.</li>
+<li>[ ] Inferenz-Geschwindigkeit (Sekunden pro 100 Scans) auf CPU und GPU messen.</li>
+<li>[ ] Visuelle Begutachtung der Bounding-Box-Positionierung und Ähnlichkeitstreffer im Web-Frontend.</li>
+<li>[ ] Dokumentation optimaler Batch-Größen für Standard-Bürorechner ohne dedizierte GPU.</li>
+</ul>
+<hr />
+<h2 id="4-langzeitarchivierung-standard-schnittstellen-glam">4. Langzeitarchivierung &amp; Standard-Schnittstellen (GLAM)</h2>
+<ul>
+<li><strong>Ziel:</strong> Interoperabilität mit übergeordneten Museumsdatenbanken und Portalen (Deutsche Digitale Bibliothek, Europeana).</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] Exportfunktion für Suchergebnisse und Cluster nach Dublin Core oder LIDO (Lightweight Information Describing Objects) im XML/JSON-LD-Format.</li>
+<li>[ ] REST-Endpunkt für OAI-PMH (Open Archives Initiative Protocol for Metadata Harvesting).</li>
+</ul>
+    </article>
+    <footer>
+      <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>
+      <span>100 % Lokale KI &bull; Datensparsamkeit nach DSGVO</span>
+    </footer>
+  </div>
+</body>
+</html>

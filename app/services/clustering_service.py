@@ -24,40 +24,21 @@ def generate_face_crop_base64(
     """
     Schneidet das Gesicht basierend auf der Bounding Box aus und gibt einen
     Base64-kodierten JPEG-String (Data URL) für Vorschaubilder zurück.
+    Nutzt den Thumbnail-Cache, um wiederholte Dekodierungen großer Scans zu vermeiden.
     """
     try:
+        from app.services.thumbnail_service import thumbnail_service
         path = Path(file_path)
-        if not path.is_file():
+        crop_bytes = thumbnail_service.get_or_create_face_crop(
+            file_path=path,
+            bbox=bbox,
+            target_size=target_size,
+            padding_pct=padding_pct,
+        )
+        if not crop_bytes:
             return None
-
-        with Image.open(path) as raw_img:
-            img = load_image_rgb(raw_img)
-            w, h = img.size
-
-            x1, y1, x2, y2 = bbox
-            bw = x2 - x1
-            bh = y2 - y1
-
-            # Etwas Padding um das Gesicht hinzufügen
-            pad_x = int(bw * padding_pct)
-            pad_y = int(bh * padding_pct)
-
-            crop_x1 = max(0, x1 - pad_x)
-            crop_y1 = max(0, y1 - pad_y)
-            crop_x2 = min(w, x2 + pad_x)
-            crop_y2 = min(h, y2 + pad_y)
-
-            if crop_x2 <= crop_x1 or crop_y2 <= crop_y1:
-                return None
-
-            crop = img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
-            crop.thumbnail((target_size, target_size), Image.Resampling.LANCZOS)
-
-            buffer = io.BytesIO()
-            crop.save(buffer, format="JPEG", quality=85)
-            encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
-            return f"data:image/jpeg;base64,{encoded}"
-
+        encoded = base64.b64encode(crop_bytes).decode("utf-8")
+        return f"data:image/jpeg;base64,{encoded}"
     except Exception as e:
         logger.warning("Vorschaubild konnte nicht generiert werden (%s, bbox=%s): %s", file_path, bbox, e)
         return None
@@ -72,8 +53,8 @@ class ClusteringService:
     def __init__(self, qdrant_service: Optional[QdrantService] = None):
         self.qdrant = qdrant_service or QdrantService()
 
-    def fetch_all_faces(self, batch_size: int = 500) -> List[Dict[str, Any]]:
-        """Lädt alle Punkte samt Vektoren und Metadaten aus der Collection archive_faces."""
+    def fetch_all_faces(self, batch_size: int = 500, with_vectors: bool = True) -> List[Dict[str, Any]]:
+        """Lädt Punkte aus der Collection archive_faces, optional ohne Vektoren zur Speicherschonung."""
         faces = []
         offset = None
 
@@ -83,13 +64,13 @@ class ClusteringService:
                 limit=batch_size,
                 offset=offset,
                 with_payload=True,
-                with_vectors=True,
+                with_vectors=with_vectors,
             )
 
             for record in records:
                 faces.append({
                     "id": record.id,
-                    "vector": record.vector,
+                    "vector": getattr(record, "vector", None),
                     "payload": record.payload or {},
                 })
 
@@ -182,7 +163,7 @@ class ClusteringService:
         Gibt alle gefundenen Personen-Cluster zurück, aggregiert aus Qdrant.
         Enthält Anzahl, Label sowie Vorschaubilder via Bounding-Box-Crop.
         """
-        faces = self.fetch_all_faces()
+        faces = self.fetch_all_faces(with_vectors=False)
         clusters_map: Dict[str, Dict[str, Any]] = {}
 
         for face in faces:

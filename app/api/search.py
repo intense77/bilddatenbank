@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from PIL import Image
 
 from app.core.config import settings
+from app.core.security import validate_safe_image_path
 from app.api.deps import (
     get_clip_service,
     get_face_service,
@@ -17,6 +18,8 @@ from app.services.clip_service import ClipService, load_image_rgb
 from app.services.face_service import FaceService
 from app.services.qdrant_service import QdrantService
 from app.services.clustering_service import ClusteringService
+from app.services.thumbnail_service import thumbnail_service
+from app.services.metadata_service import metadata_service
 from qdrant_client.http import models as rest_models
 
 router = APIRouter(tags=["Suche & Cluster"])
@@ -29,6 +32,12 @@ class SemanticSearchResult(BaseModel):
     file_name: Optional[str] = Field(None, description="Dateiname")
     score: float = Field(..., description="Cosine-Ähnlichkeitsscore (0.0 bis 1.0)")
     id: str = Field(..., description="Qdrant Point ID")
+    title: Optional[str] = Field(None, description="Archivtitel / Objektbezeichnung")
+    creator: Optional[str] = Field(None, description="Urheber / Fotograf / Künstler")
+    date: Optional[str] = Field(None, description="Datierung / Entstehungsdatum")
+    signature: Optional[str] = Field(None, description="Archivsignatur / Inventarnummer")
+    description: Optional[str] = Field(None, description="Objektbeschreibung")
+    keywords: Optional[List[str]] = Field(default=[], description="Schlagwörter")
 
 
 class FaceSearchResult(BaseModel):
@@ -106,6 +115,12 @@ def search_semantic(
                 score=hit.score,
                 file_path=file_path,
                 file_name=file_name,
+                title=payload.get("title"),
+                creator=payload.get("creator"),
+                date=payload.get("date"),
+                signature=payload.get("signature"),
+                description=payload.get("description"),
+                keywords=payload.get("keywords") or [],
             )
         )
     return results
@@ -132,9 +147,7 @@ async def search_faces_by_image(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Ungültige Bilddatei: {str(e)}")
     elif image_path:
-        path = Path(image_path)
-        if not path.is_file():
-            raise HTTPException(status_code=404, detail=f"Bilddatei nicht gefunden: {image_path}")
+        path = validate_safe_image_path(image_path)
         try:
             img = Image.open(path)
         except Exception as e:
@@ -186,7 +199,10 @@ def get_clusters(
 ):
     """
     Gibt alle gefundenen Personen-Cluster zurück (inkl. Vorschaubildern via Bounding-Box-Crop).
+    Gibt eine leere Liste zurück, wenn die biometrische Gesichtserkennung deaktiviert ist.
     """
+    if not settings.ENABLE_FACE_RECOGNITION:
+        return []
     clusters = clustering_service.get_clusters(include_preview=include_preview)
     return clusters
 
@@ -202,6 +218,12 @@ def label_cluster(
     Weist einem Personen-Cluster einen Klarnamen zu (z. B. 'Bischof Müller').
     Aktualisiert alle Gesichts-Punkte dieses Clusters in Qdrant.
     """
+    if not settings.ENABLE_FACE_RECOGNITION:
+        raise HTTPException(
+            status_code=403,
+            detail="Biometrische Gesichtserkennung ist in der Systemkonfiguration deaktiviert (ENABLE_FACE_RECOGNITION=false)."
+        )
+
     final_label = None
     if request and request.label:
         final_label = request.label
@@ -233,6 +255,12 @@ def trigger_clustering(
     Führt das DBSCAN-Clustering (eps=0.55, min_samples=2, metric='cosine')
     für alle Gesichter in `archive_faces` aus und aktualisiert die `cluster_id` in Qdrant.
     """
+    if not settings.ENABLE_FACE_RECOGNITION:
+        raise HTTPException(
+            status_code=403,
+            detail="Biometrische Gesichtserkennung ist in der Systemkonfiguration deaktiviert (ENABLE_FACE_RECOGNITION=false)."
+        )
+
     result = clustering_service.run_clustering(eps=eps, min_samples=min_samples)
     return result
 
@@ -243,28 +271,22 @@ def serve_image(
     max_dim: Optional[int] = Query(default=None, description="Optional: Maximale Kantenlänge für schnelle Vorschau"),
 ):
     """
-    Liefert ein Bild aus dem lokalen Dateisystem aus.
-    Konvertiert TIFF-Bilder und CMYK automatisch für den Browser in JPEG.
+    Liefert ein Bild aus dem lokalen Archiv-Dateisystem sicher aus.
+    Konvertiert TIFF-Bilder und CMYK automatisch für den Browser in JPEG und nutzt den Thumbnail-Cache.
     """
-    file_path = Path(path)
-    if not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Bilddatei nicht gefunden.")
-
+    file_path = validate_safe_image_path(path)
     suffix = file_path.suffix.lower()
-    # Wenn TIFF oder Skalierung gewünscht ist, über PIL in JPEG umwandeln
+
+    # Wenn TIFF oder Skalierung gewünscht ist, über den Thumbnail-Cache in JPEG ausliefern
     if suffix in [".tif", ".tiff"] or max_dim is not None:
+        dim = max_dim if max_dim is not None else 1600
         try:
-            with Image.open(file_path) as raw_img:
-                img = load_image_rgb(raw_img)
-                if max_dim is not None and (img.width > max_dim or img.height > max_dim):
-                    img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
-                buffer = io.BytesIO()
-                img.save(buffer, format="JPEG", quality=85)
-                return Response(
-                    content=buffer.getvalue(),
-                    media_type="image/jpeg",
-                    headers={"Cache-Control": "public, max-age=86400"},
-                )
+            thumb_bytes = thumbnail_service.get_or_create_thumbnail(file_path, max_dim=dim)
+            return Response(
+                content=thumb_bytes,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Fehler beim Aufbereiten des Bildes: {e}")
 
@@ -285,9 +307,7 @@ def get_image_details(
     """
     Gibt Metadaten und alle in diesem Bild erkannten Gesichter (inkl. Bounding Boxes und Cluster-Infos) zurück.
     """
-    file_path = Path(path)
-    if not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Bilddatei nicht gefunden.")
+    file_path = validate_safe_image_path(path)
 
     try:
         with Image.open(file_path) as img:
@@ -320,12 +340,46 @@ def get_image_details(
             "label": p.get("label"),
         })
 
+    # Metadaten aus Qdrant abrufen oder direkt aus Bild/Sidecar extrahieren
+    metadata: Dict[str, Any] = {}
+    try:
+        img_records, _ = qdrant.client.scroll(
+            collection_name=settings.COLLECTION_IMAGES,
+            scroll_filter=rest_models.Filter(
+                should=[
+                    rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_path_str)),
+                    rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_path_str)),
+                ]
+            ),
+            limit=1,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if img_records and img_records[0].payload:
+            payload = img_records[0].payload
+            metadata = payload.get("metadata") or {
+                "title": payload.get("title"),
+                "creator": payload.get("creator"),
+                "date": payload.get("date"),
+                "description": payload.get("description"),
+                "signature": payload.get("signature"),
+                "copyright": payload.get("copyright"),
+                "keywords": payload.get("keywords", []),
+            }
+    except Exception:
+        pass
+
+    # Fallback: Direkt aus Datei und eventuellen Sidecars extrahieren
+    if not metadata or not any(metadata.values()):
+        metadata = metadata_service.extract_metadata(file_path)
+
     return {
         "file_path": abs_path_str,
         "file_name": file_path.name,
         "width": width,
         "height": height,
         "faces": faces,
+        "metadata": metadata,
     }
 
 
@@ -339,9 +393,7 @@ def search_similar_images(
     """
     Sucht optisch ähnliche Bilder zu einem vorhandenen Archivbild mittels CLIP-Embedding.
     """
-    path = Path(image_path)
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail=f"Bilddatei nicht gefunden: {image_path}")
+    path = validate_safe_image_path(image_path)
 
     try:
         image_vector = clip_service.embed_image(path)
@@ -359,6 +411,40 @@ def search_similar_images(
                 score=hit.score,
                 file_path=fp,
                 file_name=p.get("file_name") or p.get("filename") or Path(fp).name,
+                title=p.get("title"),
+                creator=p.get("creator"),
+                date=p.get("date"),
+                signature=p.get("signature"),
+                description=p.get("description"),
+                keywords=p.get("keywords") or [],
             )
         )
     return results
+
+
+@router.delete("/images/record")
+def delete_image_record(
+    path: Optional[str] = Query(None, description="Dateipfad des aus dem Index zu entfernenden Bildes"),
+    image_id: Optional[str] = Query(None, description="Qdrant Point-ID des Bildes"),
+    qdrant: QdrantService = Depends(get_qdrant_service),
+):
+    """
+    Löscht ein Bild und alle assoziierten Gesichtsvektoren aus Qdrant (Recht auf Vergessenwerden, Art. 17 DSGVO).
+    """
+    if not path and not image_id:
+        raise HTTPException(status_code=400, detail="Entweder 'path' oder 'image_id' muss angegeben werden.")
+
+    target_ids = []
+    target_paths = []
+    if image_id:
+        target_ids.append(image_id)
+    if path:
+        target_paths.append(str(Path(path).resolve()))
+
+    qdrant.delete_images(target_ids)
+    qdrant.delete_faces_by_parent_images(target_ids, file_paths=target_paths)
+    return {
+        "status": "success",
+        "deleted_image_ids": target_ids,
+        "deleted_paths": target_paths,
+    }

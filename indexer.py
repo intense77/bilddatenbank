@@ -13,10 +13,13 @@ Unterstützt:
 
 import argparse
 import logging
+import os
 import sys
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Tuple
+from PIL import Image
 
 # Logger Setup mit strukturiertem Format
 logging.basicConfig(
@@ -69,9 +72,15 @@ def parse_arguments() -> argparse.Namespace:
         help="Batch-Größe für die Verarbeitung und das Upserting nach Qdrant (Standard: 32).",
     )
     parser.add_argument(
+        "--enable-faces",
+        action="store_true",
+        default=None,
+        help="Erzwingt die Gesichtserkennung (InsightFace/ArcFace).",
+    )
+    parser.add_argument(
         "--skip-faces",
         action="store_true",
-        default=False,
+        default=None,
         help="Deaktiviert die Gesichtserkennung (nur semantische CLIP-Bildsuche).",
     )
     parser.add_argument(
@@ -88,10 +97,22 @@ def parse_arguments() -> argparse.Namespace:
         help="Erzwingt Neuindexierung aller Dateien (überspringt existierende IDs nicht).",
     )
     parser.add_argument(
+        "--prune",
+        action="store_true",
+        default=False,
+        help="Bereinigt Qdrant: Löscht verwaiste Vektoren, deren Bilddateien nicht mehr im Dateisystem existieren (Art. 17 DSGVO).",
+    )
+    parser.add_argument(
+        "--sync",
+        action="store_true",
+        default=False,
+        help="Vollständige Synchronisation: Bereinigt gelöschte Dateien aus Qdrant und indexiert neue Bestände.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         default=False,
-        help="Dateien nur scannen und auflisten, keine Embeddings berechnen.",
+        help="Dateien nur scannen und auflisten, keine Embeddings berechnen bzw. nicht löschen.",
     )
     return parser.parse_args()
 
@@ -104,6 +125,49 @@ def main():
         logger.error("Quellverzeichnis existiert nicht oder ist kein Ordner: %s", source_dir)
         sys.exit(1)
 
+    # Lade Qdrant- und Service-Abhängigkeiten
+    try:
+        from qdrant_client.http import models as rest_models
+        from app.core.config import settings
+        from app.services.clip_service import ClipService
+        from app.services.face_service import FaceService
+        from app.services.qdrant_service import QdrantService
+        from app.services.metadata_service import metadata_service
+    except ImportError as e:
+        logger.error(
+            "Benötigte Abhängigkeiten fehlen (%s). Bitte zuerst 'pip install -r requirements.txt' ausführen.",
+            e,
+        )
+        sys.exit(1)
+
+    # 1. Bereinigung verwaister Datensätze (--prune oder --sync)
+    if args.prune or args.sync:
+        logger.info("Verbinde mit Qdrant für Bestandsprüfung (%s:%d)...", settings.QDRANT_HOST, settings.QDRANT_PORT)
+        qdrant_service = QdrantService()
+        if not qdrant_service.check_health():
+            logger.error("Verbindung zu Qdrant fehlgeschlagen!")
+            sys.exit(1)
+
+        logger.info("Prüfe auf im Dateisystem gelöschte Bilder (Dry-Run: %s)...", args.dry_run)
+        prune_stats = qdrant_service.prune_orphaned_records(source_dir=source_dir, dry_run=args.dry_run)
+
+        logger.info("=" * 50)
+        logger.info("BEREINIGUNGS-BERICHT (ART. 17 DSGVO)")
+        logger.info("Geprüfte Vektordaten in Qdrant: %d", prune_stats["total_scanned"])
+        logger.info("Verwaiste Einträge gefunden:    %d", prune_stats["orphaned_count"])
+        if prune_stats["orphaned_count"] > 0:
+            for p in prune_stats["orphaned_paths"][:10]:
+                logger.info(" - %s", p)
+            if len(prune_stats["orphaned_paths"]) > 10:
+                logger.info(" ... und %d weitere.", len(prune_stats["orphaned_paths"]) - 10)
+        action_word = "identifiziert (Dry-Run)" if args.dry_run else "erfolgreich aus Qdrant gelöscht"
+        logger.info("Status: %d Einträge %s.", prune_stats["orphaned_count"], action_word)
+        logger.info("=" * 50)
+
+        # Wenn reines Pruning gewünscht war, hier beenden
+        if args.prune and not args.sync:
+            return
+
     logger.info("Starte Dateisuche in: %s", source_dir)
     image_files = scan_source_directory(source_dir)
     total_images = len(image_files)
@@ -113,27 +177,13 @@ def main():
         logger.info("Keine passenden Bilddateien gefunden. Beende.")
         return
 
-    if args.dry_run:
+    if args.dry_run and not (args.prune or args.sync):
         logger.info("[Dry-Run] Die ersten gefundenen Dateien:")
         for p in image_files[:10]:
             logger.info(" - %s (relativ: %s)", p, p.relative_to(source_dir).as_posix())
         if total_images > 10:
             logger.info(" ... und %d weitere Dateien.", total_images - 10)
         return
-
-    # Lade Qdrant- und Service-Abhängigkeiten
-    try:
-        from qdrant_client.http import models as rest_models
-        from app.core.config import settings
-        from app.services.clip_service import ClipService
-        from app.services.face_service import FaceService
-        from app.services.qdrant_service import QdrantService
-    except ImportError as e:
-        logger.error(
-            "Benötigte Abhängigkeiten fehlen (%s). Bitte zuerst 'pip install -r requirements.txt' ausführen.",
-            e,
-        )
-        sys.exit(1)
 
     # Optionaler TQDM-Import mit Fallback
     try:
@@ -170,12 +220,19 @@ def main():
     logger.info("Lade CLIP-Modell auf Device '%s'...", settings.effective_device)
     clip_service = ClipService()
 
+    # Prüfe ob Gesichtserkennung aktiv ist (Default aus settings.ENABLE_FACE_RECOGNITION)
+    faces_active = settings.ENABLE_FACE_RECOGNITION
+    if args.enable_faces is True:
+        faces_active = True
+    elif args.skip_faces is True:
+        faces_active = False
+
     face_service = None
-    if not args.skip_faces:
+    if faces_active:
         logger.info("Lade InsightFace-Modell auf Device '%s'...", settings.effective_device)
         face_service = FaceService()
     else:
-        logger.info("Gesichtserkennung übersprungen (--skip-faces aktiv).")
+        logger.info("Gesichtserkennung deaktiviert (Datensparsamkeit / Art. 9 DSGVO).")
 
     # Statistiken
     total_indexed = 0
@@ -184,9 +241,9 @@ def main():
     total_errors = 0
 
     logger.info(
-        "Starte Batch-Indexierung (Batch-Größe: %d, Skip-Faces: %s, Force: %s)...",
+        "Starte Batch-Indexierung (Batch-Größe: %d, Gesichter aktiv: %s, Force: %s)...",
         args.batch_size,
-        args.skip_faces,
+        faces_active,
         args.force,
     )
 
@@ -224,6 +281,14 @@ def main():
             abs_path_str = str(file_path.resolve())
 
             try:
+                file_size = os.path.getsize(file_path)
+                with Image.open(file_path) as img:
+                    width, height = img.size
+                now_iso = datetime.now(timezone.utc).isoformat()
+
+                # Metadaten extrahieren (EXIF, IPTC, XMP, Sidecar JSON)
+                meta = metadata_service.extract_metadata(file_path)
+
                 # 3. CLIP-Embedding berechnen (archive_images)
                 clip_vector = clip_service.embed_image(file_path)
                 image_point = rest_models.PointStruct(
@@ -231,7 +296,22 @@ def main():
                     vector=clip_vector,
                     payload={
                         "file_path": abs_path_str,
+                        "relative_path": rel_path,
                         "file_name": file_path.name,
+                        "image_path": abs_path_str,
+                        "filename": file_path.name,
+                        "width": width,
+                        "height": height,
+                        "file_size": file_size,
+                        "indexed_at": now_iso,
+                        "title": meta.get("title"),
+                        "creator": meta.get("creator"),
+                        "date": meta.get("date"),
+                        "description": meta.get("description"),
+                        "signature": meta.get("signature"),
+                        "copyright": meta.get("copyright"),
+                        "keywords": meta.get("keywords", []),
+                        "metadata": meta,
                     },
                 )
                 image_points.append(image_point)
@@ -246,8 +326,14 @@ def main():
                             vector=face["embedding"],
                             payload={
                                 "file_path": abs_path_str,
+                                "relative_path": rel_path,
+                                "image_path": abs_path_str,
                                 "bbox": face["bbox"],
                                 "det_score": face["det_score"],
+                                "face_id": face_id,
+                                "parent_image_id": image_id,
+                                "face_index": face_idx,
+                                "indexed_at": now_iso,
                             },
                         )
                         face_points.append(face_point)
@@ -292,7 +378,7 @@ def main():
     logger.info("=" * 50)
 
     # Optionales automatisches Clustering
-    if args.cluster_faces and not args.skip_faces:
+    if args.cluster_faces and faces_active:
         logger.info("Starte anschließendes DBSCAN-Personen-Clustering (eps=0.55, min_samples=2)...")
         from app.services.clustering_service import ClusteringService
         clustering_service = ClusteringService(qdrant_service=qdrant_service)

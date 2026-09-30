@@ -4,6 +4,11 @@
 
 let activeCluster = null;
 let currentModalImageDetails = null;
+let systemConfig = {
+  faceRecognitionEnabled: false,
+  status: 'unknown',
+  device: 'cpu'
+};
 
 // Initialisierung bei DOM-Ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -46,12 +51,46 @@ async function checkSystemHealth() {
     const res = await fetch('/api/system/health');
     if (res.ok) {
       const data = await res.json();
+      systemConfig.faceRecognitionEnabled = !!data.face_recognition_enabled;
+      systemConfig.status = data.status;
+      systemConfig.device = data.device;
       badge.classList.remove('hidden');
-      status.textContent = `Qdrant: ${data.status} (${data.device.toUpperCase()})`;
+
+      const faceLabel = systemConfig.faceRecognitionEnabled ? 'Gesichter: an' : 'Gesichter: aus (DSGVO)';
+      status.textContent = `Qdrant: ${data.status} | ${faceLabel}`;
+
+      updateFaceRecognitionUI();
     }
   } catch (err) {
     status.textContent = 'Qdrant offline';
     badge.querySelector('span').className = 'w-2 h-2 rounded-full bg-rose-500';
+  }
+}
+
+function updateFaceRecognitionUI() {
+  const runBtn = document.getElementById('run-clustering-btn');
+  const emptyElem = document.getElementById('clusters-empty');
+  if (!systemConfig.faceRecognitionEnabled) {
+    if (runBtn) {
+      runBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      runBtn.title = 'Gesichtserkennung ist deaktiviert (ENABLE_FACE_RECOGNITION=false)';
+    }
+    if (emptyElem) {
+      emptyElem.innerHTML = `
+        <div class="max-w-md mx-auto p-5 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-3">
+          <div class="w-10 h-10 mx-auto rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            </svg>
+          </div>
+          <p class="text-sm font-semibold text-slate-100">Biometrische Gesichtserkennung deaktiviert</p>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Aus Gründen der Datensparsamkeit (Art. 5 / Art. 9 DSGVO) ist die Gesichtsanalyse standardmäßig abgeschaltet.
+            Um Personenerkennung und Clusterung zu nutzen, setzen Sie <code class="text-amber-400 font-mono">ENABLE_FACE_RECOGNITION=true</code> in Ihrer <code class="text-amber-400 font-mono">.env</code>-Konfiguration.
+          </p>
+        </div>
+      `;
+    }
   }
 }
 
@@ -127,11 +166,23 @@ function renderSearchResults(items, container) {
                                         'text-slate-400 border-slate-500/30 bg-slate-500/10';
 
     const safePath = encodeURIComponent(item.file_path);
+    const displayTitle = item.title || item.file_name;
+    const subTitle = item.title ? item.file_name : (item.creator || '');
+
+    // Metadata Badges (Datierung, Signatur)
+    let metaBadgesHtml = '';
+    if (item.date) {
+      metaBadgesHtml += `<span class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-400/90 font-mono text-[10px]">${escapeHtml(item.date)}</span>`;
+    }
+    if (item.signature) {
+      metaBadgesHtml += `<span class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono text-[10px] truncate max-w-[100px]">${escapeHtml(item.signature)}</span>`;
+    }
+
     card.innerHTML = `
       <div class="aspect-[4/3] bg-slate-950 relative overflow-hidden flex items-center justify-center">
         <img
           src="/images/serve?path=${safePath}&max_dim=400"
-          alt="${escapeHtml(item.file_name)}"
+          alt="${escapeHtml(displayTitle)}"
           loading="lazy"
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%23334155\\'><text x=\\'50%\\' y=\\'50%\\' text-anchor=\\'middle\\' fill=\\'%2364748b\\' font-size=\\'12\\'>Scan</text></svg>'"
@@ -141,9 +192,13 @@ function renderSearchResults(items, container) {
         </span>
       </div>
       <div class="p-3 flex-1 flex flex-col justify-between">
-        <h5 class="text-xs font-medium text-slate-200 truncate group-hover:text-amber-400 transition" title="${escapeHtml(item.file_name)}">
-          ${escapeHtml(item.file_name)}
-        </h5>
+        <div>
+          <h5 class="text-xs font-medium text-slate-200 truncate group-hover:text-amber-400 transition" title="${escapeHtml(displayTitle)}">
+            ${escapeHtml(displayTitle)}
+          </h5>
+          ${subTitle ? `<p class="text-[11px] text-slate-400 truncate mt-0.5" title="${escapeHtml(subTitle)}">${escapeHtml(subTitle)}</p>` : ''}
+        </div>
+        ${metaBadgesHtml ? `<div class="mt-2 flex flex-wrap items-center gap-1">${metaBadgesHtml}</div>` : ''}
         <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
           <span class="truncate max-w-[120px] font-mono">${escapeHtml(item.file_path.split('/').slice(-2, -1)[0] || 'Archiv')}</span>
           <span class="text-amber-500/80 group-hover:translate-x-0.5 transition-transform">Details →</span>
@@ -171,6 +226,12 @@ async function loadClusters() {
   grid.innerHTML = '';
   empty.classList.add('hidden');
   spinner.classList.remove('hidden');
+
+  if (!systemConfig.faceRecognitionEnabled) {
+    spinner.classList.add('hidden');
+    empty.classList.remove('hidden');
+    return;
+  }
 
   try {
     const res = await fetch('/faces/clusters?include_preview=true');
@@ -403,11 +464,100 @@ async function openImageModal(filePath, fileName) {
 
   modal.classList.remove('hidden');
 
-  // Lade Gesichtsdetails aus der Datenbank
+  const metaContainer = document.getElementById('modal-metadata-content');
+  if (metaContainer) {
+    metaContainer.innerHTML = '<span class="text-slate-500 font-mono">Lade Archiv-Metadaten...</span>';
+  }
+
+  // Lade Gesichtsdetails und Metadaten aus der Datenbank
   try {
     const res = await fetch(`/images/details?path=${encodeURIComponent(filePath)}`);
     if (!res.ok) return;
     const data = await res.json();
+
+    // Titel anpassen, falls archivalischer Titel vorhanden ist
+    if (data.metadata && data.metadata.title) {
+      title.textContent = data.metadata.title;
+      pathElem.textContent = `${fileName} • ${filePath}`;
+    }
+
+    // Archivalische Metadaten Seitenleiste befüllen
+    if (metaContainer) {
+      const meta = data.metadata || {};
+      let metaHtml = '';
+
+      if (meta.title) {
+        metaHtml += `
+          <div>
+            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Titel / Bezeichnung</span>
+            <span class="text-slate-200 font-medium text-xs">${escapeHtml(meta.title)}</span>
+          </div>`;
+      }
+      if (meta.date) {
+        metaHtml += `
+          <div>
+            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Datierung</span>
+            <span class="text-amber-400 font-mono text-xs">${escapeHtml(meta.date)}</span>
+          </div>`;
+      }
+      if (meta.creator) {
+        metaHtml += `
+          <div>
+            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Urheber / Fotograf</span>
+            <span class="text-slate-200 text-xs">${escapeHtml(meta.creator)}</span>
+          </div>`;
+      }
+      if (meta.signature) {
+        metaHtml += `
+          <div>
+            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Archivsignatur</span>
+            <span class="text-slate-300 font-mono text-xs bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60 inline-block">${escapeHtml(meta.signature)}</span>
+          </div>`;
+      }
+      if (data.width && data.height) {
+        metaHtml += `
+          <div>
+            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Auflösung</span>
+            <span class="text-slate-400 font-mono text-xs">${data.width} &times; ${data.height} px</span>
+          </div>`;
+      }
+      if (meta.description) {
+        metaHtml += `
+          <div>
+            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Beschreibung</span>
+            <p class="text-slate-300 leading-relaxed text-[11px] bg-slate-950/40 p-2 rounded-lg border border-slate-800/80 max-h-28 overflow-y-auto">${escapeHtml(meta.description)}</p>
+          </div>`;
+      }
+      if (meta.keywords && meta.keywords.length > 0) {
+        const chips = meta.keywords.map(kw => `
+          <button onclick="setQueryAndSearch('${escapeHtml(kw)}'); closeImageModal();" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-amber-500/20 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 text-slate-300 font-mono text-[10px] transition" title="Nach '#${escapeHtml(kw)}' suchen">
+            #${escapeHtml(kw)}
+          </button>
+        `).join('');
+        metaHtml += `
+          <div>
+            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block mb-1">Schlagwörter</span>
+            <div class="flex flex-wrap gap-1">${chips}</div>
+          </div>`;
+      }
+      if (meta.copyright) {
+        metaHtml += `
+          <div class="pt-2 border-t border-slate-800/80">
+            <span class="text-slate-500 text-[10px] uppercase tracking-wider block">Rechte / Lizenz</span>
+            <span class="text-slate-400 text-[10px] leading-tight block">${escapeHtml(meta.copyright)}</span>
+          </div>`;
+      }
+
+      if (!metaHtml) {
+        metaHtml = `
+          <div class="text-center py-6 text-slate-500 space-y-1">
+            <p class="text-[11px]">Keine EXIF-, IPTC- oder Sidecar-Metadaten hinterlegt.</p>
+            <p class="text-[10px] text-slate-600">Legen Sie z. B. eine <code class="font-mono text-amber-500/70">${escapeHtml(fileName)}.json</code> an.</p>
+          </div>`;
+      }
+
+      metaContainer.innerHTML = metaHtml;
+    }
 
     facesList.innerHTML = '';
     if (!data.faces || data.faces.length === 0) {

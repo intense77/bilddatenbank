@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lokales, datensparsames Bildarchiv-Suchsystem</title>
+  <title>Übersicht & Architektur — Lokales Bildarchiv-Suchsystem</title>
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
     :root {
-      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -19,13 +18,40 @@
       padding: 2.5rem 1rem;
     }
     .container {
-      max-width: 860px;
+      max-width: 900px;
       margin: 0 auto;
       background: #ffffff;
       padding: 3rem 3.5rem;
       border-radius: 16px;
       box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
       border: 1px solid #e2e8f0;
+    }
+    .doc-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 0.82rem;
+    }
+    .doc-nav a {
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      background: #f1f5f9;
+      color: #475569;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .doc-nav a:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .doc-nav a.active {
+      background: #f59e0b;
+      color: #0f172a;
+      font-weight: 600;
     }
     .doc-header {
       display: flex;
@@ -43,8 +69,9 @@
       letter-spacing: 0.05em;
       padding: 0.3rem 0.75rem;
       border-radius: 9999px;
-      background: #f1f5f9;
-      color: #475569;
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
     }
     .print-btn {
       font-size: 0.85rem;
@@ -62,8 +89,8 @@
       border-color: #94a3b8;
     }
     h1 { font-size: 2rem; font-weight: 700; color: #0f172a; margin-bottom: 1rem; letter-spacing: -0.02em; line-height: 1.25; }
-    h2 { font-size: 1.4rem; font-weight: 600; color: #1e293b; margin-top: 2rem; margin-bottom: 0.85rem; padding-bottom: 0.4rem; border-bottom: 1px solid #f1f5f9; }
-    h3 { font-size: 1.15rem; font-weight: 600; color: #334155; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+    h2 { font-size: 1.35rem; font-weight: 600; color: #1e293b; margin-top: 2rem; margin-bottom: 0.85rem; padding-bottom: 0.4rem; border-bottom: 1px solid #f1f5f9; }
+    h3 { font-size: 1.12rem; font-weight: 600; color: #334155; margin-top: 1.5rem; margin-bottom: 0.6rem; }
     p { margin-bottom: 1rem; }
     ul, ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
     li { margin-bottom: 0.35rem; }
@@ -128,10 +155,22 @@
       text-decoration: none;
     }
     a:hover { text-decoration: underline; }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #e2e8f0;
+      font-size: 0.82rem;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
     @media print {
       body { background: #ffffff; padding: 0; }
       .container { border: none; box-shadow: none; padding: 0; max-width: 100%; }
-      .doc-header { display: none; }
+      .doc-nav, .doc-header button, footer { display: none; }
       pre, code { background: #f8fafc !important; color: #000000 !important; border: 1px solid #cbd5e1; }
     }
     @media (max-width: 640px) {
@@ -142,109 +181,201 @@
 </head>
 <body>
   <div class="container">
+    <nav class="doc-nav">
+      <a href="README.html" class="active">Übersicht</a>
+      <a href="anleitung.html">Anleitung</a>
+      <a href="datenschutz.html">Datenschutz & DSGVO</a>
+      <a href="lizenzen.html">Lizenzen</a>
+      <a href="todo.html">Roadmap</a>
+      <a href="/">← Zurück zur Bildersuche</a>
+    </nav>
     <div class="doc-header">
-      <span class="badge">Dokumentation &mdash; Bildarchiv</span>
+      <span class="badge">Archivsystem • Übersicht</span>
       <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
     </div>
     <article>
-<h1>Lokales, datensparsames Bildarchiv-Suchsystem</h1>
-<p>Ein lokales Suchsystem für historische Bildbestände basierend auf Vektor-Embeddings (OpenCLIP &amp; ArcFace/InsightFace) und Qdrant.</p>
-<h2>Architektur &amp; Komponenten</h2>
+<h1 id="lokales-datensparsames-bildarchiv-suchsystem">Lokales, datensparsames Bildarchiv-Suchsystem</h1>
+<p>Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem für historische Bild- und Fotoarchive (GLAM-Bereich: Museen, Archive, Bibliotheken) basierend auf Vektor-Embeddings (OpenCLIP &amp; ArcFace/InsightFace), archivischer Metadaten-Extraktion (EXIF/IPTC/XMP/JSON-Sidecars) und der Vektordatenbank Qdrant.</p>
+<hr />
+<h2 id="archivfachliche-technische-kernmerkmale">🏛️ Archivfachliche &amp; Technische Kernmerkmale</h2>
 <ul>
-<li><strong>Backend</strong>: FastAPI (Python 3.11)</li>
-<li><strong>Vektordatenbank</strong>: Qdrant via Docker Compose (<code>./qdrant_storage</code>)</li>
-<li><strong>Modelle</strong>:</li>
+<li><strong>100 % Lokaler Betrieb &amp; Datenschutz by Design (Art. 5 / 9 DSGVO):</strong></li>
+<li>Keine Cloud-Verbindungen, keine externen APIs, keine externen CDNs oder Tracking-Skripte.</li>
+<li>Standardmäßig <strong>deaktivierte biometrische Gesichtserkennung</strong> (<code>ENABLE_FACE_RECOGNITION=false</code>) zur Schonung von Arbeitsspeicher (~1,5–2 GB RAM/VRAM-Einsparung) und zur strikten Einhaltung von Art. 9 DSGVO. Bei Bedarf granular aktivierbar.</li>
+<li><strong>Archivische Metadaten &amp; JSON-Sidecars:</strong></li>
+<li>Konsolidierte Extraktion aus EXIF/TIFF-Headern, IPTC Core, XMP (Dublin Core) und JSON-Begleitdateien (<code>datei.json</code> / <code>datei.ext.json</code>).</li>
+<li>Indexierung standardisierter Kernfelder: Titel/Objektbezeichnung, Datierung, Urheber/Fotograf, Archivsignatur/Inventarnummer, Beschreibung, Rechte/Lizenz und Schlagwörter.</li>
+<li>Anklickbare Schlagwort-Filterchips in der Web-Oberfläche für explorative Recherche.</li>
+<li><strong>Ressourcen- &amp; Speicheroptimierung:</strong></li>
+<li>Automatischer Thumbnail- und Bildausschnitt-Cache (<code>.cache/thumbnails/</code>) mit MD5-Invalidierung zur schnellen Anzeige historischer Großformate und TIFF-Dateien.</li>
+<li>Optimierte Vektorsuche und speicherschonendes Clustering.</li>
+<li><strong>Recht auf Vergessenwerden &amp; Synchronisation (Art. 17 DSGVO):</strong></li>
+<li>Integrierte Pruning-Funktion (<code>indexer.py --prune</code> bzw. <code>POST /api/system/prune</code>) zur Bereinigung gelöschter Bestände.</li>
+<li>Endpunkt zur punktgenauen Löschung einzelner Bild- und Gesichtsvektoren (<code>DELETE /images/record</code>).</li>
+<li><strong>Sicherheit:</strong></li>
+<li>Strikte Pfad-Validierung gegen Path-Traversal-Angriffe (<code>app/core/security.py</code>) bei allen Bild- und Metadaten-Endpunkten.</li>
+<li>Beschränkte CORS-Origins über Konfiguration (<code>CORS_ORIGINS</code>).</li>
+</ul>
+<hr />
+<h2 id="architektur-komponenten">🏗️ Architektur &amp; Komponenten</h2>
+<ul>
+<li><strong>Backend:</strong> FastAPI (Python 3.11, asynchron)</li>
+<li><strong>Vektordatenbank:</strong> Qdrant (lokale Docker-Instanz, Port 6333) mit persistentem Volume (<code>./qdrant_storage</code>)</li>
+<li><strong>Modelle &amp; Merkmalsextraktion:</strong></li>
 <li><strong>OpenCLIP ViT-B-32</strong> (512 Dimensionen, Cosine Distance) für multimodale Bild- und Freitextsuche in <code>archive_images</code>.</li>
-<li><strong>InsightFace (ArcFace)</strong> (512 Dimensionen, Cosine Distance) für Gesichtserkennung und Porträtsuche in <code>archive_faces</code> mit Metadaten (<code>image_path</code>, <code>bbox</code>, <code>face_id</code>, <code>cluster_id</code>).</li>
-<li><strong>Hardware-Beschleunigung</strong>: Automatischer CUDA-Support mit Fallback auf CPU.</li>
+<li><strong>InsightFace / ArcFace</strong> (512 Dimensionen, Cosine Distance) für Porträterkennung und DBSCAN-Gruppierung in <code>archive_faces</code>.</li>
+<li><strong>Pillow &amp; Defused XML:</strong> Extraktion von EXIF, IPTC Core, XMP (Dublin Core) und JSON-Sidecars.</li>
+<li><strong>Frontend:</strong> 100 % lokales, responsives Single-Page-Interface (HTML5, Vanilla JS, Offline-CSS ohne externe CDN-Abhängigkeiten).</li>
+<li><strong>Hardware-Beschleunigung:</strong> Automatischer CUDA-Support für Nvidia-GPUs mit transparentem Fallback auf CPU.</li>
 </ul>
 <hr />
-<h2>Projektstruktur</h2>
-<pre class="codehilite"><code class="language-text">.
-├── docker-compose.yml       # Lokale Qdrant-Instanz mit persistentem Storage-Volume
-├── requirements.txt         # Python-Abhängigkeiten (FastAPI, Qdrant, OpenCLIP, InsightFace)
-├── .env.example             # Konfigurationsvorlage
-├── indexer.py               # CLI-Batch-Verarbeitung für Bildarchive
-└── app/
-    ├── main.py              # FastAPI-Applikation &amp; Lifespan-Handler
-    ├── core/
-    │   └── config.py        # Settings via pydantic-settings
-    ├── services/
-    │   ├── qdrant_service.py   # Qdrant Client &amp; Collection Management
-    │   ├── clip_service.py     # OpenCLIP Embeddings (Text &amp; Bild)
-    │   ├── face_service.py     # InsightFace Gesichtserkennung &amp; ArcFace
-    │   └── indexing_service.py # Verarbeitungs- &amp; Speicherlogik
-    └── api/
-        ├── deps.py          # Dependency Injection (Services)
-        ├── router.py        # Zentraler API Router
-        └── routes/
-            ├── search.py    # /api/search (text, image, face)
-            └── system.py    # /api/system (health, collections)
+<h2 id="projektstruktur">📁 Projektstruktur</h2>
+<pre><code class="language-text">.
+├── docker-compose.yml       # Lokale Qdrant-Vektordatenbank mit persistentem Speicher
+├── start_qdrant.sh          # Hilfsskript zum Starten des Qdrant-Containers
+├── requirements.txt         # Python-Abhängigkeiten
+├── .env.example             # Konfigurationsvorlage (DSGVO-Schalter, Pfade, Ports)
+├── indexer.py               # Leistungsfähige CLI zur Archiv-Indexierung &amp; Bereinigung
+├── todo.md                  # Roadmap &amp; wissenschaftliches Backlog
+├── app/
+│   ├── main.py              # FastAPI-Applikation &amp; Lifespan-Handler
+│   ├── core/
+│   │   ├── config.py        # Pydantic-Settings &amp; Umgebungsvariablen
+│   │   └── security.py      # Pfadvalidierung (Sandbox gegen Path Traversal)
+│   ├── services/
+│   │   ├── qdrant_service.py   # Qdrant Client, Collections &amp; Art. 17 Pruning
+│   │   ├── clip_service.py     # OpenCLIP Text- &amp; Bild-Embeddings
+│   │   ├── face_service.py     # InsightFace Gesichtserkennung &amp; ArcFace
+│   │   ├── clustering_service.py # DBSCAN-Personengruppierung &amp; Namensvergabe
+│   │   ├── metadata_service.py # EXIF-, IPTC-, XMP- &amp; Sidecar-Extraktion
+│   │   ├── indexing_service.py # Idempotente Indexierung via UUIDv5
+│   │   └── thumbnail_service.py# Performanter Thumbnail-Cache für TIFF/JPEG
+│   └── api/
+│       ├── deps.py          # Dependency Injection &amp; Lazy Service Loading
+│       ├── search.py        # Such-, Cluster-, Detail- &amp; Bildauslieferungs-Routen
+│       └── routes/
+│           └── system.py    # Health-Check, DB-Info &amp; Pruning-Endpunkt
+└── static/
+    ├── index.html           # Web-Frontend
+    ├── app.js               # Anwendungslogik &amp; Bounding-Box-Visualisierung
+    ├── style.css            # Minifiziertes, 100 % lokales Stylesheet
+    ├── anleitung.html       # Interaktive Bedienungsanleitung
+    ├── datenschutz.html     # DSGVO-Dokumentation &amp; Art. 9/17 Leitfaden
+    └── lizenzen.html        # Lizenzübersicht für Software &amp; Modelle
 </code></pre>
-
 <hr />
-<h2>Schnellstart</h2>
-<h3>1. Qdrant starten</h3>
-<pre class="codehilite"><code class="language-bash">docker compose up -d
+<h2 id="schnellstart">🚀 Schnellstart</h2>
+<h3 id="1-vektordatenbank-starten">1. Vektordatenbank starten</h3>
+<pre><code class="language-bash">./start_qdrant.sh
+# oder alternativ: docker compose up -d
 </code></pre>
-
-<p>Die Qdrant-Weboberfläche ist anschließend unter <a href="http://localhost:6333/dashboard">http://localhost:6333/dashboard</a> erreichbar.</p>
-<h3>2. Python-Umgebung einrichten</h3>
-<pre class="codehilite"><code class="language-bash">python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+<p>Die Datenbank-Weboberfläche ist unter <a href="http://localhost:6333/dashboard">http://localhost:6333/dashboard</a> erreichbar.</p>
+<h3 id="2-python-umgebung-aktivieren">2. Python-Umgebung aktivieren</h3>
+<pre><code class="language-bash">source .venv/bin/activate
+# Sollten Abhängigkeiten fehlen: pip install -r requirements.txt
 </code></pre>
-
-<blockquote>
-<p><strong>Hinweis für CUDA-Unterstützung</strong>: Falls PyTorch mit CUDA benötigt wird:
-<code>pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121</code></p>
-</blockquote>
-<h3>3. Konfiguration anpassen</h3>
-<pre class="codehilite"><code class="language-bash">cp .env.example .env
+<h3 id="3-konfiguration-anpassen">3. Konfiguration anpassen</h3>
+<pre><code class="language-bash">cp .env.example .env
+# In der .env können Archivpfade und der DSGVO-Gesichtserkennungs-Schalter gesetzt werden:
+# ENABLE_FACE_RECOGNITION=false   (Standard: aus)
+# ARCHIVE_DATA_DIR=./data
 </code></pre>
+<h3 id="4-archivbestande-indizieren-cli">4. Archivbestände indizieren (CLI)</h3>
+<pre><code class="language-bash"># Standard: Reine semantische Bild- &amp; Metadaten-Suche (datensparsam):
+python indexer.py --source-dir /pfad/zu/den/bildern
 
-<h3>4. Historische Bestände indizieren (CLI)</h3>
-<pre class="codehilite"><code class="language-bash"># Bildverzeichnis mit Standardeinstellungen (Batch-Größe 32, inkl. Gesichter) indizieren:
-python indexer.py --source-dir /pfad/zu/den/archivbildern
+# Mit biometrischer Gesichtserkennung &amp; automatischem Personen-Clustering:
+python indexer.py --source-dir /pfad/zu/den/bildern --enable-faces --cluster-faces
 
-# Nur CLIP-Bildsuche (ohne Gesichtserkennung) mit angepasster Batch-Größe:
-python indexer.py --source-dir /pfad/zu/den/archivbildern --batch-size 64 --skip-faces
+# Synchronisation (gelöschte Bilder aus Index entfernen, neue hinzufügen):
+python indexer.py --source-dir /pfad/zu/den/bildern --sync
 
-# Vorschau der gefundenen Dateien (Dry-Run):
-python indexer.py --source-dir ./data --dry-run
+# Vorschau ohne Datenbank-Schreibzugriffe (Dry-Run):
+python indexer.py --source-dir /pfad/zu/den/bildern --dry-run
 </code></pre>
-
-<h3>5. API-Server starten</h3>
-<pre class="codehilite"><code class="language-bash">uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+<h3 id="5-web-server-starten">5. Web-Server starten</h3>
+<pre><code class="language-bash">uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 </code></pre>
-
 <ul>
-<li><strong>Web-Frontend</strong>: <a href="http://localhost:8000/">http://localhost:8000/</a></li>
-<li>Swagger UI / API-Dokumentation: <a href="http://localhost:8000/docs">http://localhost:8000/docs</a></li>
-<li>Health-Check: <a href="http://localhost:8000/api/system/health">http://localhost:8000/api/system/health</a></li>
+<li><strong>Web-Frontend:</strong> <a href="http://localhost:8000/">http://localhost:8000/</a></li>
+<li><strong>Interaktive API-Dokumentation (Swagger UI):</strong> <a href="http://localhost:8000/docs">http://localhost:8000/docs</a></li>
+<li><strong>System-Health-Check:</strong> <a href="http://localhost:8000/api/system/health">http://localhost:8000/api/system/health</a></li>
 </ul>
 <hr />
-<h2>API-Endpunkte</h2>
-<h3>Semantische Bildsuche</h3>
-<ul>
-<li><code>GET /search/semantic?q={text}&amp;limit=20</code>
-  Vektorisiert den Suchtext via CLIP und liefert sortierte Dateipfade + Scores aus <code>archive_images</code>.</li>
-</ul>
-<h3>Gesichts-Ähnlichkeitssuche</h3>
-<ul>
-<li><code>GET /search/faces/by-image?limit=10</code> oder <code>POST /search/faces/by-image</code>
-  Nimmt ein Bild/Porträtausschnitt (als Datei-Upload oder <code>image_path</code>), extrahiert das Gesicht und sucht Treffer in <code>archive_faces</code>.</li>
-</ul>
-<h3>Personen-Clustering &amp; Metadaten</h3>
-<ul>
-<li><code>GET /faces/clusters</code>
-  Gibt alle gefundenen Personen-Cluster zurück (inkl. Vorschaubildern als Base64-Crop).</li>
-<li><code>POST /faces/clusters/{cluster_id}/label</code>
-  Weist einem Personen-Cluster einen Klarnamen zu (z. B. <code>{"label": "Bischof Müller"}</code>).</li>
-<li><code>POST /faces/clusters/run</code>
-  Führt das DBSCAN-Clustering (<code>eps=0.55</code>, <code>min_samples=2</code>, <code>metric='cosine'</code>) aus und aktualisiert die <code>cluster_id</code> in Qdrant.</li>
-</ul>
+<h2 id="wichtigste-api-endpunkte">🔍 Wichtigste API-Endpunkte</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Methode</th>
+<th style="text-align: left;">Pfad</th>
+<th style="text-align: left;">Beschreibung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/search/semantic</code></td>
+<td style="text-align: left;">Freitextsuche in natürlicher Sprache via OpenCLIP inkl. Metadaten-Treffern.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/search/similar</code></td>
+<td style="text-align: left;">Optische Ähnlichkeitssuche zu einem vorhandenen Archivbild.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code> / <code>POST</code></td>
+<td style="text-align: left;"><code>/search/faces/by-image</code></td>
+<td style="text-align: left;">Porträt- und Gesichtssuche anhand eines Bild-Uploads oder Bildpfads.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/faces/clusters</code></td>
+<td style="text-align: left;">Abruf aller erkannten Personen-Cluster inkl. Vorschaubildern.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/faces/clusters/{id}/label</code></td>
+<td style="text-align: left;">Zuweisung eines Klarnamens zu einem Personen-Cluster.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/faces/clusters/run</code></td>
+<td style="text-align: left;">Ausführung des DBSCAN-Clusterings über alle erkannten Gesichter.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/images/details</code></td>
+<td style="text-align: left;">Abruf von Metadaten, Abmessungen und Gesichts-Bounding-Boxes zu einem Bild.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/images/serve</code></td>
+<td style="text-align: left;">Sichere Auslieferung von Archivbildern mit Konvertierung und Thumbnail-Cache.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DELETE</code></td>
+<td style="text-align: left;"><code>/images/record</code></td>
+<td style="text-align: left;">DSGVO-Löschung einzelner Bilder und deren Gesichtsvektoren aus Qdrant.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/api/system/prune</code></td>
+<td style="text-align: left;">Automatische Bereinigung verwaister Qdrant-Vektoren für nicht mehr existierende Dateien.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="dokumentation-weitergabe">📄 Dokumentation &amp; Weitergabe</h2>
+<p>Zusätzlich zu dieser Datei stehen für die Weitergabe an Archivpersonal, Museumsleitung und Datenschutzbeauftragte eigenständige Dokumente bereit:<br />
+* <strong><a href="file:///home/norbert/Bilderdatenbank/anleitung.html">anleitung.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/anleitung.md">anleitung.md</a></strong>: Ausführliche Anleitung für Archivare und Kuratoren.<br />
+* <strong><a href="file:///home/norbert/Bilderdatenbank/datenschutz.html">datenschutz.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/datenschutz.md">datenschutz.md</a></strong>: Datenschutzkonzept, TOMs und Rechtsgrundlagen (Art. 6, 9, 17, 89 DSGVO).<br />
+* <strong><a href="file:///home/norbert/Bilderdatenbank/lizenzen.html">lizenzen.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/lizenzen.md">lizenzen.md</a></strong>: Lizenzen der verwendeten Open-Source-Bibliotheken und KI-Modelle.<br />
+* <strong><a href="file:///home/norbert/Bilderdatenbank/todo.html">todo.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/todo.md">todo.md</a></strong>: Zukünftige Entwicklungsziele (DBSCAN $O(N \log N)$ Optimierung, Provenienz-Historie, LIDO/Dublin Core Export).</p>
     </article>
+    <footer>
+      <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>
+      <span>100 % Lokale KI &bull; Datensparsamkeit nach DSGVO</span>
+    </footer>
   </div>
 </body>
 </html>

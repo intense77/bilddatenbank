@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import Any, List, Optional
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest_models
@@ -16,7 +17,8 @@ class QdrantService:
             port=settings.QDRANT_PORT,
             grpc_port=settings.QDRANT_GRPC_PORT,
             prefer_grpc=settings.QDRANT_PREFER_GRPC,
-            api_key=settings.QDRANT_API_KEY,
+            https=settings.QDRANT_HTTPS,
+            api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None,
             timeout=10.0,
         )
 
@@ -38,8 +40,8 @@ class QdrantService:
                     distance=rest_models.Distance.COSINE,
                 ),
             )
-            # Payload Index für schnelle Pfad-Suchen
-            for field in ["file_path", "image_path"]:
+            # Payload Index für schnelle Pfad-Suchen und Metadaten-Filter
+            for field in ["file_path", "image_path", "relative_path", "title", "creator", "date", "signature"]:
                 self.client.create_payload_index(
                     collection_name=settings.COLLECTION_IMAGES,
                     field_name=field,
@@ -59,8 +61,8 @@ class QdrantService:
                     distance=rest_models.Distance.COSINE,
                 ),
             )
-            # Payload Indizes für Metadaten: file_path, image_path, face_id, cluster_id
-            for field in ["file_path", "image_path", "face_id", "cluster_id"]:
+            # Payload Indizes für Metadaten: file_path, image_path, relative_path, face_id, cluster_id
+            for field in ["file_path", "image_path", "relative_path", "face_id", "cluster_id"]:
                 self.client.create_payload_index(
                     collection_name=settings.COLLECTION_FACES,
                     field_name=field,
@@ -87,6 +89,100 @@ class QdrantService:
             collection_name=settings.COLLECTION_FACES,
             points=points,
         )
+
+    def delete_images(self, image_ids: List[str]) -> None:
+        """Löscht Bild-Points aus archive_images anhand ihrer IDs."""
+        if not image_ids:
+            return
+        self.client.delete(
+            collection_name=settings.COLLECTION_IMAGES,
+            points_selector=rest_models.PointIdsList(points=image_ids),
+        )
+
+    def delete_faces_by_parent_images(self, parent_image_ids: List[str], file_paths: Optional[List[str]] = None) -> None:
+        """Löscht Gesichts-Points aus archive_faces, die zu den angegebenen Bild-IDs oder Pfaden gehören."""
+        if not parent_image_ids and not file_paths:
+            return
+
+        conditions = []
+        for p_id in parent_image_ids:
+            conditions.append(rest_models.FieldCondition(key="parent_image_id", match=rest_models.MatchValue(value=p_id)))
+        if file_paths:
+            for fp in file_paths:
+                conditions.append(rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=fp)))
+                conditions.append(rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=fp)))
+
+        if conditions:
+            self.client.delete(
+                collection_name=settings.COLLECTION_FACES,
+                points_selector=rest_models.FilterSelector(
+                    filter=rest_models.Filter(should=conditions)
+                ),
+            )
+
+    def prune_orphaned_records(
+        self,
+        source_dir: Optional[Path] = None,
+        dry_run: bool = False,
+        batch_size: int = 250,
+    ) -> dict[str, Any]:
+        """
+        Prüft alle Einträge in archive_images gegen das lokale Dateisystem.
+        Löscht verwaiste Einträge aus archive_images und archive_faces, falls
+        die Bilddatei nicht mehr existiert (Art. 17 DSGVO / Datenhygiene).
+        """
+        offset = None
+        total_scanned = 0
+        orphaned_ids: List[str] = []
+        orphaned_paths: List[str] = []
+
+        while True:
+            records, next_offset = self.client.scroll(
+                collection_name=settings.COLLECTION_IMAGES,
+                limit=batch_size,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            for record in records:
+                total_scanned += 1
+                payload = record.payload or {}
+                file_path_str = payload.get("file_path") or payload.get("image_path")
+                rel_path_str = payload.get("relative_path")
+
+                exists = False
+                # 1. Absolute Pfadprüfung
+                if file_path_str and Path(file_path_str).is_file():
+                    exists = True
+                # 2. Relative Pfadprüfung gegen source_dir
+                elif source_dir and rel_path_str:
+                    resolved = (source_dir / rel_path_str).resolve()
+                    if resolved.is_file():
+                        exists = True
+
+                if not exists:
+                    orphaned_ids.append(str(record.id))
+                    if file_path_str:
+                        orphaned_paths.append(file_path_str)
+
+            if next_offset is None or len(records) == 0:
+                break
+            offset = next_offset
+
+        # Bereinigung ausführen, falls kein Dry-Run
+        if not dry_run and orphaned_ids:
+            logger.info("Lösche %d verwaiste Bild-Points aus Qdrant...", len(orphaned_ids))
+            self.delete_images(orphaned_ids)
+            self.delete_faces_by_parent_images(orphaned_ids, file_paths=orphaned_paths)
+
+        return {
+            "total_scanned": total_scanned,
+            "orphaned_count": len(orphaned_ids),
+            "orphaned_ids": orphaned_ids,
+            "orphaned_paths": orphaned_paths,
+            "pruned": not dry_run,
+        }
 
     def search_images(
         self,
@@ -151,10 +247,10 @@ class QdrantService:
         """Gibt Status- und Zählerinformationen einer Collection zurück."""
         info = self.client.get_collection(collection_name=collection_name)
         return {
-            "status": info.status,
-            "vectors_count": info.vectors_count,
-            "points_count": info.points_count,
-            "indexed_vectors_count": info.indexed_vectors_count,
+            "status": str(info.status),
+            "points_count": getattr(info, "points_count", 0),
+            "indexed_vectors_count": getattr(info, "indexed_vectors_count", 0),
+            "segments_count": getattr(info, "segments_count", 0),
         }
 
     def get_existing_ids(self, collection_name: str, ids: List[str]) -> set[str]:
