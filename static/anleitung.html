@@ -361,6 +361,15 @@
 2. <strong>Cluster ansehen:</strong> Klick auf eine Person öffnet die Detailansicht mit allen Archivbildern, auf denen die Person vorkommt. Das Gesicht wird auf dem Bild mit einer Markierungsbox hervorgehoben.<br />
 3. <strong>Klarname zuweisen:</strong> Tragen Sie den Personennamen ein (z. B. <em>„Bischof Müller“</em>) und klicken Sie auf <strong>Speichern</strong>. Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen.<br />
 4. <strong>Cluster neu berechnen:</strong> Ein Klick auf <em>„Cluster neu berechnen“</em> führt das DBSCAN-Clustering erneut aus.</p>
+<h3 id="tab-3-bestande-upload">Tab 3: Bestände &amp; Upload</h3>
+<p>Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:<br />
+1. <strong>Bestehende Ordner ohne Verschieben einbinden:</strong><br />
+   * Tragen Sie den Pfad zu einem bestehenden Bildverzeichnis auf dem Rechner oder Netzlaufwerk ein (z. B. <code>/mnt/archiv_nas/Scans_1910</code> oder <code>./data/Neuzugaenge</code>).<br />
+   * <strong>Vorschau-Button:</strong> Prüft vorab die Erreichbarkeit, zählt die enthaltenen Bilddateien und Sidecars und zeigt Beispieldateien an.<br />
+   * <strong>Ordner jetzt indexieren:</strong> Bindet das Verzeichnis sicher in die Pfad-Sandbox ein (<code>ALLOWED_IMAGE_DIRS</code>) und indexiert alle Bilder inkrementell.<br />
+2. <strong>Neue Scans per Drag-and-Drop hochladen:</strong><br />
+   * Ziehen Sie Bilddateien (JPG, PNG, WEBP, TIF/TIFF) und optionale <code>.json</code>-Sidecars direkt in die gestrichelte Ablagezone.<br />
+   * Das System speichert die Dateien im Archiv und berechnet sofort alle Merkmals-Embeddings und Metadaten.</p>
 <h3 id="bild-detailansicht-modal">Bild-Detailansicht (Modal)</h3>
 <p>Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:<br />
 * <strong>Bild &amp; Bounding Boxes:</strong> Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter.<br />

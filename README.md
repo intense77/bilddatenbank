@@ -139,6 +139,11 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 | `GET` | `/images/serve` | Sichere Auslieferung von Archivbildern mit Konvertierung und Thumbnail-Cache. |
 | `DELETE` | `/images/record` | DSGVO-Löschung einzelner Bilder und deren Gesichtsvektoren aus Qdrant. |
 | `POST` | `/api/system/prune` | Automatische Bereinigung verwaister Qdrant-Vektoren für nicht mehr existierende Dateien. |
+| `POST` | `/api/archive/upload` | Drag-and-Drop Web-Upload neuer Bilddateien und .json-Sidecars mit Sofort-Indexierung. |
+| `POST` | `/api/archive/scan-folder` | Schnelle Ordner-Vorschau (Dateizählung & Beispieldateien vor dem Einlesen). |
+| `POST` | `/api/archive/index-folder` | Inkrementelle Einbindung eines bestehenden Ordners ohne Verschieben (inkl. Sandbox-Registrierung). |
+| `GET` | `/api/archive/registered-folders` | Liste aller autorisierten Archiv-Verzeichnisse auf dem System. |
+
 
 ---
 

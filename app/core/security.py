@@ -1,8 +1,13 @@
 import os
+import re
+import json
+import logging
 from pathlib import Path
 from typing import Set, Union
 from fastapi import HTTPException
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
 
@@ -28,6 +33,42 @@ def get_allowed_base_dirs() -> list[Path]:
             continue
 
     return allowed_dirs
+
+
+def register_allowed_archive_dir(new_dir: Union[str, Path], persist: bool = True) -> Path:
+    """
+    Registriert ein externes Archiv-Verzeichnis zur Laufzeit in settings.ALLOWED_IMAGE_DIRS,
+    sodass Dateien darin autorisiert und vor Path-Traversal geschützt ausgeliefert werden können.
+    Persistiert die Liste optional in der .env-Datei.
+    """
+    p = Path(new_dir).resolve()
+    if not p.is_dir():
+        raise HTTPException(status_code=400, detail=f"Das angegebene Verzeichnis existiert nicht: {p}")
+
+    p_str = str(p)
+    if p_str not in settings.ALLOWED_IMAGE_DIRS:
+        settings.ALLOWED_IMAGE_DIRS.append(p_str)
+
+    if persist:
+        env_path = Path(".env")
+        if env_path.exists():
+            try:
+                content = env_path.read_text(encoding="utf-8")
+                dirs_json = json.dumps(settings.ALLOWED_IMAGE_DIRS)
+                if re.search(r"^\s*ALLOWED_IMAGE_DIRS\s*=", content, flags=re.MULTILINE):
+                    content = re.sub(
+                        r"^\s*ALLOWED_IMAGE_DIRS\s*=.*$",
+                        f"ALLOWED_IMAGE_DIRS={dirs_json}",
+                        content,
+                        flags=re.MULTILINE,
+                    )
+                else:
+                    content += f"\nALLOWED_IMAGE_DIRS={dirs_json}\n"
+                env_path.write_text(content, encoding="utf-8")
+            except Exception as e:
+                logger.warning("Konnte ALLOWED_IMAGE_DIRS nicht in .env sichern: %s", e)
+
+    return p
 
 
 def validate_safe_image_path(path_input: Union[str, Path]) -> Path:

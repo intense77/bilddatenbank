@@ -11,8 +11,10 @@ let systemConfig = {
 };
 
 // Initialisierung bei DOM-Ready
+// Initialisierung bei DOM-Ready
 document.addEventListener('DOMContentLoaded', () => {
   checkSystemHealth();
+  setupDropzone();
   // Vorbelegung Suche falls gewünscht
   const urlParams = new URLSearchParams(window.location.search);
   const q = urlParams.get('q');
@@ -25,21 +27,34 @@ document.addEventListener('DOMContentLoaded', () => {
 function switchTab(tab) {
   const searchSec = document.getElementById('tab-search');
   const facesSec = document.getElementById('tab-faces');
+  const importSec = document.getElementById('tab-import');
   const searchBtn = document.getElementById('tab-search-btn');
   const facesBtn = document.getElementById('tab-faces-btn');
+  const importBtn = document.getElementById('tab-import-btn');
+
+  // Alle Sektionen ausblenden
+  searchSec.classList.add('hidden');
+  facesSec.classList.add('hidden');
+  if (importSec) importSec.classList.add('hidden');
+
+  const activeCls = 'px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all bg-amber-500 text-slate-950 font-semibold shadow-sm flex items-center gap-2';
+  const inactiveCls = 'px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2';
+
+  searchBtn.className = inactiveCls;
+  facesBtn.className = inactiveCls;
+  if (importBtn) importBtn.className = inactiveCls;
 
   if (tab === 'search') {
     searchSec.classList.remove('hidden');
-    facesSec.classList.add('hidden');
-    searchBtn.className = 'px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all bg-amber-500 text-slate-950 font-semibold shadow-sm flex items-center gap-2';
-    facesBtn.className = 'px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2';
-  } else {
-    searchSec.classList.add('hidden');
+    searchBtn.className = activeCls;
+  } else if (tab === 'faces') {
     facesSec.classList.remove('hidden');
-    facesBtn.className = 'px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all bg-amber-500 text-slate-950 font-semibold shadow-sm flex items-center gap-2';
-    searchBtn.className = 'px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2';
-    // Lade Cluster automatisch beim ersten Aufruf
+    facesBtn.className = activeCls;
     loadClusters();
+  } else if (tab === 'import') {
+    if (importSec) importSec.classList.remove('hidden');
+    if (importBtn) importBtn.className = activeCls;
+    loadRegisteredFolders();
   }
 }
 
@@ -787,3 +802,296 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+// --- 4. Archiv-Bestände einbinden & Upload-Logik ---
+
+function setupDropzone() {
+  const dropzone = document.getElementById('upload-dropzone');
+  if (!dropzone) return;
+
+  ['dragenter', 'dragover'].forEach(name => {
+    dropzone.addEventListener(name, (e) => {
+      e.preventDefault();
+      dropzone.classList.add('border-amber-500', 'bg-amber-500/10');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(name => {
+    dropzone.addEventListener(name, (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('border-amber-500', 'bg-amber-500/10');
+    });
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      uploadFilesDirectly(files);
+    }
+  });
+}
+
+async function loadRegisteredFolders() {
+  const container = document.getElementById('registered-folders-list');
+  if (!container) return;
+
+  try {
+    const res = await fetch('/api/archive/registered-folders');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const allowed = data.allowed_dirs || [];
+    if (allowed.length === 0) {
+      container.innerHTML = `<span class="text-slate-500">Keine Pfade registriert</span>`;
+      return;
+    }
+
+    container.innerHTML = allowed.map(dir => {
+      const isPrimary = dir === data.primary_dir;
+      return `
+        <span class="px-2.5 py-1 rounded-lg ${isPrimary ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-300'} border flex items-center gap-1.5" title="${escapeHtml(dir)}">
+          <svg class="w-3.5 h-3.5 ${isPrimary ? 'text-amber-400' : 'text-slate-400'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+          </svg>
+          <span class="truncate max-w-xs sm:max-w-md">${escapeHtml(dir)}</span>
+          ${isPrimary ? '<span class="text-[9px] uppercase px-1 py-0.2 bg-amber-500/20 text-amber-400 rounded">Primär</span>' : ''}
+        </span>
+      `;
+    }).join('');
+  } catch (err) {
+    container.innerHTML = `<span class="text-rose-400">Fehler beim Laden: ${err.message}</span>`;
+  }
+}
+
+async function scanFolderPreview() {
+  const input = document.getElementById('folder-path-input');
+  const recursive = document.getElementById('folder-recursive')?.checked ?? true;
+  const preview = document.getElementById('folder-scan-preview');
+  const status = document.getElementById('folder-index-status');
+
+  const folderPath = input.value.trim();
+  if (!folderPath) {
+    showToast('Bitte geben Sie einen Verzeichnispfad an.', true);
+    input.focus();
+    return;
+  }
+
+  preview.classList.remove('hidden');
+  preview.innerHTML = '<span class="text-slate-400 font-mono">Scanne Ordner...</span>';
+
+  try {
+    const res = await fetch('/api/archive/scan-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_path: folderPath, recursive }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    let samplesHtml = '';
+    if (data.sample_files && data.sample_files.length > 0) {
+      samplesHtml = `
+        <div class="mt-2 pt-2 border-t border-slate-800 text-[11px] text-slate-400">
+          <span class="font-medium text-slate-300 block mb-1">Beispieldateien:</span>
+          <div class="flex flex-wrap gap-1 font-mono">
+            ${data.sample_files.map(f => `<span class="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">${escapeHtml(f)}</span>`).join('')}
+            ${data.image_count > 10 ? `<span class="text-slate-500 self-center">+${data.image_count - 10} weitere</span>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    preview.innerHTML = `
+      <div class="flex items-center justify-between text-slate-200">
+        <span class="font-medium flex items-center gap-1.5 text-emerald-400">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+          Gültiges Verzeichnis gefunden
+        </span>
+        <span class="font-mono text-amber-400 font-semibold">${data.image_count} Bilddateien</span>
+      </div>
+      <div class="text-[11px] text-slate-400 font-mono">
+        ${data.sidecar_count} .json-Sidecars gefunden
+      </div>
+      ${samplesHtml}
+    `;
+
+    if (status) {
+      status.textContent = `${data.image_count} Bilder bereit`;
+    }
+  } catch (err) {
+    preview.innerHTML = `
+      <div class="text-rose-400 flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        <span>${escapeHtml(err.message)}</span>
+      </div>
+    `;
+    if (status) status.textContent = 'Fehler beim Scannen';
+  }
+}
+
+async function startFolderIndexing() {
+  const input = document.getElementById('folder-path-input');
+  const recursive = document.getElementById('folder-recursive')?.checked ?? true;
+  const skipExisting = document.getElementById('folder-skip-existing')?.checked ?? true;
+  const btn = document.getElementById('start-folder-index-btn');
+  const status = document.getElementById('folder-index-status');
+  const preview = document.getElementById('folder-scan-preview');
+
+  const folderPath = input.value.trim();
+  if (!folderPath) {
+    showToast('Bitte geben Sie einen Verzeichnispfad an.', true);
+    input.focus();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.classList.add('opacity-50');
+  const origBtnHtml = btn.innerHTML;
+  btn.innerHTML = `
+    <svg class="animate-spin w-4 h-4 text-slate-950" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+    <span>Indexiere Ordner...</span>
+  `;
+
+  if (status) status.textContent = 'Indexierung läuft...';
+
+  try {
+    const res = await fetch('/api/archive/index-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder_path: folderPath,
+        recursive: recursive,
+        force: !skipExisting,
+        cluster_faces: true,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const stats = data.indexing_stats || {};
+
+    preview.classList.remove('hidden');
+    preview.innerHTML = `
+      <div class="text-emerald-400 font-medium flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        Indexierung erfolgreich abgeschlossen!
+      </div>
+      <div class="text-[11px] text-slate-300 font-mono mt-1 space-y-0.5">
+        <p>&bull; Neu indexiert: <strong class="text-amber-400">${stats.new_indexed || 0}</strong> Bilder</p>
+        <p>&bull; Übersprungen (bereits vorhanden): ${stats.skipped || 0} Bilder</p>
+        <p>&bull; Erkannte Gesichter: ${stats.faces_detected || 0}</p>
+      </div>
+    `;
+
+    showToast(`Indexierung beendet: ${stats.new_indexed || 0} neue Bilder aufgenommen.`);
+    if (status) status.textContent = 'Fertig';
+
+    loadRegisteredFolders();
+  } catch (err) {
+    showToast(`Indexierung fehlgeschlagen: ${err.message}`, true);
+    if (status) status.textContent = 'Fehlgeschlagen';
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('opacity-50');
+    btn.innerHTML = origBtnHtml;
+  }
+}
+
+function handleFileUpload(event) {
+  const files = event.target.files;
+  if (files && files.length > 0) {
+    uploadFilesDirectly(files);
+  }
+}
+
+async function uploadFilesDirectly(files) {
+  const container = document.getElementById('upload-results-container');
+  const subfolderInput = document.getElementById('upload-subfolder-input');
+  const subfolder = subfolderInput ? subfolderInput.value.trim() : '';
+
+  if (!files || files.length === 0) return;
+
+  container.classList.remove('hidden');
+  container.innerHTML = `
+    <div class="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center gap-2 text-slate-300">
+      <svg class="animate-spin w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span>Lade ${files.length} Datei(en) hoch und berechne Embeddings...</span>
+    </div>
+  `;
+
+  const formData = new FormData();
+  for (let i = 0; i < files.length; i++) {
+    formData.append('files', files[i]);
+  }
+  if (subfolder) {
+    formData.append('subfolder', subfolder);
+  }
+  formData.append('enable_clustering', 'true');
+
+  try {
+    const res = await fetch('/api/archive/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    let itemsHtml = '';
+    if (data.items && data.items.length > 0) {
+      itemsHtml = data.items.map(item => `
+        <div class="flex items-center justify-between p-2 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono">
+          <span class="text-slate-200 truncate max-w-[200px]" title="${escapeHtml(item.file_name)}">${escapeHtml(item.file_name)}</span>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-400">Indexiert</span>
+            ${item.faces_detected > 0 ? `<span class="text-amber-400 font-semibold">${item.faces_detected} Gesicht(er)</span>` : ''}
+            <button onclick="openImageModal('${escapeHtml(item.file_path)}', '${escapeHtml(item.file_name)}')" class="text-amber-400 hover:underline">Öffnen &rarr;</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    container.innerHTML = `
+      <div class="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center justify-between">
+        <span>${data.uploaded_images} Bild(er) hochgeladen &amp; indexiert</span>
+        ${data.faces_detected > 0 ? `<span>${data.faces_detected} Gesichter erfasst</span>` : ''}
+      </div>
+      <div class="space-y-1 mt-2">
+        ${itemsHtml}
+      </div>
+    `;
+
+    showToast(`${data.uploaded_images} Bild(er) erfolgreich hochgeladen und indexiert.`);
+
+    // Dateieingabe zurücksetzen
+    const fileInput = document.getElementById('file-upload-input');
+    if (fileInput) fileInput.value = '';
+  } catch (err) {
+    container.innerHTML = `
+      <div class="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+        Upload fehlgeschlagen: ${escapeHtml(err.message)}
+      </div>
+    `;
+    showToast(`Fehler beim Upload: ${err.message}`, true);
+  }
+}
+

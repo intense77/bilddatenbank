@@ -3,7 +3,7 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image
 from qdrant_client.http import models as rest_models
 
@@ -139,3 +139,89 @@ class IndexingService:
         except Exception as e:
             logger.error("Fehler bei der Indizierung von '%s': %s", path_str, e, exc_info=True)
             return False, 0
+
+    def index_folder(
+        self,
+        folder_path: Path,
+        recursive: bool = True,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Scannt ein Verzeichnis nach Bilddateien und indexiert neue Dateien inkrementell.
+        """
+        abs_folder = folder_path.resolve()
+        if not abs_folder.is_dir():
+            raise ValueError(f"'{folder_path}' ist kein gültiges Verzeichnis.")
+
+        extensions = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
+        files = []
+        iterator = abs_folder.rglob("*") if recursive else abs_folder.glob("*")
+        for p in iterator:
+            if p.is_file() and p.suffix.lower() in extensions:
+                files.append(p)
+        files = sorted(files)
+
+        total_found = len(files)
+        indexed_count = 0
+        skipped_count = 0
+        faces_count = 0
+        errors = []
+
+        # Ermittle bereits indexierte Point-IDs zur Vermeidung von Doppelarbeit
+        existing_ids = set()
+        if not force:
+            try:
+                candidate_ids = []
+                for f in files:
+                    try:
+                        rel = f.relative_to(abs_folder).as_posix()
+                    except ValueError:
+                        rel = f.name
+                    candidate_ids.append(str(uuid.uuid5(UUID_NAMESPACE, rel)))
+
+                chunk_size = 100
+                for i in range(0, len(candidate_ids), chunk_size):
+                    chunk = candidate_ids[i:i + chunk_size]
+                    points = self.qdrant.client.retrieve(
+                        collection_name=settings.COLLECTION_IMAGES,
+                        ids=chunk,
+                        with_payload=False,
+                        with_vectors=False,
+                    )
+                    for pt in points:
+                        existing_ids.add(str(pt.id))
+            except Exception as e:
+                logger.debug("Konnte existierende IDs nicht vorab abrufen: %s", e)
+
+        for file_path in files:
+            try:
+                rel = file_path.relative_to(abs_folder).as_posix()
+            except ValueError:
+                rel = file_path.name
+            point_id = str(uuid.uuid5(UUID_NAMESPACE, rel))
+
+            if not force and point_id in existing_ids:
+                skipped_count += 1
+                continue
+
+            try:
+                success, num_faces = self.index_image_file(file_path, base_dir=abs_folder)
+                if success:
+                    indexed_count += 1
+                    faces_count += num_faces
+                else:
+                    errors.append(file_path.name)
+            except Exception as e:
+                logger.error("Fehler beim Indexieren von %s: %s", file_path, e)
+                errors.append(file_path.name)
+
+        return {
+            "folder_path": str(abs_folder),
+            "total_found": total_found,
+            "new_indexed": indexed_count,
+            "skipped": skipped_count,
+            "faces_detected": faces_count,
+            "error_count": len(errors),
+            "errors": errors[:20],
+        }
+

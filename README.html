@@ -362,6 +362,26 @@ python indexer.py --source-dir /pfad/zu/den/bildern --dry-run
 <td style="text-align: left;"><code>/api/system/prune</code></td>
 <td style="text-align: left;">Automatische Bereinigung verwaister Qdrant-Vektoren für nicht mehr existierende Dateien.</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/api/archive/upload</code></td>
+<td style="text-align: left;">Drag-and-Drop Web-Upload neuer Bilddateien und .json-Sidecars mit Sofort-Indexierung.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/api/archive/scan-folder</code></td>
+<td style="text-align: left;">Schnelle Ordner-Vorschau (Dateizählung &amp; Beispieldateien vor dem Einlesen).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/api/archive/index-folder</code></td>
+<td style="text-align: left;">Inkrementelle Einbindung eines bestehenden Ordners ohne Verschieben (inkl. Sandbox-Registrierung).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>GET</code></td>
+<td style="text-align: left;"><code>/api/archive/registered-folders</code></td>
+<td style="text-align: left;">Liste aller autorisierten Archiv-Verzeichnisse auf dem System.</td>
+</tr>
 </tbody>
 </table>
 <hr />

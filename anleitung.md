@@ -160,6 +160,16 @@ Nach dem Start erreichen Sie die Oberfläche unter **[http://localhost:8000/](ht
 3. **Klarname zuweisen:** Tragen Sie den Personennamen ein (z. B. *„Bischof Müller“*) und klicken Sie auf **Speichern**. Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen.
 4. **Cluster neu berechnen:** Ein Klick auf *„Cluster neu berechnen“* führt das DBSCAN-Clustering erneut aus.
 
+### Tab 3: Bestände & Upload
+Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:
+1. **Bestehende Ordner ohne Verschieben einbinden:**
+   * Tragen Sie den Pfad zu einem bestehenden Bildverzeichnis auf dem Rechner oder Netzlaufwerk ein (z. B. `/mnt/archiv_nas/Scans_1910` oder `./data/Neuzugaenge`).
+   * **Vorschau-Button:** Prüft vorab die Erreichbarkeit, zählt die enthaltenen Bilddateien und Sidecars und zeigt Beispieldateien an.
+   * **Ordner jetzt indexieren:** Bindet das Verzeichnis sicher in die Pfad-Sandbox ein (`ALLOWED_IMAGE_DIRS`) und indexiert alle Bilder inkrementell.
+2. **Neue Scans per Drag-and-Drop hochladen:**
+   * Ziehen Sie Bilddateien (JPG, PNG, WEBP, TIF/TIFF) und optionale `.json`-Sidecars direkt in die gestrichelte Ablagezone.
+   * Das System speichert die Dateien im Archiv und berechnet sofort alle Merkmals-Embeddings und Metadaten.
+
 ### Bild-Detailansicht (Modal)
 Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:
 * **Bild & Bounding Boxes:** Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter.

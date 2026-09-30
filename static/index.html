@@ -38,6 +38,12 @@
           </svg>
           <span>Personen &amp; Cluster</span>
         </button>
+        <button id="tab-import-btn" onclick="switchTab('import')" class="px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+          </svg>
+          <span>Bestände &amp; Upload</span>
+        </button>
       </nav>
 
       <!-- Biometrie Schalter (Art. 9 DSGVO / KDG § 29) -->
@@ -231,6 +237,181 @@
         <!-- Images for this Cluster with Bounding Boxes highlighted -->
         <div id="cluster-images-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <!-- Cards with highlighted faces injected here -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ================= TAB 3: Bestände & Upload ================= -->
+    <section id="tab-import" class="hidden space-y-8">
+      
+      <!-- Intro Header -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
+            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+            </svg>
+            <span>Archiv-Bestände einbinden &amp; Bilder hinzufügen</span>
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-400 mt-1 leading-relaxed">
+            Binden Sie bestehende Bildverzeichnisse auf Ihrem Rechner oder Netzlaufwerk <strong>ohne Kopieren oder Verschieben</strong> ein oder laden Sie neue Scans direkt per Drag-and-Drop hoch.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        <!-- Karte 1: Vorhandenen Ordner einbinden -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-5">
+          <div class="space-y-4">
+            <div class="flex items-center gap-2.5 border-b border-slate-800 pb-3">
+              <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-sm font-semibold text-slate-100">Bestehenden Ordnerbestand einbinden</h3>
+                <p class="text-[11px] text-slate-400">Verbleibt am Originalort &bull; keine Duplikate &bull; Sandbox-geschützt</p>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <label for="folder-path-input" class="block text-xs font-medium text-slate-300 mb-1">
+                  Absoluter oder relativer Verzeichnispfad
+                </label>
+                <div class="flex gap-2">
+                  <input
+                    type="text"
+                    id="folder-path-input"
+                    placeholder="/mnt/archiv/Glasplatten_1900 oder ./data"
+                    class="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onclick="scanFolderPreview()"
+                    class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition flex items-center gap-1.5 flex-shrink-0 border border-slate-700"
+                    title="Prüft die Erreichbarkeit und zählt Bilddateien"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                    </svg>
+                    <span>Vorschau</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Optionen -->
+              <div class="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
+                <label class="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" id="folder-recursive" checked class="rounded border-slate-700 text-amber-500 focus:ring-amber-500/30 bg-slate-950">
+                  <span>Unterordner rekursiv durchsuchen</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" id="folder-skip-existing" checked class="rounded border-slate-700 text-amber-500 focus:ring-amber-500/30 bg-slate-950">
+                  <span>Bereits indexierte Bilder überspringen (Inkrementell)</span>
+                </label>
+              </div>
+
+              <!-- Vorschau-Ergebnisbox -->
+              <div id="folder-scan-preview" class="hidden p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2">
+                <!-- Dynamisch befüllt -->
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between">
+            <span class="text-[11px] text-slate-500 font-mono" id="folder-index-status">Bereit zum Einlesen</span>
+            <button
+              type="button"
+              id="start-folder-index-btn"
+              onclick="startFolderIndexing()"
+              class="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs sm:text-sm rounded-xl transition shadow-sm flex items-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span>Ordner jetzt indexieren</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Karte 2: Drag-and-Drop Upload -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-5">
+          <div class="space-y-4">
+            <div class="flex items-center gap-2.5 border-b border-slate-800 pb-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-sm font-semibold text-slate-100">Neue Scans direkt hochladen</h3>
+                <p class="text-[11px] text-slate-400">Drag &amp; Drop &bull; Sofortige Indexierung &bull; Unterstützt .json-Sidecars</p>
+              </div>
+            </div>
+
+            <!-- Upload Dropzone -->
+            <div
+              id="upload-dropzone"
+              onclick="document.getElementById('file-upload-input').click()"
+              class="border-2 border-dashed border-slate-700 hover:border-amber-500/60 rounded-xl p-8 text-center cursor-pointer transition bg-slate-950/60 hover:bg-slate-950 flex flex-col items-center justify-center gap-2.5 group"
+            >
+              <input
+                type="file"
+                id="file-upload-input"
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.tif,.tiff,.json"
+                class="hidden"
+                onchange="handleFileUpload(event)"
+              />
+              <div class="w-12 h-12 rounded-full bg-slate-800 group-hover:bg-amber-500/20 text-slate-400 group-hover:text-amber-400 flex items-center justify-center transition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+              </div>
+              <p class="text-xs sm:text-sm font-medium text-slate-200">
+                Bilder hier ablegen oder <span class="text-amber-400 underline underline-offset-2">Dateien auswählen</span>
+              </p>
+              <p class="text-[11px] text-slate-500 font-mono">
+                JPG, PNG, WEBP, TIF/TIFF und .json Sidecars
+              </p>
+            </div>
+
+            <!-- Optional: Unterordner-Angabe -->
+            <div class="flex items-center gap-2 text-xs">
+              <span class="text-slate-400">Speichern in:</span>
+              <input
+                type="text"
+                id="upload-subfolder-input"
+                placeholder="uploads (Standard) oder z. B. Nachlass_1920"
+                class="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+              />
+            </div>
+
+            <!-- Upload Fortschritt & Ergebnis-Liste -->
+            <div id="upload-results-container" class="hidden space-y-2 max-h-48 overflow-y-auto text-xs">
+              <!-- Dynamisch befüllt -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Registrierte Archiv-Ordner Übersicht -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+          <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+          </svg>
+          <span>Autorisierte Archiv-Verzeichnisse (Sandbox)</span>
+        </h4>
+        <div id="registered-folders-list" class="flex flex-wrap gap-2 text-xs font-mono">
+          <span class="text-slate-500">Lade Verzeichnisse...</span>
         </div>
       </div>
 
