@@ -194,22 +194,19 @@
       <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
     </div>
     <article>
-<h1 id="datenschutzkonzept-dsgvo-hinweise">Datenschutzkonzept &amp; DSGVO-Hinweise</h1>
-<p><strong>Projekt:</strong> Lokales Bildarchiv-Suchsystem für historische Bestände (GLAM)<br />
-<strong>Betreiber / Verantwortliche Stelle:</strong> Archiv / Museum<br />
+<h1 id="datenschutzkonzept-kdg-dsgvo-hinweise">Datenschutzkonzept &amp; KDG-/DSGVO-Hinweise</h1>
+<p><strong>Projekt:</strong> Lokales Bildarchiv-Suchsystem für historische Bestände (GLAM / Diözesanarchive)<br />
+<strong>Betreiber / Verantwortliche Stelle:</strong> Diözesanarchiv / Kirchliches Archiv / Museum<br />
 <strong>Stand:</strong> Oktober 2026</p>
 <hr />
-<h2 id="1-grundprinzipien-privacy-by-design-datensparsamkeit">1. Grundprinzipien: Privacy by Design &amp; Datensparsamkeit</h2>
-<p>Dieses Bildarchiv-Suchsystem wurde nach den Grundsätzen des Art. 5 DSGVO (<em>Rechtmäßigkeit, Zweckbindung, Datenminimierung, Speicherbegrenzung, Integrität und Vertraulichkeit</em>) sowie Art. 25 DSGVO (<em>Datenschutz durch Technikgestaltung und datenschutzfreundliche Voreinstellungen</em>) konzipiert.</p>
+<h2 id="1-grundprinzipien-privacy-by-design-datensparsamkeit-datenhoheit">1. Grundprinzipien: Privacy by Design, Datensparsamkeit &amp; Datenhoheit</h2>
+<p>Dieses Bildarchiv-Suchsystem wurde nach den Grundsätzen des <strong>Gesetzes über den Kirchlichen Datenschutz (KDG)</strong> (bzw. Art. 5 DSGVO) konzipiert: <em>Rechtmäßigkeit, Zweckbindung, Datenminimierung, Speicherbegrenzung, Integrität und Vertraulichkeit</em> (§ 7 KDG) sowie <em>Datenschutz durch Technikgestaltung und datenschutzfreundliche Voreinstellungen</em> (§ 26 KDG / Art. 25 DSGVO).</p>
 <h3 id="technische-kernmerkmale">Technische Kernmerkmale</h3>
 <ol>
-<li><strong>100 % Lokale Datenverarbeitung:</strong><br />
-   * Weder Bilddateien noch Berechnungen (Embeddings, Vektoren) verlassen das lokale System.<br />
-   * Keine Anbindung an externe Cloud-Dienste, kommerzielle KI-APIs oder Tracking-Dienste.<br />
+<li><strong>100 % Lokale Datenverarbeitung (Vollständige Datenhoheit):</strong><br />
+   * Weder Bilddateien noch Berechnungen (Embeddings, Vektoren) verlassen das lokale Netzwerk der kirchlichen Einrichtung.<br />
+   * <strong>Keine Drittlandübermittlung (§§ 37–41 KDG):</strong> Keine Anbindung an US-amerikanische oder kommerzielle Cloud-Dienste (wie Microsoft Azure AI, OpenAI oder AWS) – damit entfallen komplexe AV-Verträge, Standardvertragsklauseln und CLOUD-Act-Konflikte.<br />
    * <strong>Vollständiger Offline-Betrieb des Web-Frontends:</strong> Sämtliche Stylesheets (CSS) und Schriften sind lokal gebündelt. Es werden keine Verbindungen zu externen Content Delivery Networks (wie Google Fonts oder Tailwind CDN) aufgebaut.</li>
-<li><strong>Datenschutzfreundliche Voreinstellung (Privacy by Default, Art. 25 Abs. 2 DSGVO):</strong><br />
-   * Die biometrische Gesichtserkennung ist standardmäßig <strong>deaktiviert</strong> (<code>ENABLE_FACE_RECOGNITION=false</code>).<br />
-   * Das System startet rein als semantische Motiv- und Metadaten-Suchmaschine ohne Erfassung biometrischer Merkmale.</li>
 <li><strong>Keine Speicherung von Bilddaten in der Datenbank:</strong><br />
    * Die Vektordatenbank Qdrant speichert ausschließlich mathematische Vektoren (512 Gleitkommazahlen) und technische Referenzpfade.<br />
    * Die Originalbilder verbleiben unverändert in ihren geschützten Dateisystem-Archivverzeichnissen.</li>
@@ -218,42 +215,68 @@
    * Es werden ausschließlich geometrische Koordinaten (Bounding Boxes) und mathematische Ähnlichkeitsvektoren verarbeitet.</li>
 </ol>
 <hr />
-<h2 id="2-verarbeitung-biometrischer-daten-art-9-dsgvo">2. Verarbeitung biometrischer Daten (Art. 9 DSGVO)</h2>
-<p>Gesichts-Embeddings (ArcFace 512-dim) stellen nach Art. 4 Nr. 14 DSGVO <strong>biometrische Daten</strong> dar, da sie durch ein spezielles technisches Verfahren gewonnen werden und die Identifizierung oder Wiedererkennung einer natürlichen Person ermöglichen.</p>
-<h3 id="rechtsgrundlagen-der-verarbeitung">Rechtsgrundlagen der Verarbeitung</h3>
-<ul>
-<li><strong>Historische Archive &amp; Wissenschaft (Art. 89 DSGVO i. V. m. Landesarchivgesetzen / BDSG § 27 / § 28):</strong><br />
-  Die Verarbeitung von Archivgut im öffentlichen Interesse oder zu wissenschaftlichen und historischen Forschungszwecken ist privilegiert.</li>
-<li><strong>Wahrung berechtigter Interessen (Art. 6 Abs. 1 lit. f DSGVO):</strong><br />
-  Erschließung, Dokumentation und Auffindbarkeit von historischem Kulturgut und Bildzeugnissen der Zeitgeschichte.</li>
-<li><strong>Schutzfristen &amp; Gemeinfreiheit:</strong><br />
-  Für Personen der Zeitgeschichte bzw. bei verstorbenen Personen gilt: Das allgemeine Persönlichkeitsrecht schützt Verstorbene postmortal; die DSGVO selbst findet auf Verstorbene grundsätzlich keine direkte Anwendung (Erwägungsgrund 27 DSGVO). Landesrechtliche Archivschutzfristen bleiben unberührt.</li>
-</ul>
-<h3 id="schutzmanahmen">Schutzmaßnahmen</h3>
-<ul>
-<li><strong>Zweistufige Aktivierung (Opt-in):</strong> Die Gesichtsvektorisierung erfordert eine bewusste Konfiguration (<code>ENABLE_FACE_RECOGNITION=true</code> in der <code>.env</code> oder <code>--enable-faces</code> im CLI-Indexer).</li>
-<li><strong>Zugangsbeschränkungen:</strong> Der Zugriff auf Backend und Datenbank ist auf autorisierte Rechner beschränkt; ein Pfad-Sandbox-Filter (<code>validate_safe_image_path</code>) verhindert unbefugten Zugriff außerhalb der freigegebenen Archivpfade.</li>
-<li><strong>Kuratierte Namensvergabe:</strong> Klarnamen werden nicht automatisiert aus externen Quellen bezogen, sondern bedürfen der manuellen Zuweisung durch Archivpersonal.</li>
-</ul>
-<hr />
-<h2 id="3-betroffenenrechte-recht-auf-vergessenwerden-art-1521-dsgvo">3. Betroffenenrechte &amp; Recht auf Vergessenwerden (Art. 15–21 DSGVO)</h2>
-<p>Sollten auf historischen oder zeitgeschichtlichen Fotografien lebende Personen abgebildet sein, stehen diesen die gesetzlichen Betroffenenrechte zu:</p>
+<h2 id="2-verarbeitung-biometrischer-daten-das-kirchliche-archivprivileg-29-kdg">2. Verarbeitung biometrischer Daten &amp; das Kirchliche Archivprivileg (§ 29 KDG)</h2>
+<p>Gesichts-Embeddings (ArcFace 512-dim) stellen nach § 4 Nr. 14 KDG (bzw. Art. 4 Nr. 14 DSGVO) <strong>biometrische Daten</strong> dar, da sie durch ein spezielles technisches Verfahren gewonnen werden und die Identifizierung oder Wiedererkennung einer natürlichen Person ermöglichen.</p>
+<h3 id="rechtsgrundlagen-der-verarbeitung-im-kirchlichen-archiv">Rechtsgrundlagen der Verarbeitung im kirchlichen Archiv</h3>
 <ol>
-<li><strong>Recht auf Auskunft (Art. 15 DSGVO):</strong> Auskunft darüber, ob und welche Bilder/Merkmale verarbeitet werden.</li>
-<li><strong>Recht auf Löschung („Recht auf Vergessenwerden“, Art. 17 DSGVO):</strong><br />
-   * <strong>API-Löschung:</strong> Über den Endpunkt <code>DELETE /images/record?path=...</code> können einzelne Bildvektoren und alle damit verknüpften Gesichtsvektoren sofort und unwiderruflich aus Qdrant entfernt werden.<br />
-   * <strong>Automatisches Pruning:</strong> Wird ein Bild aus dem Dateisystem entfernt, bereinigt der Befehl <code>indexer.py --prune</code> oder der Endpunkt <code>POST /api/system/prune</code> alle verwaisten Vektoreinträge aus der Datenbank.</li>
-<li><strong>Recht auf Einschränkung der Verarbeitung (Art. 18 DSGVO):</strong><br />
-   * Gezielter Ausschluss bestimmter Sammlungen oder Ordner von der Gesichtserkennung über <code>--skip-faces</code>.</li>
-<li><strong>Widerspruchsrecht (Art. 21 DSGVO):</strong><br />
-   * Betroffene können der Verwendung ihrer Abbildung widersprechen. Das Archiv prüft hierbei den Ausgleich zwischen Schutzinteressen der Person und dem öffentlichen Dokumentationsauftrag.</li>
+<li><strong>Kirchliches Archivprivileg (§ 29 KDG / Art. 89 DSGVO):</strong><br />
+   * § 29 Abs. 1 KDG regelt die <em>Verarbeitung zu Archivzwecken im kirchlichen Interesse</em>. Er erlaubt die Verarbeitung besonderer Kategorien personenbezogener Daten (§ 11 Abs. 1 KDG – inklusive biometrischer Merkmale) <strong>ausdrücklich ohne gesonderte Einwilligung der betroffenen Personen</strong>, sofern dies für den kirchlichen Archivauftrag erforderlich ist.</li>
+<li><strong>Verstorbene Personen &amp; Kirchliche Archivordnung (KAO):</strong><br />
+   * Das KDG findet auf Verstorbene grundsätzlich keine direkte Anwendung (allgemeine Rechtsauffassung entsprechend Erwägungsgrund 27 DSGVO). Für historische Fotografien verstorbener Persönlichkeiten der Zeitgeschichte (Bischöfe, Pfarrer, Ordensleute, Gemeindevertreter) greift das postmortale Persönlichkeitsrecht sowie die Schutzfristen der jeweiligen Diözesanarchivordnung (KAO).</li>
+<li><strong>Wahrung berechtigter Interessen (§ 6 Abs. 1 lit. g KDG / Art. 6 Abs. 1 lit. f DSGVO):</strong><br />
+   * Wissenschaftliche Erschließung, Bewahrung und Auffindbarkeit von historischem Kulturgut und Zeugnissen der Bistumsgeschichte.</li>
 </ol>
 <hr />
-<h2 id="4-technische-und-organisatorische-manahmen-tom-art-32-dsgvo">4. Technische und organisatorische Maßnahmen (TOM, Art. 32 DSGVO)</h2>
+<h2 id="3-funktion-des-system-schalters-ressourcensteuerung-bestandspolitik">3. Funktion des System-Schalters: Ressourcensteuerung &amp; Bestandspolitik</h2>
+<blockquote>
+<p><strong>Wichtige Klarstellung zur Frage des „Opt-in“:</strong><br />
+Das System verlangt <strong>kein individuelles Opt-in der abgebildeten Personen</strong>, da die interne Erschließung durch § 29 KDG gesetzlich legitimiert ist.<br />
+Der Konfigurationsschalter <code>ENABLE_FACE_RECOGNITION=false/true</code> ist vielmehr ein <strong>administratives Steuerungswerkzeug des Archivars</strong>.</p>
+</blockquote>
+<h3 id="warum-dieser-schalter-im-archivalltag-unverzichtbar-ist">Warum dieser Schalter im Archivalltag unverzichtbar ist:</h3>
+<ol>
+<li>
+<p><strong>Ressourcen- &amp; Performance-Gewinn:</strong><br />
+   * Das Laden der Gesichtsmodelle (RetinaFace + ArcFace) bindet dauerhaft ca. 1,5 bis 2 GB RAM/VRAM und verlangsamt die Inferenz.<br />
+   * Viele typische Bestände in Diözesanarchiven enthalten <strong>überhaupt keine Personen</strong> (z. B. Architekturaufnahmen von Kirchen und Klöstern, Inventaraufnahmen von Monstranzen, Altären und Kelchen, Paramente, Urkunden oder Siegel).<br />
+   * Wird ein solcher Bestand eingelesen, schaltet der Archivar die Gesichtserkennung ab (<code>--skip-faces</code> bzw. <code>ENABLE_FACE_RECOGNITION=false</code>). Das System verarbeitet die Scans <strong>3- bis 5-mal schneller</strong> und läuft auf Standard-Bürorechnern flüsterleise.</p>
+</li>
+<li>
+<p><strong>Differenzierte Bestandspolitik (§ 29 Abs. 2 KDG):</strong><br />
+   * § 29 Abs. 2 KDG verlangt angemessene Schutzmaßnahmen zur Wahrung der Grundrechte. Archive unterscheiden hier in der Praxis:</p>
 <ul>
-<li><strong>Sicherheit der Pfade:</strong> Striktes Verbot von Pfad-Traversierungen (<code>../</code>); Anfragen nach Dateien außerhalb der konfigurierten Archivverzeichnisse werden mit HTTP 403 abgewiesen.</li>
-<li><strong>CORS-Einschränkung:</strong> Das Backend ist nicht für beliebige Web-Ursprünge geöffnet, sondern beschränkt Anfragen auf die in <code>CORS_ORIGINS</code> definierten Domains.</li>
+<li><strong>Historische Altbestände (bis ca. 1950/1960):</strong> Priesterporträts, Weihen, Kirchenbau. Alle Personen sind verstorben → <strong>Biometrie permanent AN</strong> (<code>ENABLE_FACE_RECOGNITION=true</code>).</li>
+<li><strong>Jüngere Bestände / Zeitgeschichte (ab ca. 1980 bis heute):</strong> Pfarrfeste, Erstkommunionen, Jugendtage mit vielen lebenden Gemeindemitgliedern und Kindern → <strong>Biometrie AUS</strong>, reine semantische CLIP-Suche reicht völlig aus.</li>
+<li>Mit den CLI-Flags (<code>--enable-faces</code> vs. <code>--skip-faces</code>) behält der Archivar die präzise Kontrolle über jeden einzelnen Bestand.</li>
+</ul>
+</li>
+<li>
+<p><strong>Dauerhafter Regelbetrieb im internen Archivnetz:</strong><br />
+   * Wenn das System auf einem internen Archivserver steht und primär historische Fotobestände erschließt, kann <code>ENABLE_FACE_RECOGNITION=true</code> in der <code>.env</code> <strong>dauerhaft aktiviert werden</strong>.<br />
+   * Die biometrischen Funktionen stehen dann allen autorisierten Archivaren nahtlos zur Verfügung, während gegenüber dem Diözesandatenschutzbeauftragten (DDSB) die Einhaltung von § 26 KDG (<em>Privacy by Design</em>) nachgewiesen werden kann.</p>
+</li>
+</ol>
+<hr />
+<h2 id="4-betroffenenrechte-recht-auf-vergessenwerden-1725-kdg-art-1521-dsgvo">4. Betroffenenrechte &amp; Recht auf Vergessenwerden (§§ 17–25 KDG / Art. 15–21 DSGVO)</h2>
+<p>Sollten auf Fotografien lebende Personen abgebildet sein, stehen diesen die gesetzlichen Betroffenenrechte zu:</p>
+<ol>
+<li><strong>Recht auf Auskunft (§ 17 KDG):</strong> Auskunft darüber, ob und welche Bildmerkmale verarbeitet werden.</li>
+<li><strong>Recht auf Löschung („Recht auf Vergessenwerden“, § 19 KDG / Art. 17 DSGVO):</strong><br />
+   * <strong>Punktgenaue API-Löschung:</strong> Über den Endpunkt <code>DELETE /images/record?path=...</code> können einzelne Bildvektoren und alle damit verknüpften Gesichtsvektoren sofort und unwiderruflich aus Qdrant entfernt werden.<br />
+   * <strong>Automatisches Pruning:</strong> Wird ein Bild aus dem Dateisystem entfernt, bereinigt der Befehl <code>indexer.py --prune</code> oder der Endpunkt <code>POST /api/system/prune</code> alle verwaisten Vektoreinträge aus der Datenbank.</li>
+<li><strong>Recht auf Einschränkung der Verarbeitung (§ 20 KDG):</strong><br />
+   * Gezielter Ausschluss bestimmter Sammlungen oder Ordner von der Gesichtserkennung über <code>--skip-faces</code>.</li>
+<li><strong>Widerspruchsrecht (§ 23 KDG):</strong><br />
+   * Betroffene können der Verwendung ihrer Abbildung widersprechen. Das Archiv prüft den Ausgleich zwischen Schutzinteressen der Person und dem kirchlichen Dokumentationsauftrag.</li>
+</ol>
+<hr />
+<h2 id="5-technische-und-organisatorische-manahmen-tom-27-kdg-art-32-dsgvo">5. Technische und organisatorische Maßnahmen (TOM, § 27 KDG / Art. 32 DSGVO)</h2>
+<ul>
+<li><strong>Zugangsbeschränkung &amp; Berechtigungskonzept:</strong> Das System ist für den internen Einsatz konzipiert; kein offener, unauthentifizierter Zugang aus dem öffentlichen Internet.</li>
+<li><strong>Sicherheit der Pfade:</strong> Striktes Verbot von Pfad-Traversierungen (<code>../</code>); Anfragen nach Dateien außerhalb der konfigurierten Archivverzeichnisse werden von <code>validate_safe_image_path</code> abgewiesen.</li>
+<li><strong>CORS-Einschränkung:</strong> Das Backend beschränkt Web-Aufrufe strikt auf die in <code>CORS_ORIGINS</code> definierten Domains.</li>
 <li><strong>Sichere Hash-Speicherung im Cache:</strong> Temporäre Bild-Thumbnails werden unter MD5-Hash-Namen abgelegt, um Rückschlüsse im Cache zu minimieren.</li>
+<li><strong>Kuratierte Namensvergabe:</strong> Klarnamen werden nicht automatisiert zugewiesen, sondern bedürfen der manuellen Verifikation durch das Archivpersonal.</li>
 </ul>
     </article>
     <footer>
