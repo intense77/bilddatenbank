@@ -1095,3 +1095,189 @@ async function uploadFilesDirectly(files) {
   }
 }
 
+/* ==========================================================================
+   GRAFISCHER ORDNER-BROWSER (SERVER-VERZEICHNIS-AUSWAHL)
+   ========================================================================== */
+
+let currentBrowsePath = '';
+let currentParentPath = null;
+
+function openFolderBrowserModal(startPath) {
+  const modal = document.getElementById('folder-browser-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+
+  const inputVal = document.getElementById('folder-path-input')?.value.trim();
+  const target = startPath || inputVal || '';
+  browseToFolder(target);
+}
+
+function closeFolderBrowserModal() {
+  const modal = document.getElementById('folder-browser-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function browseToFolder(path) {
+  const loading = document.getElementById('fb-loading');
+  const dirsList = document.getElementById('fb-dirs-list');
+  const emptyState = document.getElementById('fb-empty-state');
+  const breadcrumbs = document.getElementById('fb-breadcrumbs');
+  const quickLinks = document.getElementById('fb-quick-links');
+  const upBtn = document.getElementById('fb-up-btn');
+  const selectedPathSpan = document.getElementById('fb-selected-path');
+  const imgBadge = document.getElementById('fb-image-badge');
+  const imgBadgeText = document.getElementById('fb-image-badge-text');
+
+  if (loading) loading.classList.remove('hidden');
+  if (dirsList) dirsList.innerHTML = '';
+  if (emptyState) emptyState.classList.add('hidden');
+  if (imgBadge) imgBadge.classList.add('hidden');
+
+  try {
+    const url = `/api/archive/browse-folders?path=${encodeURIComponent(path || '')}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    currentBrowsePath = data.current_path;
+    currentParentPath = data.parent_path;
+
+    if (selectedPathSpan) {
+      selectedPathSpan.textContent = currentBrowsePath;
+      selectedPathSpan.title = currentBrowsePath;
+    }
+
+    if (upBtn) {
+      upBtn.disabled = !currentParentPath;
+    }
+
+    // Quick links rendern
+    if (quickLinks && data.quick_links) {
+      quickLinks.innerHTML = data.quick_links.map(ql => {
+        const isCurrent = ql.path === currentBrowsePath;
+        let iconSvg = '';
+        if (ql.icon === 'home') {
+          iconSvg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>';
+        } else if (ql.icon === 'server') {
+          iconSvg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path>';
+        } else if (ql.icon === 'folder') {
+          iconSvg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>';
+        } else {
+          iconSvg = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7c-2 0-3 1-3 3z"></path>';
+        }
+        return `
+          <button
+            type="button"
+            onclick="browseToFolder('${escapeHtml(ql.path)}')"
+            class="px-2.5 py-1 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+              isCurrent
+                ? 'bg-amber-500 text-slate-950 font-semibold'
+                : 'bg-slate-850 hover:bg-slate-800 text-slate-300 border border-slate-750'
+            }"
+            title="${escapeHtml(ql.path)}"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">${iconSvg}</svg>
+            <span>${escapeHtml(ql.label)}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    // Breadcrumbs rendern
+    if (breadcrumbs && data.breadcrumbs) {
+      breadcrumbs.innerHTML = data.breadcrumbs.map((b, idx) => {
+        const isLast = idx === data.breadcrumbs.length - 1;
+        return `
+          <button
+            type="button"
+            onclick="browseToFolder('${escapeHtml(b.path)}')"
+            class="hover:text-amber-400 transition ${isLast ? 'text-amber-400 font-bold' : 'text-slate-400'}"
+            title="${escapeHtml(b.path)}"
+          >
+            ${escapeHtml(b.name)}
+          </button>
+          ${!isLast ? '<span class="text-slate-600">/</span>' : ''}
+        `;
+      }).join('');
+    }
+
+    // Bilder-Badge
+    if (imgBadge && data.direct_images_count > 0) {
+      imgBadge.classList.remove('hidden');
+      if (imgBadgeText) {
+        imgBadgeText.textContent = `${data.direct_images_count} Bilddatei(en) direkt in diesem Ordner`;
+      }
+    }
+
+    // Unterverzeichnisse rendern
+    if (dirsList) {
+      if (!data.subdirectories || data.subdirectories.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+      } else {
+        dirsList.innerHTML = data.subdirectories.map(sub => `
+          <div
+            onclick="browseToFolder('${escapeHtml(sub.path)}')"
+            class="group flex items-center justify-between p-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-amber-500/40 cursor-pointer transition select-none"
+          >
+            <div class="flex items-center gap-2.5 truncate">
+              <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center flex-shrink-0 group-hover:bg-amber-500 group-hover:text-slate-950 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                </svg>
+              </div>
+              <span class="text-xs font-medium text-slate-200 group-hover:text-amber-300 transition truncate">
+                ${escapeHtml(sub.name)}
+              </span>
+            </div>
+            <div class="flex items-center gap-1.5 text-slate-500 group-hover:text-slate-300 text-xs">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+              </svg>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+  } catch (err) {
+    if (dirsList) {
+      dirsList.innerHTML = `
+        <div class="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          <span>Fehler beim Öffnen: ${escapeHtml(err.message)}</span>
+        </div>
+      `;
+    }
+  } finally {
+    if (loading) loading.classList.add('hidden');
+  }
+}
+
+function browseFolderUp() {
+  if (currentParentPath) {
+    browseToFolder(currentParentPath);
+  }
+}
+
+function confirmFolderSelection() {
+  if (!currentBrowsePath) return;
+  const input = document.getElementById('folder-path-input');
+  if (input) {
+    input.value = currentBrowsePath;
+  }
+  closeFolderBrowserModal();
+  scanFolderPreview();
+}
+
+// Tastatur-Shortcut (ESC schließt Modal)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const fbModal = document.getElementById('folder-browser-modal');
+    if (fbModal && !fbModal.classList.contains('hidden')) {
+      closeFolderBrowserModal();
+    }
+  }
+});
+

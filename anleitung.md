@@ -163,9 +163,10 @@ Nach dem Start erreichen Sie die Oberfläche unter **[http://localhost:8000/](ht
 ### Tab 3: Bestände & Upload
 Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:
 1. **Bestehende Ordner ohne Verschieben einbinden:**
-   * Tragen Sie den Pfad zu einem bestehenden Bildverzeichnis auf dem Rechner oder Netzlaufwerk ein (z. B. `/mnt/archiv_nas/Scans_1910` oder `./data/Neuzugaenge`).
+   * **Grafische Verzeichnisauswahl (Button *„Auswählen…“*):** Öffnet einen interaktiven Dateisystem-Browser direkt im Webinterface mit Schnellzugriff auf Netzlaufwerke (GVFS/NAS), Persönlichen Ordner (`~`), Projekt-Daten oder Festplatten-Mounts (`/media`, `/mnt`). Sie können sich bequem durch Unterordner klicken und den gewünschten Bestand per Klick übernehmen – ganz ohne Pfad-Tippfehler.
+   * **Manuelle Pfadeingabe:** Unterstützt absolute Pfade, Tilde-Auflösung (`~/Bilder`) sowie GVFS-Netzwerk-Mounts (`/run/user/1000/gvfs/...`).
    * **Vorschau-Button:** Prüft vorab die Erreichbarkeit, zählt die enthaltenen Bilddateien und Sidecars und zeigt Beispieldateien an.
-   * **Ordner jetzt indexieren:** Bindet das Verzeichnis sicher in die Pfad-Sandbox ein (`ALLOWED_IMAGE_DIRS`) und indexiert alle Bilder inkrementell.
+   * **Ordner jetzt indexieren:** Bindet das Verzeichnis sicher in die Pfad-Sandbox ein (`ALLOWED_IMAGE_DIRS`) und indexiert alle Bilder inkrementell vor Ort.
 2. **Neue Scans per Drag-and-Drop hochladen:**
    * Ziehen Sie Bilddateien (JPG, PNG, WEBP, TIF/TIFF) und optionale `.json`-Sidecars direkt in die gestrichelte Ablagezone.
    * Das System speichert die Dateien im Archiv und berechnet sofort alle Merkmals-Embeddings und Metadaten.

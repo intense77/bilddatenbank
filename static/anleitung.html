@@ -364,9 +364,10 @@
 <h3 id="tab-3-bestande-upload">Tab 3: Bestände &amp; Upload</h3>
 <p>Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:<br />
 1. <strong>Bestehende Ordner ohne Verschieben einbinden:</strong><br />
-   * Tragen Sie den Pfad zu einem bestehenden Bildverzeichnis auf dem Rechner oder Netzlaufwerk ein (z. B. <code>/mnt/archiv_nas/Scans_1910</code> oder <code>./data/Neuzugaenge</code>).<br />
+   * <strong>Grafische Verzeichnisauswahl (Button <em>„Auswählen…“</em>):</strong> Öffnet einen interaktiven Dateisystem-Browser direkt im Webinterface mit Schnellzugriff auf Netzlaufwerke (GVFS/NAS), Persönlichen Ordner (<code>~</code>), Projekt-Daten oder Festplatten-Mounts (<code>/media</code>, <code>/mnt</code>). Sie können sich bequem durch Unterordner klicken und den gewünschten Bestand per Klick übernehmen – ganz ohne Pfad-Tippfehler.<br />
+   * <strong>Manuelle Pfadeingabe:</strong> Unterstützt absolute Pfade, Tilde-Auflösung (<code>~/Bilder</code>) sowie GVFS-Netzwerk-Mounts (<code>/run/user/1000/gvfs/...</code>).<br />
    * <strong>Vorschau-Button:</strong> Prüft vorab die Erreichbarkeit, zählt die enthaltenen Bilddateien und Sidecars und zeigt Beispieldateien an.<br />
-   * <strong>Ordner jetzt indexieren:</strong> Bindet das Verzeichnis sicher in die Pfad-Sandbox ein (<code>ALLOWED_IMAGE_DIRS</code>) und indexiert alle Bilder inkrementell.<br />
+   * <strong>Ordner jetzt indexieren:</strong> Bindet das Verzeichnis sicher in die Pfad-Sandbox ein (<code>ALLOWED_IMAGE_DIRS</code>) und indexiert alle Bilder inkrementell vor Ort.<br />
 2. <strong>Neue Scans per Drag-and-Drop hochladen:</strong><br />
    * Ziehen Sie Bilddateien (JPG, PNG, WEBP, TIF/TIFF) und optionale <code>.json</code>-Sidecars direkt in die gestrichelte Ablagezone.<br />
    * Das System speichert die Dateien im Archiv und berechnet sofort alle Merkmals-Embeddings und Metadaten.</p>

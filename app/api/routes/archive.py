@@ -48,6 +48,109 @@ def get_registered_folders():
     }
 
 
+@router.get("/browse-folders")
+def browse_folders(path: Optional[str] = None):
+    """
+    Ermöglicht das grafische Navigieren durch Verzeichnisse im Web-Interface,
+    um Archiv-Ordner ohne manuelles Tippen von Pfaden auswählen zu können.
+    """
+    if not path or not path.strip():
+        # Standard: GVFS falls vorhanden, sonst Home
+        gvfs_dir = Path(f"/run/user/{os.getuid()}/gvfs")
+        if gvfs_dir.exists() and any(gvfs_dir.iterdir()):
+            target_path = gvfs_dir
+        else:
+            target_path = Path.home()
+    else:
+        try:
+            target_path = resolve_archive_path(path)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Ungültiger Pfad: {e}")
+
+    if not target_path.exists():
+        target_path = Path.home()
+    if not target_path.is_dir():
+        target_path = target_path.parent
+
+    # Quick links
+    quick_links = []
+    
+    # 1. GVFS (NAS / SMB-Freigaben)
+    gvfs_dir = Path(f"/run/user/{os.getuid()}/gvfs")
+    if gvfs_dir.exists():
+        quick_links.append({"label": "Netzlaufwerke (NAS/GVFS)", "path": str(gvfs_dir), "icon": "server"})
+
+    # 2. Persönlicher Ordner (Home)
+    home_dir = Path.home()
+    quick_links.append({"label": "Persönlicher Ordner", "path": str(home_dir), "icon": "home"})
+
+    # 3. Lokales Archiv-Datenverzeichnis
+    data_dir = Path(settings.ARCHIVE_DATA_DIR).resolve()
+    if data_dir.exists():
+        quick_links.append({"label": "Projekt-Daten (data/)", "path": str(data_dir), "icon": "folder"})
+
+    # 4. Externe Medien / Mounts
+    for media_candidate in ["/media", "/mnt"]:
+        mp = Path(media_candidate)
+        try:
+            if mp.exists() and any(mp.iterdir()):
+                quick_links.append({"label": f"Laufwerke ({media_candidate})", "path": str(mp), "icon": "disc"})
+        except Exception:
+            pass
+
+    # 5. Root
+    quick_links.append({"label": "Wurzelverzeichnis (/)", "path": "/", "icon": "hard-drive"})
+
+    # Unterverzeichnisse und Bilder zählen
+    subdirs = []
+    direct_images_count = 0
+    try:
+        for item in sorted(target_path.iterdir(), key=lambda x: x.name.lower()):
+            if item.name.startswith("."):
+                continue
+            try:
+                if item.is_dir():
+                    has_children = False
+                    try:
+                        has_children = any(item.iterdir())
+                    except Exception:
+                        pass
+                    subdirs.append({
+                        "name": item.name,
+                        "path": str(item),
+                        "has_subdirs": has_children
+                    })
+                elif item.is_file() and item.suffix.lower() in ALLOWED_IMAGE_EXTENSIONS:
+                    direct_images_count += 1
+            except (PermissionError, OSError):
+                continue
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Keine Leseberechtigung für diesen Ordner.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fehler beim Lesen des Ordners: {e}")
+
+    parent_path = str(target_path.parent) if target_path.parent != target_path else None
+
+    # Breadcrumbs
+    parts = []
+    curr = target_path
+    while True:
+        parts.insert(0, {"name": curr.name if curr.name else "/", "path": str(curr)})
+        if curr.parent == curr:
+            break
+        curr = curr.parent
+
+    return {
+        "status": "success",
+        "current_path": str(target_path),
+        "parent_path": parent_path,
+        "breadcrumbs": parts,
+        "subdirectories": subdirs,
+        "direct_images_count": direct_images_count,
+        "quick_links": quick_links,
+    }
+
+
 @router.post("/scan-folder")
 def scan_folder(request: ScanFolderRequest):
     """
