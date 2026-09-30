@@ -195,9 +195,95 @@
     </div>
     <article>
 <h1 id="offene-aufgaben-roadmap-backlog">Offene Aufgaben (Roadmap &amp; Backlog)</h1>
-<p>Dieses Dokument erfasst die noch offenen Handlungsfelder und geplanten Weiterentwicklungen für das historische Bildarchiv-Suchsystem aus Sicht von Langzeitarchivierung, Datensparsamkeit und Performance.</p>
+<p>Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische Bildarchiv-Suchsystem aus Sicht von <strong>Langzeitarchivierung</strong>, <strong>Datensparsamkeit</strong>, <strong>Ressourceneffizienz</strong> und <strong>fachlicher Praxis in Diözesan- und Kirchenarchiven</strong>.</p>
 <hr />
-<h2 id="1-ressourcen-skalierungsoptimierung-beim-personen-clustering">1. Ressourcen- &amp; Skalierungsoptimierung beim Personen-Clustering</h2>
+<h2 id="1-kuratierungs-werkzeuge-in-der-benutzeroberflache-archivare-tools">1. Kuratierungs-Werkzeuge in der Benutzeroberfläche (Archivare-Tools)</h2>
+<ul>
+<li><strong>Ziel:</strong> Maximale Arbeitsergonomie bei der wissenschaftlichen Erschließung und Verifikation.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Crop-to-Search (Bildauschnitt-Suche):</strong><ul>
+<li>Möglichkeit, im Web-Frontend per Maus einen Rahmen um ein Bilddetail zu ziehen (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät oder ein Gemälde im Hintergrund).</li>
+<li>Backend schneidet den Bildbereich serverseitig zu, berechnet das OpenCLIP-Embedding und sucht visuell ähnliche Details im Gesamtarchiv.</li>
+</ul>
+</li>
+<li>[ ] <strong>Cluster-Merge &amp; -Split (Personen-Kuratierung):</strong><ul>
+<li><em>Cluster-Merge:</em> Zwei getrennte Personen-Cluster zusammenführen (z. B. wenn eine historische Persönlichkeit in jungen Jahren und im Seniorenalter aufgrund von Altersveränderungen getrennt gruppiert wurde).</li>
+<li><em>Cluster-Split / Ausschluss:</em> Falsch zugeordnete Gesichter mit einem Klick aus einem Cluster entfernen („Nicht diese Person“) und als unzugeordneten Noise-Point markieren.</li>
+</ul>
+</li>
+<li>[ ] <strong>Historische Zeitleiste &amp; Facettierung:</strong><ul>
+<li>Interaktiver Schieberegler nach Entstehungsjahr/Epoche (z. B. <em>1880–1914</em>, <em>1914–1939</em>, <em>1945–1970</em>) unter Nutzung von Qdrant-Bereichsfiltern (<code>gte</code>/<code>lte</code>).</li>
+<li>Filter nach bekannten Archivsignaturen, Beständen oder Fotografen/Ateliers.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="2-duplikats-varianten-erkennung-deduping-stacking">2. Duplikats- &amp; Varianten-Erkennung (Deduping &amp; Stacking)</h2>
+<ul>
+<li><strong>Ziel:</strong> Vermeidung verstopfter Trefferlisten durch Serienabzüge, Kontaktabzüge oder Mehrfachbelichtungen bei Nachlässen.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Zweistufige Ähnlichkeitserkennung:</strong><ul>
+<li><em>Stufe 1 (Deterministisch):</em> Perceptual Hashing (dHash / pHash via <code>imagehash</code>) für 100 % identische Bilder, Größenvarianten und minimale Crops (extrem schnell, 0 MB VRAM).</li>
+<li><em>Stufe 2 (Optische Varianten):</em> CLIP-Vektordistanz mit hohem Schwellenwert (Cosine-Score &gt; 0.94) für Serienaufnahmen und abweichende Belichtungen.</li>
+</ul>
+</li>
+<li>[ ] <strong>Visuelles „Stacking“ im Web-Frontend:</strong><ul>
+<li>Varianten werden nicht destruktiv gelöscht (Erhalt des Bestandszusammenhangs), sondern in den Suchergebnissen zu einem aufklappbaren Bildstapel („+3 Varianten“) zusammengefasst.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="3-archiv-interoperabilitat-metadaten-export-xmp-ead-csv">3. Archiv-Interoperabilität &amp; Metadaten-Export (XMP, EAD, CSV)</h2>
+<ul>
+<li><strong>Ziel:</strong> Nahtloser Datenaustausch mit Archivinformationssystemen (AIS: <em>ACTApro, Faust, ScopeArchiv</em>) und Bildverwaltungstools (<em>DigiKam, Adobe Bridge</em>).</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>XMP-Sidecar-Generierung:</strong><ul>
+<li>Schreiben von Bounding Boxes und Personen-Namen nach dem Standard <em>Metadata Working Group (MWG) Regions</em> direkt in Begleitdateien (<code>.xmp</code>).</li>
+<li>Gewährleistet das automatische Auslesen von Gesichtspositionen in professionellen Bildbetrachtern.</li>
+</ul>
+</li>
+<li>[ ] <strong>Findbuch- &amp; Tabellenexport:</strong><ul>
+<li>Export gefilterter Rechercheergebnisse oder Personen-Cluster als CSV/Excel-Tabelle (inkl. Signatur, Dateipfad, Personen, Datierung, Beschreibung).</li>
+</ul>
+</li>
+<li>[ ] <strong>GLAM-Standardformate:</strong><ul>
+<li>Exportfunktion nach Dublin Core (XML/JSON-LD), EAD (Encoded Archival Description) und LIDO für übergeordnete Portale (Deutsche Digitale Bibliothek, Europeana).</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="4-lokale-handschriften-inschriften-erkennung-ocr-htr">4. Lokale Handschriften- &amp; Inschriften-Erkennung (OCR / HTR)</h2>
+<ul>
+<li><strong>Ziel:</strong> Volltext-Erschließung historischer handschriftlicher Rückseitennotizen, Passepartout-Beschriftungen und bildimmanenter Inschriften.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Schlankes, lokales OCR/HTR-Modul:</strong><ul>
+<li>Integration einer leichtgewichtigen Texterkennung (z. B. PaddleOCR oder Tesseract 5 für Druckschriften/Typoskripte; feingetuntes TrOCR für deutsche Handschriften/Kurrent).</li>
+<li>Speicherung des extrahierten Texts im Qdrant-Payload unter <code>ocr_text</code>.</li>
+</ul>
+</li>
+<li>[ ] <strong>Hybride Suche (Vektor + Volltext):</strong><ul>
+<li>Einrichtung eines Qdrant-Volltextindexes mit deutscher Stemming-/Tokenisierung auf dem Feld <code>ocr_text</code>.</li>
+<li>Ermöglicht die kombinierte Suche (z. B. optische Suche nach <em>„Primizfeier“</em> kombiniert mit Volltextsuche nach <em>„P. Johann 1934“</em>).</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="5-automatische-metadaten-vorschlage-gnd-konformitat">5. Automatische Metadaten-Vorschläge &amp; GND-Konformität</h2>
+<ul>
+<li><strong>Ziel:</strong> Strukturierte Deskriptoren für kirchliche Kunst- und Kulturgüter ohne hohen manuellen Erfassungsaufwand.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Zero-Shot Fachverschlagwortung mit OpenCLIP:</strong><ul>
+<li>Ressourcenschonender Abgleich der Bild-Embeddings gegen eine kontrollierte Liste kirchenspezifischer GND-Begriffe (z. B. <em>Altartisch, Monstranz, Reliquiar, Chorgestühl, Kasel, Kruzifix, Taufstein, Beichtstuhl, Kanzel</em>).</li>
+<li>0 zusätzlicher VRAM-Bedarf, da OpenCLIP bereits im Arbeitsspeicher liegt.</li>
+</ul>
+</li>
+<li>[ ] <strong>Träger- &amp; Zustandserkennung:</strong><ul>
+<li>Heuristische Erkennung von Bildträgern (Glasplattennegativ, Schwarz-Weiß-Abzug, Diapositiv, koloriertes Foto) anhand von Farbkanälen, Tonwerten und Seitenverhältnissen.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="6-ressourcen-skalierungsoptimierung-beim-personen-clustering">6. Ressourcen- &amp; Skalierungsoptimierung beim Personen-Clustering</h2>
 <ul>
 <li><strong>Ziel:</strong> Robuste, speicherschonende Clusterbildung auch bei Beständen von über 20.000 Gesichtern.</li>
 <li><strong>Technischer Hintergrund:</strong></li>
@@ -207,10 +293,10 @@
 <li><strong>Aufgaben:</strong></li>
 <li>[ ] Umstellung von <code>metric='cosine'</code> auf <code>metric='euclidean'</code> mit $\varepsilon_{\text{euclid}} = \sqrt{2 \cdot \varepsilon_{\text{cosine}}}$.</li>
 <li>[ ] Nutzung von raumteilenden Bäumen (<code>algorithm='ball_tree'</code> oder <code>'kd_tree'</code>) für $O(N \log N)$ Laufzeit und minimalen Speicherbedarf.</li>
-<li>[ ] Optional: Chunking / Batching bei sehr großen Porträtsammlungen (&gt; 50.000 Gesichter).</li>
+<li>[ ] Chunking / Batching bei sehr großen Porträtsammlungen (&gt; 50.000 Gesichter).</li>
 </ul>
 <hr />
-<h2 id="2-provenienz-revisionssicherheit-bei-personen-labels">2. Provenienz &amp; Revisionssicherheit bei Personen-Labels</h2>
+<h2 id="7-provenienz-revisionssicherheit-bei-personen-labels">7. Provenienz &amp; Revisionssicherheit bei Personen-Labels</h2>
 <ul>
 <li><strong>Ziel:</strong> Wissenschaftliche Nachvollziehbarkeit und Schutz vor unabsichtlichem Überschreiben bei der Zuweisung von Klarnamen.</li>
 <li><strong>Aufgaben:</strong></li>
@@ -223,22 +309,14 @@
 <li>[ ] Anzeige der Benennungs-Historie und des Bearbeiters in der Personen-Detailansicht des Web-Frontends.</li>
 </ul>
 <hr />
-<h2 id="3-end-to-end-praxistest-benchmark-mit-echtdaten">3. End-to-End-Praxistest &amp; Benchmark mit Echtdaten</h2>
+<h2 id="8-end-to-end-praxistest-benchmark-mit-echtdaten">8. End-to-End-Praxistest &amp; Benchmark mit Echtdaten</h2>
 <ul>
-<li><strong>Ziel:</strong> Validierung der Performanz und Benutzerfreundlichkeit unter realen Museums-/Archivbedingungen.</li>
+<li><strong>Ziel:</strong> Validierung der Performanz und Benutzerfreundlichkeit unter realen Archivbedingungen.</li>
 <li><strong>Aufgaben:</strong></li>
 <li>[ ] Testbestand historischer Scans (z. B. Glasplattennegative, Repros, Porträtkarten) in <code>./data</code> einspielen.</li>
 <li>[ ] Inferenz-Geschwindigkeit (Sekunden pro 100 Scans) auf CPU und GPU messen.</li>
 <li>[ ] Visuelle Begutachtung der Bounding-Box-Positionierung und Ähnlichkeitstreffer im Web-Frontend.</li>
 <li>[ ] Dokumentation optimaler Batch-Größen für Standard-Bürorechner ohne dedizierte GPU.</li>
-</ul>
-<hr />
-<h2 id="4-langzeitarchivierung-standard-schnittstellen-glam">4. Langzeitarchivierung &amp; Standard-Schnittstellen (GLAM)</h2>
-<ul>
-<li><strong>Ziel:</strong> Interoperabilität mit übergeordneten Museumsdatenbanken und Portalen (Deutsche Digitale Bibliothek, Europeana).</li>
-<li><strong>Aufgaben:</strong></li>
-<li>[ ] Exportfunktion für Suchergebnisse und Cluster nach Dublin Core oder LIDO (Lightweight Information Describing Objects) im XML/JSON-LD-Format.</li>
-<li>[ ] REST-Endpunkt für OAI-PMH (Open Archives Initiative Protocol for Metadata Harvesting).</li>
 </ul>
     </article>
     <footer>
