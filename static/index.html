@@ -331,6 +331,34 @@
               <div id="folder-scan-preview" class="hidden p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2">
                 <!-- Dynamisch befüllt -->
               </div>
+
+              <!-- Live-Indexierungsfortschritt -->
+              <div id="folder-live-progress" class="hidden p-4 rounded-xl bg-slate-950 border border-amber-500/30 text-xs space-y-2.5 animate-fadeIn">
+                <div class="flex items-center justify-between text-slate-200">
+                  <span class="font-semibold flex items-center gap-2 text-amber-400">
+                    <span class="relative flex h-2.5 w-2.5">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                    </span>
+                    <span>Indexierung läuft...</span>
+                  </span>
+                  <span id="flp-percentage" class="font-mono font-bold text-amber-400">0%</span>
+                </div>
+
+                <!-- Progress Bar Container -->
+                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5">
+                  <div id="flp-bar" class="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-300 w-0"></div>
+                </div>
+
+                <div class="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                  <span id="flp-counts">0 / 0 Bilder verarbeitet</span>
+                  <span id="flp-faces" class="text-amber-400 font-semibold">0 Gesichter</span>
+                </div>
+
+                <div class="truncate text-[11px] text-slate-500 font-mono">
+                  Datei: <span id="flp-current-file" class="text-slate-300">Wird geladen...</span>
+                </div>
+              </div>
             </div>
           </div>
 

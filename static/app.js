@@ -15,6 +15,7 @@ let systemConfig = {
 document.addEventListener('DOMContentLoaded', () => {
   checkSystemHealth();
   setupDropzone();
+  checkIndexingProgress();
   // Vorbelegung Suche falls gewünscht
   const urlParams = new URLSearchParams(window.location.search);
   const q = urlParams.get('q');
@@ -55,6 +56,7 @@ function switchTab(tab) {
     if (importSec) importSec.classList.remove('hidden');
     if (importBtn) importBtn.className = activeCls;
     loadRegisteredFolders();
+    checkIndexingProgress();
   }
 }
 
@@ -934,6 +936,62 @@ async function scanFolderPreview() {
   }
 }
 
+let progressPollTimer = null;
+
+async function checkIndexingProgress() {
+  try {
+    const res = await fetch('/api/archive/index-progress');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const liveBox = document.getElementById('folder-live-progress');
+    const preview = document.getElementById('folder-scan-preview');
+    const percentSpan = document.getElementById('flp-percentage');
+    const bar = document.getElementById('flp-bar');
+    const countsSpan = document.getElementById('flp-counts');
+    const facesSpan = document.getElementById('flp-faces');
+    const curFileSpan = document.getElementById('flp-current-file');
+    const btn = document.getElementById('start-folder-index-btn');
+    const status = document.getElementById('folder-index-status');
+
+    if (data.is_running) {
+      if (liveBox) liveBox.classList.remove('hidden');
+      if (percentSpan) percentSpan.textContent = `${data.percent}%`;
+      if (bar) bar.style.width = `${data.percent}%`;
+      if (countsSpan) {
+        countsSpan.textContent = `${data.processed_count} / ${data.total_found} Bilder (${data.new_indexed} neu, ${data.skipped} vorh.)`;
+      }
+      if (facesSpan) facesSpan.textContent = `${data.faces_detected} Gesichter`;
+      if (curFileSpan) curFileSpan.textContent = data.current_file || 'Verarbeite...';
+
+      if (btn && !btn.disabled) {
+        btn.disabled = true;
+        btn.classList.add('opacity-50');
+      }
+      if (status) status.textContent = `Indexierung läuft (${data.percent}%)...`;
+
+      if (!progressPollTimer) {
+        progressPollTimer = setInterval(checkIndexingProgress, 1000);
+      }
+    } else {
+      if (progressPollTimer) {
+        clearInterval(progressPollTimer);
+        progressPollTimer = null;
+      }
+      if (data.finished && data.processed_count > 0) {
+        if (liveBox) liveBox.classList.add('hidden');
+        if (btn) {
+          btn.disabled = false;
+          btn.classList.remove('opacity-50');
+        }
+        if (status) status.textContent = 'Indexierung abgeschlossen';
+      }
+    }
+  } catch (err) {
+    // Stiller Fehler beim Polling
+  }
+}
+
 async function startFolderIndexing() {
   const input = document.getElementById('folder-path-input');
   const recursive = document.getElementById('folder-recursive')?.checked ?? true;
@@ -941,6 +999,7 @@ async function startFolderIndexing() {
   const btn = document.getElementById('start-folder-index-btn');
   const status = document.getElementById('folder-index-status');
   const preview = document.getElementById('folder-scan-preview');
+  const liveBox = document.getElementById('folder-live-progress');
 
   const folderPath = input.value.trim();
   if (!folderPath) {
@@ -960,7 +1019,13 @@ async function startFolderIndexing() {
     <span>Indexiere Ordner...</span>
   `;
 
-  if (status) status.textContent = 'Indexierung läuft...';
+  if (status) status.textContent = 'Indexierung startet...';
+  if (liveBox) liveBox.classList.remove('hidden');
+
+  // Starte sofort das Live-Polling für den Fortschrittsbalken
+  if (!progressPollTimer) {
+    progressPollTimer = setInterval(checkIndexingProgress, 800);
+  }
 
   try {
     const res = await fetch('/api/archive/index-folder', {
@@ -982,6 +1047,7 @@ async function startFolderIndexing() {
     const data = await res.json();
     const stats = data.indexing_stats || {};
 
+    if (liveBox) liveBox.classList.add('hidden');
     preview.classList.remove('hidden');
     preview.innerHTML = `
       <div class="text-emerald-400 font-medium flex items-center gap-1.5">
@@ -1002,7 +1068,12 @@ async function startFolderIndexing() {
   } catch (err) {
     showToast(`Indexierung fehlgeschlagen: ${err.message}`, true);
     if (status) status.textContent = 'Fehlgeschlagen';
+    if (liveBox) liveBox.classList.add('hidden');
   } finally {
+    if (progressPollTimer) {
+      clearInterval(progressPollTimer);
+      progressPollTimer = null;
+    }
     btn.disabled = false;
     btn.classList.remove('opacity-50');
     btn.innerHTML = origBtnHtml;

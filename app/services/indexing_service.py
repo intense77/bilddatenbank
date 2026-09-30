@@ -18,6 +18,22 @@ logger = logging.getLogger(__name__)
 # Namespace für deterministische UUID-Generierung anhand des Dateipfads (Idempotenz)
 UUID_NAMESPACE = uuid.UUID("3d4b6845-816b-4e45-8b3c-9ad51b5bbfcb")
 
+# Globaler Status für Live-Fortschritt im Frontend
+INDEXING_PROGRESS: Dict[str, Any] = {
+    "is_running": False,
+    "finished": False,
+    "folder_path": "",
+    "total_found": 0,
+    "processed_count": 0,
+    "current_file": "",
+    "new_indexed": 0,
+    "skipped": 0,
+    "faces_detected": 0,
+    "percent": 0,
+    "error": None,
+    "last_updated": None,
+}
+
 
 class IndexingService:
     """Orchestrierungsdienst für das Extrahieren von Bild- & Gesichtsmerkmalen und das Indexieren in Qdrant."""
@@ -167,61 +183,101 @@ class IndexingService:
         faces_count = 0
         errors = []
 
-        # Ermittle bereits indexierte Point-IDs zur Vermeidung von Doppelarbeit
-        existing_ids = set()
-        if not force:
-            try:
-                candidate_ids = []
-                for f in files:
-                    try:
-                        rel = f.relative_to(abs_folder).as_posix()
-                    except ValueError:
-                        rel = f.name
-                    candidate_ids.append(str(uuid.uuid5(UUID_NAMESPACE, rel)))
-
-                chunk_size = 100
-                for i in range(0, len(candidate_ids), chunk_size):
-                    chunk = candidate_ids[i:i + chunk_size]
-                    points = self.qdrant.client.retrieve(
-                        collection_name=settings.COLLECTION_IMAGES,
-                        ids=chunk,
-                        with_payload=False,
-                        with_vectors=False,
-                    )
-                    for pt in points:
-                        existing_ids.add(str(pt.id))
-            except Exception as e:
-                logger.debug("Konnte existierende IDs nicht vorab abrufen: %s", e)
-
-        for file_path in files:
-            try:
-                rel = file_path.relative_to(abs_folder).as_posix()
-            except ValueError:
-                rel = file_path.name
-            point_id = str(uuid.uuid5(UUID_NAMESPACE, rel))
-
-            if not force and point_id in existing_ids:
-                skipped_count += 1
-                continue
-
-            try:
-                success, num_faces = self.index_image_file(file_path, base_dir=abs_folder)
-                if success:
-                    indexed_count += 1
-                    faces_count += num_faces
-                else:
-                    errors.append(file_path.name)
-            except Exception as e:
-                logger.error("Fehler beim Indexieren von %s: %s", file_path, e)
-                errors.append(file_path.name)
-
-        return {
+        global INDEXING_PROGRESS
+        INDEXING_PROGRESS.update({
+            "is_running": True,
+            "finished": False,
             "folder_path": str(abs_folder),
             "total_found": total_found,
-            "new_indexed": indexed_count,
-            "skipped": skipped_count,
-            "faces_detected": faces_count,
-            "error_count": len(errors),
-            "errors": errors[:20],
-        }
+            "processed_count": 0,
+            "current_file": "Prüfe vorhandene Indizes..." if total_found > 0 else "Keine Bilder gefunden",
+            "new_indexed": 0,
+            "skipped": 0,
+            "faces_detected": 0,
+            "percent": 0,
+            "error": None,
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        })
+
+        try:
+            # Ermittle bereits indexierte Point-IDs zur Vermeidung von Doppelarbeit
+            existing_ids = set()
+            if not force:
+                try:
+                    candidate_ids = []
+                    for f in files:
+                        try:
+                            rel = f.relative_to(abs_folder).as_posix()
+                        except ValueError:
+                            rel = f.name
+                        candidate_ids.append(str(uuid.uuid5(UUID_NAMESPACE, rel)))
+
+                    chunk_size = 100
+                    for i in range(0, len(candidate_ids), chunk_size):
+                        chunk = candidate_ids[i:i + chunk_size]
+                        points = self.qdrant.client.retrieve(
+                            collection_name=settings.COLLECTION_IMAGES,
+                            ids=chunk,
+                            with_payload=False,
+                            with_vectors=False,
+                        )
+                        for pt in points:
+                            existing_ids.add(str(pt.id))
+                except Exception as e:
+                    logger.debug("Konnte existierende IDs nicht vorab abrufen: %s", e)
+
+            for idx, file_path in enumerate(files):
+                INDEXING_PROGRESS.update({
+                    "processed_count": idx + 1,
+                    "current_file": file_path.name,
+                    "new_indexed": indexed_count,
+                    "skipped": skipped_count,
+                    "faces_detected": faces_count,
+                    "percent": int(((idx + 1) / max(total_found, 1)) * 100),
+                    "last_updated": datetime.now(timezone.utc).isoformat(),
+                })
+
+                try:
+                    rel = file_path.relative_to(abs_folder).as_posix()
+                except ValueError:
+                    rel = file_path.name
+                point_id = str(uuid.uuid5(UUID_NAMESPACE, rel))
+
+                if not force and point_id in existing_ids:
+                    skipped_count += 1
+                    continue
+
+                try:
+                    success, num_faces = self.index_image_file(file_path, base_dir=abs_folder)
+                    if success:
+                        indexed_count += 1
+                        faces_count += num_faces
+                    else:
+                        errors.append(file_path.name)
+                except Exception as e:
+                    logger.error("Fehler beim Indexieren von %s: %s", file_path, e)
+                    errors.append(file_path.name)
+
+            return {
+                "folder_path": str(abs_folder),
+                "total_found": total_found,
+                "new_indexed": indexed_count,
+                "skipped": skipped_count,
+                "faces_detected": faces_count,
+                "error_count": len(errors),
+                "errors": errors[:20],
+            }
+        except Exception as e:
+            INDEXING_PROGRESS["error"] = str(e)
+            raise
+        finally:
+            INDEXING_PROGRESS.update({
+                "is_running": False,
+                "finished": True,
+                "new_indexed": indexed_count,
+                "skipped": skipped_count,
+                "faces_detected": faces_count,
+                "percent": 100,
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+            })
 

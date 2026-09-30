@@ -48,6 +48,13 @@ def get_registered_folders():
     }
 
 
+@router.get("/index-progress")
+def get_indexing_progress():
+    """Liefert den aktuellen Verarbeitungsstatus der Ordner-Indexierung in Echtzeit."""
+    from app.services.indexing_service import INDEXING_PROGRESS
+    return INDEXING_PROGRESS
+
+
 @router.get("/browse-folders")
 def browse_folders(path: Optional[str] = None):
     """
