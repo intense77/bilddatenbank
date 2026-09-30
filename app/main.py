@@ -60,7 +60,6 @@ app.include_router(search_router)
 app.include_router(archive_router)
 
 
-
 @app.get("/api")
 def api_info():
     """Gibt Metadaten und Status der API zurück."""

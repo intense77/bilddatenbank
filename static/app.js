@@ -956,6 +956,7 @@ async function checkIndexingProgress() {
 
     if (data.is_running) {
       if (liveBox) liveBox.classList.remove('hidden');
+      if (preview) preview.classList.add('hidden');
       if (percentSpan) percentSpan.textContent = `${data.percent}%`;
       if (bar) bar.style.width = `${data.percent}%`;
       if (countsSpan) {
@@ -973,19 +974,32 @@ async function checkIndexingProgress() {
       if (!progressPollTimer) {
         progressPollTimer = setInterval(checkIndexingProgress, 1000);
       }
-    } else {
+    } else if (data.finished && data.processed_count > 0) {
       if (progressPollTimer) {
         clearInterval(progressPollTimer);
         progressPollTimer = null;
       }
-      if (data.finished && data.processed_count > 0) {
-        if (liveBox) liveBox.classList.add('hidden');
-        if (btn) {
-          btn.disabled = false;
-          btn.classList.remove('opacity-50');
-        }
-        if (status) status.textContent = 'Indexierung abgeschlossen';
+      if (liveBox) liveBox.classList.add('hidden');
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-50');
       }
+      if (status) status.textContent = 'Indexierung abgeschlossen';
+
+      if (preview) {
+        preview.classList.remove('hidden');
+        preview.innerHTML = `
+          <div class="text-emerald-400 font-medium flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            Indexierung erfolgreich abgeschlossen!
+          </div>
+          <div class="text-[11px] text-slate-300 font-mono mt-1 space-y-0.5">
+            <p>&bull; Verarbeitet: <strong class="text-amber-400">${data.processed_count}</strong> Bilder (${data.new_indexed} neu, ${data.skipped} übersprungen)</p>
+            <p>&bull; Erkannte Gesichter: <strong class="text-amber-400">${data.faces_detected}</strong></p>
+          </div>
+        `;
+      }
+      loadRegisteredFolders();
     }
   } catch (err) {
     // Stiller Fehler beim Polling
@@ -1044,32 +1058,13 @@ async function startFolderIndexing() {
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
 
-    const data = await res.json();
-    const stats = data.indexing_stats || {};
-
-    if (liveBox) liveBox.classList.add('hidden');
-    preview.classList.remove('hidden');
-    preview.innerHTML = `
-      <div class="text-emerald-400 font-medium flex items-center gap-1.5">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-        Indexierung erfolgreich abgeschlossen!
-      </div>
-      <div class="text-[11px] text-slate-300 font-mono mt-1 space-y-0.5">
-        <p>&bull; Neu indexiert: <strong class="text-amber-400">${stats.new_indexed || 0}</strong> Bilder</p>
-        <p>&bull; Übersprungen (bereits vorhanden): ${stats.skipped || 0} Bilder</p>
-        <p>&bull; Erkannte Gesichter: ${stats.faces_detected || 0}</p>
-      </div>
-    `;
-
-    showToast(`Indexierung beendet: ${stats.new_indexed || 0} neue Bilder aufgenommen.`);
-    if (status) status.textContent = 'Fertig';
-
+    showToast('Indexierung im Hintergrund gestartet.');
     loadRegisteredFolders();
+    // Das Polling checkIndexingProgress() läuft im Hintergrund automatisch weiter!
   } catch (err) {
-    showToast(`Indexierung fehlgeschlagen: ${err.message}`, true);
+    showToast(`Start fehlgeschlagen: ${err.message}`, true);
     if (status) status.textContent = 'Fehlgeschlagen';
     if (liveBox) liveBox.classList.add('hidden');
-  } finally {
     if (progressPollTimer) {
       clearInterval(progressPollTimer);
       progressPollTimer = null;

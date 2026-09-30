@@ -3,7 +3,7 @@ import shutil
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
@@ -39,7 +39,7 @@ class IndexFolderRequest(BaseModel):
 # --- Endpunkte ---
 
 @router.get("/registered-folders")
-def get_registered_folders():
+async def get_registered_folders():
     """Gibt alle autorisierten Archiv-Verzeichnisse zurück."""
     base_dirs = get_allowed_base_dirs()
     return {
@@ -49,7 +49,7 @@ def get_registered_folders():
 
 
 @router.get("/index-progress")
-def get_indexing_progress():
+async def get_indexing_progress():
     """Liefert den aktuellen Verarbeitungsstatus der Ordner-Indexierung in Echtzeit."""
     from app.services.indexing_service import INDEXING_PROGRESS
     return INDEXING_PROGRESS
@@ -194,14 +194,15 @@ def scan_folder(request: ScanFolderRequest):
 
 
 @router.post("/index-folder")
-def index_existing_folder(
+async def index_existing_folder(
     request: IndexFolderRequest,
+    background_tasks: BackgroundTasks,
     indexing_service: IndexingService = Depends(get_indexing_service),
     clustering_service: ClusteringService = Depends(get_clustering_service),
 ):
     """
     Bindet einen bestehenden Ordner auf dem Rechner/Server ohne Verschieben ein
-    und indexiert alle Bilder inkrementell. Registriert den Pfad sicher in der Sandbox.
+    und indexiert alle Bilder asynchron im Hintergrund. Registriert den Pfad sicher in der Sandbox.
     """
     path = resolve_archive_path(request.folder_path)
 
@@ -212,30 +213,32 @@ def index_existing_folder(
     registered_path = register_allowed_archive_dir(path, persist=True)
     logger.info("Ordner '%s' für Bildzugriff registriert.", registered_path)
 
-    # 2. Inkrementelle Indexierung starten
-    stats = indexing_service.index_folder(
-        folder_path=registered_path,
-        recursive=request.recursive,
-        force=request.force,
-    )
-
-    # 3. Optionales Clustering, falls neue Gesichter gefunden wurden
-    clusters_info = None
-    if (
-        request.cluster_faces
-        and settings.ENABLE_FACE_RECOGNITION
-        and stats.get("faces_detected", 0) > 0
-    ):
+    # 2. Asynchrone Indexierung im Hintergrund starten
+    def run_indexing_job():
         try:
-            clusters_info = clustering_service.run_clustering()
+            stats = indexing_service.index_folder(
+                folder_path=registered_path,
+                recursive=request.recursive,
+                force=request.force,
+            )
+            if (
+                request.cluster_faces
+                and settings.ENABLE_FACE_RECOGNITION
+                and stats.get("faces_detected", 0) > 0
+            ):
+                try:
+                    clustering_service.run_clustering()
+                except Exception as ce:
+                    logger.warning("Clustering nach Hintergrund-Indexierung fehlgeschlagen: %s", ce)
         except Exception as e:
-            logger.warning("Automatisches Clustering nach Ordnerindexierung fehlgeschlagen: %s", e)
+            logger.error("Hintergrund-Indexierung für '%s' fehlgeschlagen: %s", registered_path, e, exc_info=True)
+
+    background_tasks.add_task(run_indexing_job)
 
     return {
-        "status": "success",
-        "indexing_stats": stats,
-        "clustering": clusters_info,
-        "message": f"{stats.get('new_indexed', 0)} neue Bilder erfolgreich indexiert ({stats.get('skipped', 0)} übersprungen).",
+        "status": "started",
+        "folder_path": str(registered_path),
+        "message": "Indexierung wurde erfolgreich im Hintergrund gestartet.",
     }
 
 
