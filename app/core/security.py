@@ -35,13 +35,38 @@ def get_allowed_base_dirs() -> list[Path]:
     return allowed_dirs
 
 
+def resolve_archive_path(path_input: Union[str, Path]) -> Path:
+    """
+    Normalisiert und bereinigt eine Pfadangabe:
+    - Entfernt umgebende Anführungszeichen und Whitespaces
+    - Normalisiert Windows-Backslashes (z.B. aus SMB/Netzlaufwerken)
+    - Löst die Tilde `~` zum Home-Verzeichnis des Nutzers auf
+    - Wandelt relative Pfade in absolute Pfade relativ zu ARCHIVE_DATA_DIR um
+    - Löst Symlinks und '..' kanonisch auf (.resolve())
+    """
+    if isinstance(path_input, str):
+        cleaned = path_input.strip().strip("'\"")
+        cleaned = cleaned.replace("\\", "/")
+        cleaned = os.path.expanduser(cleaned)
+        p = Path(cleaned)
+    else:
+        p = Path(os.path.expanduser(str(path_input)))
+
+    if not p.is_absolute():
+        p = (Path(settings.ARCHIVE_DATA_DIR) / p).resolve()
+    else:
+        p = p.resolve()
+
+    return p
+
+
 def register_allowed_archive_dir(new_dir: Union[str, Path], persist: bool = True) -> Path:
     """
     Registriert ein externes Archiv-Verzeichnis zur Laufzeit in settings.ALLOWED_IMAGE_DIRS,
     sodass Dateien darin autorisiert und vor Path-Traversal geschützt ausgeliefert werden können.
     Persistiert die Liste optional in der .env-Datei.
     """
-    p = Path(new_dir).resolve()
+    p = resolve_archive_path(new_dir)
     if not p.is_dir():
         raise HTTPException(status_code=400, detail=f"Das angegebene Verzeichnis existiert nicht: {p}")
 
@@ -85,12 +110,7 @@ def validate_safe_image_path(path_input: Union[str, Path]) -> Path:
         raise HTTPException(status_code=400, detail="Kein Dateipfad angegeben.")
 
     try:
-        candidate_path = Path(path_input)
-        # Wenn relativ, relativ zu ARCHIVE_DATA_DIR auflösen
-        if not candidate_path.is_absolute():
-            candidate_path = (Path(settings.ARCHIVE_DATA_DIR) / candidate_path).resolve()
-        else:
-            candidate_path = candidate_path.resolve()
+        candidate_path = resolve_archive_path(path_input)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ungültiger Dateipfad: {e}")
 

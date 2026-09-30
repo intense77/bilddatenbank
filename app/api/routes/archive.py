@@ -11,6 +11,7 @@ from app.core.security import (
     ALLOWED_IMAGE_EXTENSIONS,
     register_allowed_archive_dir,
     get_allowed_base_dirs,
+    resolve_archive_path,
 )
 from app.api.deps import get_indexing_service, get_clustering_service
 from app.services.indexing_service import IndexingService
@@ -52,11 +53,7 @@ def scan_folder(request: ScanFolderRequest):
     """
     Schnelle Ordner-Vorschau: Prüft Pfad-Existenz und zählt vorhandene Bilddateien vor der Indexierung.
     """
-    path = Path(request.folder_path)
-    if not path.is_absolute():
-        path = (Path(settings.ARCHIVE_DATA_DIR) / path).resolve()
-    else:
-        path = path.resolve()
+    path = resolve_archive_path(request.folder_path)
 
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Pfad existiert nicht: {path}")
@@ -96,11 +93,7 @@ def index_existing_folder(
     Bindet einen bestehenden Ordner auf dem Rechner/Server ohne Verschieben ein
     und indexiert alle Bilder inkrementell. Registriert den Pfad sicher in der Sandbox.
     """
-    path = Path(request.folder_path)
-    if not path.is_absolute():
-        path = (Path(settings.ARCHIVE_DATA_DIR) / path).resolve()
-    else:
-        path = path.resolve()
+    path = resolve_archive_path(request.folder_path)
 
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"Ungültiges Verzeichnis: {path}")
