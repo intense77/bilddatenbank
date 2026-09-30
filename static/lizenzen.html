@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lizenzübersicht & Drittanbieter-Lizenzen</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+    :root {
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      color: #1e293b;
+      background: #f8fafc;
+      line-height: 1.65;
+      padding: 2.5rem 1rem;
+    }
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 3rem 3.5rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+      border: 1px solid #e2e8f0;
+    }
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 1rem;
+      margin-bottom: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .print-btn {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #334155;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .print-btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+    h1 { font-size: 2rem; font-weight: 700; color: #0f172a; margin-bottom: 1rem; letter-spacing: -0.02em; line-height: 1.25; }
+    h2 { font-size: 1.4rem; font-weight: 600; color: #1e293b; margin-top: 2rem; margin-bottom: 0.85rem; padding-bottom: 0.4rem; border-bottom: 1px solid #f1f5f9; }
+    h3 { font-size: 1.15rem; font-weight: 600; color: #334155; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+    p { margin-bottom: 1rem; }
+    ul, ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.35rem; }
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 0.15em 0.35em;
+      border-radius: 4px;
+    }
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 1.2rem 1.4rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      margin-bottom: 1.25rem;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.65rem 0.9rem;
+      border: 1px solid #e2e8f0;
+      text-align: left;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    tr:nth-child(even) { background: #fafafa; }
+    blockquote {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+      padding: 0.85rem 1.15rem;
+      margin: 1.25rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.92rem;
+      color: #78350f;
+    }
+    hr {
+      border: 0;
+      height: 1px;
+      background: #e2e8f0;
+      margin: 2rem 0;
+    }
+    a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    @media print {
+      body { background: #ffffff; padding: 0; }
+      .container { border: none; box-shadow: none; padding: 0; max-width: 100%; }
+      .doc-header { display: none; }
+      pre, code { background: #f8fafc !important; color: #000000 !important; border: 1px solid #cbd5e1; }
+    }
+    @media (max-width: 640px) {
+      .container { padding: 1.5rem; }
+      h1 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="doc-header">
+      <span class="badge">Dokumentation &mdash; Bildarchiv</span>
+      <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
+    </div>
+    <article>
+<h1>Lizenzübersicht &amp; Drittanbieter-Lizenzen</h1>
+<p><strong>Projekt:</strong> Lokales Bildarchiv-Suchsystem für historische Bestände<br />
+<strong>Stand:</strong> September 2026</p>
+<p>Dieses Dokument bietet eine vollständige Übersicht über die im System eingesetzten Software-Bibliotheken, Frameworks und vortrainierten KI-Modelle sowie deren lizenzrechtliche Rahmenbedingungen.</p>
+<hr />
+<h2>1. Software-Bibliotheken &amp; Frameworks</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Komponente</th>
+<th style="text-align: left;">Lizenz</th>
+<th style="text-align: left;">Verwendung im Projekt</th>
+<th style="text-align: left;">Projekt-URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>FastAPI</strong></td>
+<td style="text-align: left;">MIT License</td>
+<td style="text-align: left;">Web-Framework &amp; REST-API</td>
+<td style="text-align: left;"><a href="https://fastapi.tiangolo.com/">fastapi.tiangolo.com</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Uvicorn</strong></td>
+<td style="text-align: left;">BSD 3-Clause</td>
+<td style="text-align: left;">Asynchroner ASGI-Webserver</td>
+<td style="text-align: left;"><a href="https://www.uvicorn.org/">www.uvicorn.org</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Qdrant</strong></td>
+<td style="text-align: left;">Apache 2.0</td>
+<td style="text-align: left;">Vektordatenbank (Docker-Instanz)</td>
+<td style="text-align: left;"><a href="https://qdrant.tech/">qdrant.tech</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Qdrant Client</strong></td>
+<td style="text-align: left;">Apache 2.0</td>
+<td style="text-align: left;">Python SDK für Datenbankabfragen</td>
+<td style="text-align: left;"><a href="https://github.com/qdrant/qdrant-client">github.com/qdrant/qdrant-client</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>PyTorch</strong></td>
+<td style="text-align: left;">BSD-Style</td>
+<td style="text-align: left;">Deep-Learning-Framework (Inferenz)</td>
+<td style="text-align: left;"><a href="https://pytorch.org/">pytorch.org</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Torchvision</strong></td>
+<td style="text-align: left;">BSD 3-Clause</td>
+<td style="text-align: left;">Bildverarbeitungs-Pipelines für PyTorch</td>
+<td style="text-align: left;"><a href="https://github.com/pytorch/vision">github.com/pytorch/vision</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>OpenCLIP</strong></td>
+<td style="text-align: left;">MIT License</td>
+<td style="text-align: left;">Multimodale Text- und Bild-Embeddings</td>
+<td style="text-align: left;"><a href="https://github.com/mlfoundations/open_clip">github.com/mlfoundations/open_clip</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>ONNX Runtime</strong></td>
+<td style="text-align: left;">MIT License</td>
+<td style="text-align: left;">Leistungsoptimierte Inferenz-Engine</td>
+<td style="text-align: left;"><a href="https://onnxruntime.ai/">onnxruntime.ai</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Pillow (PIL)</strong></td>
+<td style="text-align: left;">HPND License</td>
+<td style="text-align: left;">Bilddekodierung, Skalierung &amp; Konvertierung</td>
+<td style="text-align: left;"><a href="https://python-pillow.org/">python-pillow.org</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>NumPy</strong></td>
+<td style="text-align: left;">BSD 3-Clause</td>
+<td style="text-align: left;">Mathematische Vektoroperationen</td>
+<td style="text-align: left;"><a href="https://numpy.org/">numpy.org</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Scikit-learn</strong></td>
+<td style="text-align: left;">BSD 3-Clause</td>
+<td style="text-align: left;">DBSCAN-Clustering für Personengruppen</td>
+<td style="text-align: left;"><a href="https://scikit-learn.org/">scikit-learn.org</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Pydantic</strong></td>
+<td style="text-align: left;">MIT License</td>
+<td style="text-align: left;">Datenvalidierung &amp; Schema-Definition</td>
+<td style="text-align: left;"><a href="https://docs.pydantic.dev/">docs.pydantic.dev</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Tailwind CSS</strong></td>
+<td style="text-align: left;">MIT License</td>
+<td style="text-align: left;">Frontend-Styling &amp; Layout (via CDN)</td>
+<td style="text-align: left;"><a href="https://tailwindcss.com/">tailwindcss.com</a></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>tqdm</strong></td>
+<td style="text-align: left;">MIT &amp; MPL 2.0</td>
+<td style="text-align: left;">CLI-Fortschrittsbalken</td>
+<td style="text-align: left;"><a href="https://github.com/tqdm/tqdm">github.com/tqdm/tqdm</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>2. Vortrainierte KI-Modelle &amp; Modellgewichte</h2>
+<h3>A. OpenCLIP (ViT-B-32 / laion2b_s34b_b79k)</h3>
+<ul>
+<li><strong>Lizenz:</strong> MIT License (Open Source)</li>
+<li><strong>Trainingsdatensatz:</strong> LAION-2B (öffentlich zugängliche Bild-Text-Paare)</li>
+<li><strong>Rechtliche Einordnung:</strong> Freie Nutzung für wissenschaftliche, kulturelle, private und kommerzielle Zwecke gestattet.</li>
+</ul>
+<h3>B. InsightFace (ArcFace / buffalo_l)</h3>
+<ul>
+<li><strong>Lizenz:</strong> InsightFace Non-Commercial / Research License</li>
+<li><strong>Wichtiger Hinweis zur Nutzung:</strong></li>
+<li>Die vortrainierten Modellgewichte von InsightFace (Paket <code>buffalo_l</code> mit RetinaFace &amp; ArcFace) werden von den Autoren unter einer <strong>nicht-kommerziellen Lizenz für Forschung, Bildung und Gemeinnützigkeit</strong> bereitgestellt.</li>
+<li><strong>Museen, kirchliche Einrichtungen, öffentliche Archive und Kulturprojekte:</strong> Die interne Erschließung und Nutzung im Rahmen des öffentlichen Kultur- und Bildungsauftrags fällt unter die freie, nicht-kommerzielle Nutzung.</li>
+<li><strong>Gewerbliche Weitervermarktung:</strong> Sollte das System in einem kommerziellen Produkt weiterverkauft oder gewerblich betrieben werden, ist entweder eine kommerzielle Lizenz bei den InsightFace-Autoren (DeepInsight) anzufragen oder das Modell durch ein vollständig unter Apache 2.0 / MIT lizenziertes Gesichtsmodell (z. B. FaceNet oder MagFace) zu ersetzen.</li>
+</ul>
+<hr />
+<h2>3. Lizenzierung dieses Projekt-Quellcodes</h2>
+<p>Der im Rahmen dieses Projekts erstellte Quellcode (<code>app/</code>, <code>indexer.py</code>, <code>static/</code>, Skripte und Dokumentation) steht unter der <strong>MIT-Lizenz</strong>:</p>
+<pre class="codehilite"><code class="language-text">Copyright (c) 2026 Archiv &amp; Museum
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the &quot;Software&quot;), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</code></pre>
+    </article>
+  </div>
+</body>
+</html>

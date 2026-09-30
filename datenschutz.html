@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Datenschutzkonzept & DSGVO-Hinweise</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+    :root {
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      color: #1e293b;
+      background: #f8fafc;
+      line-height: 1.65;
+      padding: 2.5rem 1rem;
+    }
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 3rem 3.5rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+      border: 1px solid #e2e8f0;
+    }
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 1rem;
+      margin-bottom: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .print-btn {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #334155;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .print-btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+    h1 { font-size: 2rem; font-weight: 700; color: #0f172a; margin-bottom: 1rem; letter-spacing: -0.02em; line-height: 1.25; }
+    h2 { font-size: 1.4rem; font-weight: 600; color: #1e293b; margin-top: 2rem; margin-bottom: 0.85rem; padding-bottom: 0.4rem; border-bottom: 1px solid #f1f5f9; }
+    h3 { font-size: 1.15rem; font-weight: 600; color: #334155; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+    p { margin-bottom: 1rem; }
+    ul, ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.35rem; }
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 0.15em 0.35em;
+      border-radius: 4px;
+    }
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 1.2rem 1.4rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      margin-bottom: 1.25rem;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.65rem 0.9rem;
+      border: 1px solid #e2e8f0;
+      text-align: left;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    tr:nth-child(even) { background: #fafafa; }
+    blockquote {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+      padding: 0.85rem 1.15rem;
+      margin: 1.25rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.92rem;
+      color: #78350f;
+    }
+    hr {
+      border: 0;
+      height: 1px;
+      background: #e2e8f0;
+      margin: 2rem 0;
+    }
+    a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    @media print {
+      body { background: #ffffff; padding: 0; }
+      .container { border: none; box-shadow: none; padding: 0; max-width: 100%; }
+      .doc-header { display: none; }
+      pre, code { background: #f8fafc !important; color: #000000 !important; border: 1px solid #cbd5e1; }
+    }
+    @media (max-width: 640px) {
+      .container { padding: 1.5rem; }
+      h1 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="doc-header">
+      <span class="badge">Dokumentation &mdash; Bildarchiv</span>
+      <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
+    </div>
+    <article>
+<h1>Datenschutzkonzept &amp; DSGVO-Hinweise</h1>
+<p><strong>Projekt:</strong> Lokales Bildarchiv-Suchsystem für historische Bestände<br />
+<strong>Betreiber / Verantwortliche Stelle:</strong> Archiv / Museum<br />
+<strong>Stand:</strong> September 2026</p>
+<hr />
+<h2>1. Grundprinzipien: Privacy by Design &amp; Datensparsamkeit</h2>
+<p>Dieses Bildarchiv-Suchsystem wurde nach den Grundsätzen des Art. 5 DSGVO (<em>Rechtmäßigkeit, Zweckbindung, Datenminimierung, Speicherbegrenzung, Integrität und Vertraulichkeit</em>) sowie Art. 25 DSGVO (<em>Datenschutz durch Technikgestaltung und datenschutzfreundliche Voreinstellungen</em>) konzipiert.</p>
+<h3>Technische Kernmerkmale</h3>
+<ol>
+<li><strong>100 % Lokale Datenverarbeitung:</strong></li>
+<li>Weder Bilddateien noch Berechnungen (Embeddings, Vektoren) verlassen das lokale System.</li>
+<li>Keine Anbindung an externe Cloud-Dienste, kommerzielle KI-APIs (wie OpenAI, Google Vision oder Microsoft Azure) oder Tracking-Dienste.</li>
+<li><strong>Keine Speicherung von Rohbildern in der Datenbank:</strong></li>
+<li>Die Vektordatenbank Qdrant speichert ausschließlich mathematische Vektoren (512 Gleitkommazahlen) und technische Referenzpfade.</li>
+<li>Die Originalbilder verbleiben unverändert in ihren geschützten Archivverzeichnissen.</li>
+<li><strong>Keine Personenprofile:</strong></li>
+<li>Es werden keine demografischen Merkmale wie Ethnie, Geschlecht oder Alter geschätzt oder persistiert.</li>
+<li>Es werden ausschließlich geometrische Koordinaten (Bounding Boxes) und abstrakte ArcFace-Vektoren gespeichert.</li>
+</ol>
+<hr />
+<h2>2. Verarbeitung biometrischer Daten (Art. 9 DSGVO)</h2>
+<p>Gesichts-Embeddings (ArcFace 512-dim) stellen nach Art. 4 Nr. 14 DSGVO <strong>biometrische Daten</strong> dar, da sie durch ein spezielles technisches Verfahren gewonnen werden und die Identifizierung oder Wiedererkennung einer natürlichen Person ermöglichen.</p>
+<h3>Rechtsgrundlagen der Verarbeitung</h3>
+<ul>
+<li><strong>Historische Archive &amp; Wissenschaft (Art. 89 DSGVO i. V. m. Landesarchivgesetzen / BDSG § 27 / § 28):</strong>
+  Die Verarbeitung von Archivgut im öffentlichen Interesse oder zu wissenschaftlichen und historischen Forschungszwecken ist privilegiert.</li>
+<li><strong>Wahrung berechtigter Interessen (Art. 6 Abs. 1 lit. f DSGVO):</strong>
+  Erschließung, Dokumentation und Auffindbarkeit von historischem Kulturgut und Bildzeugnissen der Zeitgeschichte.</li>
+<li><strong>Schutzfristen &amp; Gemeinfreiheit:</strong>
+  Für Personen der Zeitgeschichte bzw. bei verstorbenen Personen gilt: Das allgemeine Persönlichkeitsrecht schützt Verstorbene postmortal; die DSGVO selbst findet auf Verstorbene grundsätzlich keine direkte Anwendung (Erwägungsgrund 27 DSGVO), landesrechtliche Archivschutzfristen bleiben unberührt.</li>
+</ul>
+<h3>Schutzmaßnahmen</h3>
+<ul>
+<li><strong>Zugangsbeschränkungen:</strong> Der Zugriff auf das Backend und die Datenbank ist auf das lokale Netzwerk bzw. autorisierte Archivare beschränkt.</li>
+<li><strong>Cluster-Zuordnung:</strong> Klarnamen werden nicht automatisiert aus dem Internet bezogen, sondern bedürfen der manuellen Kuratierung und Freigabe durch das Archivpersonal.</li>
+</ul>
+<hr />
+<h2>3. Betroffenenrechte (Art. 15–21 DSGVO)</h2>
+<p>Sollten auf historischen oder zeitgeschichtlichen Fotografien lebende Personen abgebildet sein, stehen diesen die gesetzlichen Betroffenenrechte zu:</p>
+<ol>
+<li><strong>Recht auf Auskunft (Art. 15 DSGVO):</strong> Auskunft darüber, ob und welche Bilder/Merkmale verarbeitet werden.</li>
+<li><strong>Recht auf Löschung („Recht auf Vergessenwerden“, Art. 17 DSGVO):</strong></li>
+<li>Das System ermöglicht über die Qdrant-API das punktgenaue Löschen einzelner Gesichts-Points (<code>archive_faces</code>) anhand der Bild-ID oder Personen-ID.</li>
+<li>Wird ein Bild aus dem Quellverzeichnis entfernt, kann der Vektoreintrag über den Indexer oder Qdrant bereinigt werden.</li>
+<li><strong>Recht auf Einschränkung der Verarbeitung (Art. 18 DSGVO):</strong></li>
+<li>Markierung von sensiblen Bildern oder Ausschluss bestimmter Ordner über die Indexierungs-Filter (<code>--skip-faces</code>).</li>
+<li><strong>Widerspruchsrecht (Art. 21 DSGVO):</strong></li>
+<li>Betroffene können der Verwendung ihrer Abbildung widersprechen. Das Archiv prüft hierbei den Ausgleich zwischen Schutzinteressen der betroffenen Person und dem öffentlichen Dokumentationsinteresse.</li>
+</ol>
+<hr />
+<h2>4. Technische und organisatorische Maßnahmen (TOM, Art. 32 DSGVO)</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Bereich</th>
+<th style="text-align: left;">Maßnahme</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Netzwerksicherheit</strong></td>
+<td style="text-align: left;">Der Server lauscht auf <code>0.0.0.0:8000</code> bzw. <code>127.0.0.1:8000</code>. Für den Produktivbetrieb im Museumsnetzwerk sollte eine Firewall oder ein Reverse Proxy (z. B. Nginx mit TLS/HTTPS und Authentifizierung) vorgeschaltet werden.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Datenbankzugriff</strong></td>
+<td style="text-align: left;">Der Qdrant-Port <code>6333</code> kann optional mit einem API-Schlüssel (<code>QDRANT_API_KEY</code>) gesperrt werden.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Dateisystem-Rechte</strong></td>
+<td style="text-align: left;">Das Storage-Volume <code>./qdrant_storage</code> und die Quellbilder sind mit restriktiven Dateisystemrechten des Betriebssystems (<code>chmod 700</code> bzw. <code>chown museum:museum</code>) geschützt.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Keine Telemetrie</strong></td>
+<td style="text-align: left;">Sämtliche Tracking- und Analytik-Komponenten der Bibliotheken sind deaktiviert.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>5. Löschkonzept &amp; Datenbereinigung</h2>
+<ol>
+<li><strong>Löschen von Gesichts-Clustern:</strong>
+   Wird ein Personen-Cluster im Archiv gelöscht, werden alle assoziierten Einträge in der Collection <code>archive_faces</code> unwiderruflich entfernt.</li>
+<li><strong>Bereinigung bei Deindexierung:</strong>
+   Wird ein Archivbestand physisch gelöscht, werden bei einem Neuaufbau oder über gezielte Bereinigungsskripte alle zugehörigen Vektoren aus <code>archive_images</code> und <code>archive_faces</code> gelöscht.</li>
+</ol>
+    </article>
+  </div>
+</body>
+</html>

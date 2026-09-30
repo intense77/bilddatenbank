@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bedienungsanleitung: Lokales Bildarchiv-Suchsystem</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+    :root {
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      color: #1e293b;
+      background: #f8fafc;
+      line-height: 1.65;
+      padding: 2.5rem 1rem;
+    }
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 3rem 3.5rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+      border: 1px solid #e2e8f0;
+    }
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 1rem;
+      margin-bottom: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .print-btn {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #334155;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .print-btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+    h1 { font-size: 2rem; font-weight: 700; color: #0f172a; margin-bottom: 1rem; letter-spacing: -0.02em; line-height: 1.25; }
+    h2 { font-size: 1.4rem; font-weight: 600; color: #1e293b; margin-top: 2rem; margin-bottom: 0.85rem; padding-bottom: 0.4rem; border-bottom: 1px solid #f1f5f9; }
+    h3 { font-size: 1.15rem; font-weight: 600; color: #334155; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+    p { margin-bottom: 1rem; }
+    ul, ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.35rem; }
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 0.15em 0.35em;
+      border-radius: 4px;
+    }
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 1.2rem 1.4rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      margin-bottom: 1.25rem;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.65rem 0.9rem;
+      border: 1px solid #e2e8f0;
+      text-align: left;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    tr:nth-child(even) { background: #fafafa; }
+    blockquote {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+      padding: 0.85rem 1.15rem;
+      margin: 1.25rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.92rem;
+      color: #78350f;
+    }
+    hr {
+      border: 0;
+      height: 1px;
+      background: #e2e8f0;
+      margin: 2rem 0;
+    }
+    a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    @media print {
+      body { background: #ffffff; padding: 0; }
+      .container { border: none; box-shadow: none; padding: 0; max-width: 100%; }
+      .doc-header { display: none; }
+      pre, code { background: #f8fafc !important; color: #000000 !important; border: 1px solid #cbd5e1; }
+    }
+    @media (max-width: 640px) {
+      .container { padding: 1.5rem; }
+      h1 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="doc-header">
+      <span class="badge">Dokumentation &mdash; Bildarchiv</span>
+      <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
+    </div>
+    <article>
+<h1>Bedienungsanleitung: Lokales Bildarchiv-Suchsystem</h1>
+<p>Ein datensparsames, vollständig lokales Suchsystem für historische Bild- und Fotoarchive mit <strong>semantischer Freitextsuche (OpenCLIP)</strong> und <strong>automatischer Personen- und Gesichtserkennung (ArcFace &amp; DBSCAN-Clustering)</strong>.</p>
+<hr />
+<h2>Inhaltsverzeichnis</h2>
+<ol>
+<li><a href="#1-überblick--funktionsweise">Überblick &amp; Funktionsweise</a></li>
+<li><a href="#2-system-starten--beenden">System starten &amp; beenden</a></li>
+<li><a href="#3-eigene-bildbestände-einlesen-indexierung">Eigene Bildbestände einlesen (Indexierung)</a></li>
+<li><a href="#4-nutzung-des-web-frontends">Nutzung des Web-Frontends</a></li>
+<li><a href="#5-häufige-fragen--besonderheiten">Häufige Fragen &amp; Besonderheiten</a></li>
+<li><a href="#6-wartung-datensicherung--fehlerbehebung">Wartung, Datensicherung &amp; Fehlerbehebung</a></li>
+</ol>
+<hr />
+<h2>1. Überblick &amp; Funktionsweise</h2>
+<h3>Was macht dieses System?</h3>
+<p>Klassische Archivdatenbanken verlangen, dass jedes Foto händisch mit Schlagworten (Tags) verschlagwortet wird. Fehlt ein Schlagwort, wird das Bild nicht gefunden. </p>
+<p>Dieses System nutzt moderne <strong>lokale KI-Modelle</strong>:
+* <strong>OpenCLIP (ViT-B-32):</strong> Versteht visuelle Konzepte, Szenen, Architekturen und Gegenstände in Bildern. Sie können in natürlicher Sprache suchen (<em>„gotischer Altar“</em>, <em>„Soldaten im Schützengraben“</em>, <em>„Marktplatz mit Kutsche“</em>), ohne dass diese Begriffe vorher irgendwo eingetippt wurden.
+* <strong>InsightFace (ArcFace):</strong> Erkennt Gesichter auf historischen Fotos, selbst bei gealterten oder kontrastarmen Scans.
+* <strong>DBSCAN-Clustering:</strong> Gruppiert mehrfach auftretende Gesichter vollautomatisch zu Personen-Clustern. Sie können einer Person einmalig einen Namen zuweisen (<em>„Bischof Müller“</em>), und alle Fundstellen werden synchronisiert.
+* <strong>100 % lokal &amp; datensparsam:</strong> Keine Cloud, keine externen APIs. Alle Daten und Vektoren verbleiben auf Ihrem Rechner.</p>
+<hr />
+<h2>2. System starten &amp; beenden</h2>
+<p>Das System besteht aus zwei Komponenten:
+1. <strong>Qdrant (Vektordatenbank):</strong> Speichert die mathematischen Merkmalsvektoren persistent im Ordner <code>./qdrant_storage</code>.
+2. <strong>FastAPI-Server:</strong> Stellt die Suchlogik und die Weboberfläche bereit.</p>
+<h3>Starten</h3>
+<p>Öffnen Sie ein Terminal im Projektverzeichnis (<code>/home/museum/Bildersuche</code>):</p>
+<pre class="codehilite"><code class="language-bash">cd /home/museum/Bildersuche
+
+# 1. Vektordatenbank Qdrant im Hintergrund starten
+docker-compose up -d
+
+# 2. Webserver starten
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+</code></pre>
+
+<p>Öffnen Sie nun Ihren Browser (z. B. Firefox):
+* <strong>Web-Frontend:</strong> <a href="http://localhost:8000/">http://localhost:8000/</a>
+* <strong>API-Dokumentation (Swagger UI):</strong> <a href="http://localhost:8000/docs">http://localhost:8000/docs</a>
+* <strong>Qdrant-Datenbank-Dashboard:</strong> <a href="http://localhost:6333/dashboard">http://localhost:6333/dashboard</a></p>
+<h3>Beenden</h3>
+<ul>
+<li>Den Webserver im Terminal mit <code>Strg + C</code> stoppen.</li>
+<li>Die Datenbank stoppen:
+  <code>bash
+  docker-compose stop</code></li>
+</ul>
+<hr />
+<h2>3. Eigene Bildbestände einlesen (Indexierung)</h2>
+<p>Das Einlesen neuer oder bestehender Bildordner erfolgt über das CLI-Skript <code>indexer.py</code>.</p>
+<h3>Grundbefehl</h3>
+<pre class="codehilite"><code class="language-bash">cd /home/museum/Bildersuche
+.venv/bin/python indexer.py --source-dir /pfad/zu/ihren/bildern --cluster-faces
+</code></pre>
+
+<p><em>Beispiel für Ihren Bilderordner:</em></p>
+<pre class="codehilite"><code class="language-bash">.venv/bin/python indexer.py --source-dir /home/museum/Bilder/Kacheln --cluster-faces
+</code></pre>
+
+<h3>Parameter-Übersicht</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Beschreibung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>--source-dir /pfad</code></td>
+<td style="text-align: left;"><strong>(Pflicht)</strong> Pfad zum Ordner mit Bilddateien. Durchsucht automatisch alle Unterordner.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--cluster-faces</code></td>
+<td style="text-align: left;">Führt nach dem Einlesen automatisch das DBSCAN-Clustering durch, um erkannte Personen zusammenzufassen.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--skip-faces</code></td>
+<td style="text-align: left;">Überspringt die Gesichtserkennung komplett (empfohlen für reine Sach- und Architekturfotos oder zur Beschleunigung).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--batch-size 32</code></td>
+<td style="text-align: left;">Anzahl der Bilder pro Rechenschritt (Standard: 32).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--dry-run</code></td>
+<td style="text-align: left;">Vorschau: Scannt den Ordner und zeigt, welche Dateien gefunden werden, ohne sie in die Datenbank einzutragen.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--force</code></td>
+<td style="text-align: left;">Erzwingt die Neuindexierung, auch wenn ein Bild bereits eingelesen wurde.</td>
+</tr>
+</tbody>
+</table>
+<h3>Unterstützte Dateiformate</h3>
+<ul>
+<li><code>.jpg</code>, <code>.jpeg</code></li>
+<li><code>.png</code></li>
+<li><code>.tif</code>, <code>.tiff</code> (auch historische Drucke und CMYK-Scans)</li>
+</ul>
+<blockquote>
+<p>[!NOTE]
+<strong>Inkrementelle Speicherung:</strong> Das Skript erzeugt für jeden relativen Dateipfad eine eindeutige Kennung. Wenn Sie später neue Bilder in denselben Ordner ablegen und den Befehl erneut starten, werden <strong>nur die neuen Bilder</strong> berechnet. Bereits vorhandene Bilder werden übersprungen.</p>
+</blockquote>
+<hr />
+<h2>4. Nutzung des Web-Frontends</h2>
+<p>Nach dem Start erreichen Sie die Oberfläche unter <strong><a href="http://localhost:8000/">http://localhost:8000/</a></strong>.</p>
+<h3>Tab 1: Freitext-Suche</h3>
+<ol>
+<li><strong>Suchleiste:</strong> Geben Sie ein Motiv oder eine Szene ein (z. B. <em>„gotischer Altar“</em>, <em>„Marktplatz“</em>, <em>„Soldaten 1914“</em>).</li>
+<li><strong>Relevanz-Filter (Schwellenwert):</strong></li>
+<li><em>Standard (ab 23 %)</em>: Filtert unpassende Zufallstreffer aus (empfohlen).</li>
+<li><em>Streng (ab 25 %)</em>: Zeigt nur sehr eindeutige Treffer.</li>
+<li><em>Locker (ab 20 %)</em>: Zeigt auch Bilder mit entfernter thematischer Ähnlichkeit.</li>
+<li><em>Alle Treffer</em>: Zeigt immer die nächsten Nachbarn im Archiv.</li>
+<li><strong>Beispiel-Chips:</strong> Schnellauswahl häufiger Suchthemen per Mausklick.</li>
+<li><strong>Ergebnis-Karten:</strong> Jedes gefundene Bild zeigt den berechneten Ähnlichkeitswert (z. B. <code>78% Score</code>).</li>
+</ol>
+<h3>Tab 2: Personen &amp; Cluster</h3>
+<ol>
+<li><strong>Cluster-Übersicht:</strong> Zeigt runde Porträtausschnitte aller Gesichter, die die KI als dieselbe Person identifiziert hat.</li>
+<li><strong>Cluster ansehen:</strong> Klick auf eine Person öffnet die Detailansicht mit allen Archivbildern, auf denen die Person vorkommt.</li>
+<li>Das Gesicht der Person wird auf dem Originalbild mit einer <strong>aktiven Markierungsbox</strong> hervorgehoben.</li>
+<li><strong>Klarname zuweisen:</strong> Tragen Sie oben den Namen ein (z. B. <em>„Bischof Müller“</em>) und klicken Sie auf <strong>Speichern</strong>. Der Name ist ab sofort im gesamten Archiv mit dieser Person verknüpft.</li>
+<li><strong>Cluster neu berechnen:</strong> Ein Klick auf <em>„Cluster neu berechnen“</em> führt den DBSCAN-Algorithmus erneut aus (z. B. nachdem neue Porträts eingelesen wurden).</li>
+</ol>
+<h3>Bild-Detailansicht (Modal)</h3>
+<ul>
+<li>Klick auf ein beliebiges Bild in der Suche oder im Personen-Tab öffnet eine vergrößerte Ansicht.</li>
+<li><strong>Erkannte Gesichter:</strong> Alle auf dem Bild erkannten Personen werden mit interaktiven Boxen markiert.</li>
+<li><strong>Ähnliche Bilder suchen:</strong> Klick auf diesen Button nutzt das CLIP-Embedding dieses Fotos als Referenz und sucht optisch verwandte Motive im Archiv.</li>
+<li><strong>Originaldatei öffnen:</strong> Öffnet den Originalscan im Vollbildmodus.</li>
+</ul>
+<hr />
+<h2>5. Häufige Fragen &amp; Besonderheiten</h2>
+<h3>Warum erhalte ich Treffer für Wörter, die im Archiv gar nicht vorkommen?</h3>
+<p>Im Gegensatz zu einer Schlagwortsuche (wie in einer Excel-Tabelle) arbeitet eine Vektordatenbank nach dem Prinzip der <strong>„Nächsten Nachbarn“ (k-NN)</strong>:
+* Jedes Bild und jede Suchanfrage ist ein Punkt im 512-dimensionalen Raum.
+* Wenn Sie nach <em>„Kind“</em> suchen, aber kein Bild ein Kind enthält, fragt die Datenbank standardmäßig: <em>„Welche vorhandenen Bilder sind der Anfrage noch am wenigsten unähnlich?“</em>
+* <strong>Lösung:</strong> Nutzen Sie den Relevanz-Filter in der Suchleiste (<em>„Standard (ab 23%)“</em>). Dann erhalten Sie bei fehlenden Motiven korrekterweise <strong>0 Treffer</strong>.</p>
+<h3>Funktionieren auch TIFF-Dateien im Browser?</h3>
+<p>Ja. Webbrowser wie Firefox oder Chrome können das Format <code>.tif</code> normalerweise nicht direkt anzeigen. Das Backend wandelt TIFF- und CMYK-Bilder für das Web-Frontend <strong>automatisch und verlustfrei im Speicher nach JPEG um</strong>. Ihre Originaldateien auf der Festplatte bleiben dabei unberührt.</p>
+<h3>Werden GPU / CUDA unterstützt?</h3>
+<p>Ja. Das System prüft beim Start via PyTorch, ob eine kompatible NVIDIA-Grafikkarte verfügbar ist. Ist keine GPU vorhanden oder reicht der Videospeicher (VRAM) nicht aus, schaltet das System automatisch auf optimierte CPU-Inferenz um.</p>
+<hr />
+<h2>6. Wartung, Datensicherung &amp; Fehlerbehebung</h2>
+<h3>Wo liegen die Daten?</h3>
+<ul>
+<li><strong>Die Vektoren und Metadaten:</strong> Liegen im Ordner <code>./qdrant_storage</code> im Projektverzeichnis.</li>
+<li><strong>Ihre Originalbilder:</strong> Verbleiben immer an ihrem ursprünglichen Speicherort (z. B. <code>/home/museum/Bilder</code>). Das System speichert in Qdrant lediglich den Dateipfad und die Merkmalsvektoren.</li>
+</ul>
+<h3>Backup erstellen</h3>
+<p>Um alle indizierten Merkmale, erkannten Gesichter und vergebenen Personennamen zu sichern:
+1. Qdrant stoppen: <code>docker-compose stop</code>
+2. Den Ordner kopieren:
+   <code>bash
+   cp -r /home/museum/Bildersuche/qdrant_storage /pfad/zum/backup/</code>
+3. Qdrant wieder starten: <code>docker-compose start</code></p>
+<h3>Fehlerbehebung</h3>
+<h4>„Firefox can’t connect to the server at localhost:8000“</h4>
+<ul>
+<li>Der FastAPI-Server läuft noch nicht. Starten Sie ihn im Terminal:
+  <code>bash
+  cd /home/museum/Bildersuche
+  .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload</code></li>
+</ul>
+<h4>„Verbindung zu Qdrant fehlgeschlagen“</h4>
+<ul>
+<li>Der Docker-Container von Qdrant ist gestoppt. Starten Sie ihn mit:
+  <code>bash
+  cd /home/museum/Bildersuche
+  docker-compose up -d</code>
+  Prüfen Sie den Status im Browser unter <a href="http://localhost:6333/dashboard">http://localhost:6333/dashboard</a>.</li>
+</ul>
+    </article>
+  </div>
+</body>
+</html>
