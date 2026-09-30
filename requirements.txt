@@ -1,0 +1,26 @@
+# FastAPI & Server
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.9
+
+# Vector Database Client
+qdrant-client>=1.8.0
+
+# Deep Learning & Embeddings (CUDA-Support)
+# Hinweis: PyTorch mit CUDA kann alternativ via pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121 installiert werden
+torch>=2.2.0
+torchvision>=0.17.0
+open-clip-torch>=2.24.0
+
+# Gesichtserkennung & ONNX Runtime (GPU)
+insightface>=0.7.3
+onnxruntime-gpu>=1.17.0
+
+# Bildverarbeitung & Utilities
+Pillow>=10.2.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+tqdm>=4.66.0
