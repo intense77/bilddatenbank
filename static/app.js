@@ -43,10 +43,13 @@ function switchTab(tab) {
   }
 }
 
-// --- Health Check ---
+// --- Health Check & System Settings ---
 async function checkSystemHealth() {
   const badge = document.getElementById('health-badge');
   const status = document.getElementById('health-status');
+  const toggle = document.getElementById('face-recognition-toggle');
+  const toggleLabel = document.getElementById('face-toggle-status-label');
+
   try {
     const res = await fetch('/api/system/health');
     if (res.ok) {
@@ -55,6 +58,14 @@ async function checkSystemHealth() {
       systemConfig.status = data.status;
       systemConfig.device = data.device;
       badge.classList.remove('hidden');
+
+      if (toggle) toggle.checked = systemConfig.faceRecognitionEnabled;
+      if (toggleLabel) {
+        toggleLabel.textContent = systemConfig.faceRecognitionEnabled ? 'an' : 'aus';
+        toggleLabel.className = systemConfig.faceRecognitionEnabled
+          ? 'font-mono text-[10px] text-emerald-400 font-semibold min-w-[20px]'
+          : 'font-mono text-[10px] text-slate-400 font-semibold min-w-[20px]';
+      }
 
       const faceLabel = systemConfig.faceRecognitionEnabled ? 'Gesichter: an' : 'Gesichter: aus (DSGVO)';
       status.textContent = `Qdrant: ${data.status} | ${faceLabel}`;
@@ -67,13 +78,64 @@ async function checkSystemHealth() {
   }
 }
 
+async function handleFaceToggleChange(event) {
+  const isChecked = event.target.checked;
+  await setFaceRecognition(isChecked);
+}
+
+async function setFaceRecognition(enabled) {
+  const toggle = document.getElementById('face-recognition-toggle');
+  const toggleLabel = document.getElementById('face-toggle-status-label');
+  const status = document.getElementById('health-status');
+
+  try {
+    const res = await fetch('/api/system/settings/face-recognition', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) throw new Error(`Server antwortete mit Status ${res.status}`);
+    const data = await res.json();
+    systemConfig.faceRecognitionEnabled = !!data.face_recognition_enabled;
+
+    if (toggle) toggle.checked = systemConfig.faceRecognitionEnabled;
+    if (toggleLabel) {
+      toggleLabel.textContent = systemConfig.faceRecognitionEnabled ? 'an' : 'aus';
+      toggleLabel.className = systemConfig.faceRecognitionEnabled
+        ? 'font-mono text-[10px] text-emerald-400 font-semibold min-w-[20px]'
+        : 'font-mono text-[10px] text-slate-400 font-semibold min-w-[20px]';
+    }
+
+    if (status) {
+      const faceLabel = systemConfig.faceRecognitionEnabled ? 'Gesichter: an' : 'Gesichter: aus (DSGVO)';
+      status.textContent = `Qdrant: ${systemConfig.status} | ${faceLabel}`;
+    }
+
+    updateFaceRecognitionUI();
+
+    if (systemConfig.faceRecognitionEnabled) {
+      showToast('Biometrische Gesichtserkennung aktiviert (KDG § 29 / Art. 9 DSGVO).');
+      const facesSec = document.getElementById('tab-faces');
+      if (facesSec && !facesSec.classList.contains('hidden')) {
+        loadClusters();
+      }
+    } else {
+      showToast('Gesichtserkennung deaktiviert (Speicher geschont).');
+    }
+  } catch (err) {
+    showToast(`Fehler beim Ändern der Einstellung: ${err.message}`, true);
+    if (toggle) toggle.checked = systemConfig.faceRecognitionEnabled;
+  }
+}
+
 function updateFaceRecognitionUI() {
   const runBtn = document.getElementById('run-clustering-btn');
   const emptyElem = document.getElementById('clusters-empty');
+
   if (!systemConfig.faceRecognitionEnabled) {
     if (runBtn) {
       runBtn.classList.add('opacity-50', 'cursor-not-allowed');
-      runBtn.title = 'Gesichtserkennung ist deaktiviert (ENABLE_FACE_RECOGNITION=false)';
+      runBtn.title = 'Gesichtserkennung ist deaktiviert';
     }
     if (emptyElem) {
       emptyElem.innerHTML = `
@@ -85,10 +147,31 @@ function updateFaceRecognitionUI() {
           </div>
           <p class="text-sm font-semibold text-slate-100">Biometrische Gesichtserkennung deaktiviert</p>
           <p class="text-xs text-slate-400 leading-relaxed">
-            Aus Gründen der Datensparsamkeit (Art. 5 / Art. 9 DSGVO) ist die Gesichtsanalyse standardmäßig abgeschaltet.
-            Um Personenerkennung und Clusterung zu nutzen, setzen Sie <code class="text-amber-400 font-mono">ENABLE_FACE_RECOGNITION=true</code> in Ihrer <code class="text-amber-400 font-mono">.env</code>-Konfiguration.
+            Aus Gründen der Datensparsamkeit und Ressourcenschonung (§ 26 KDG / Art. 9 DSGVO) ist die Gesichtsanalyse momentan abgeschaltet.
           </p>
+          <button onclick="setFaceRecognition(true)" class="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg text-xs transition shadow-sm inline-flex items-center gap-1.5 mt-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+            <span>Jetzt für Personen-Suche aktivieren</span>
+          </button>
         </div>
+      `;
+    }
+  } else {
+    if (runBtn) {
+      runBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      runBtn.title = 'Startet das DBSCAN-Clustering aller erkannten Gesichter';
+    }
+    if (emptyElem && emptyElem.innerHTML.includes('Biometrische Gesichtserkennung deaktiviert')) {
+      emptyElem.innerHTML = `
+        <div class="w-16 h-16 mx-auto rounded-full bg-slate-800/50 flex items-center justify-center text-slate-500 mb-3">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+          </svg>
+        </div>
+        <p class="text-sm font-medium text-slate-300">Noch keine Personen-Cluster vorhanden</p>
+        <p class="text-xs text-slate-500 mt-1">Starten Sie die automatische Gruppierung mit dem Button oben rechts.</p>
       `;
     }
   }

@@ -1,10 +1,55 @@
+import logging
+import re
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.api.deps import get_qdrant_service
+from pydantic import BaseModel, Field
+from app.api.deps import get_qdrant_service, clear_face_service_cache
 from app.core.config import settings
 from app.services.qdrant_service import QdrantService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/system", tags=["System"])
+
+
+class FaceRecognitionToggleRequest(BaseModel):
+    enabled: bool = Field(..., description="True aktiviert die biometrische Gesichtserkennung, False schaltet sie ab.")
+
+
+@router.post("/settings/face-recognition")
+def toggle_face_recognition(request: FaceRecognitionToggleRequest):
+    """
+    Schaltet die biometrische Gesichtserkennung zur Laufzeit um und persistiert
+    die Einstellung in der .env-Datei für zukünftige Server-Neustarts.
+    """
+    settings.ENABLE_FACE_RECOGNITION = request.enabled
+    clear_face_service_cache()
+
+    # Persistiere Einstellung in .env
+    env_path = Path(".env")
+    if env_path.exists():
+        try:
+            content = env_path.read_text(encoding="utf-8")
+            val_str = "true" if request.enabled else "false"
+            if re.search(r"^\s*ENABLE_FACE_RECOGNITION\s*=", content, flags=re.MULTILINE):
+                content = re.sub(
+                    r"^\s*ENABLE_FACE_RECOGNITION\s*=.*$",
+                    f"ENABLE_FACE_RECOGNITION={val_str}",
+                    content,
+                    flags=re.MULTILINE,
+                )
+            else:
+                content += f"\nENABLE_FACE_RECOGNITION={val_str}\n"
+            env_path.write_text(content, encoding="utf-8")
+        except Exception as e:
+            logger.warning("Konnte .env nicht aktualisieren: %s", e)
+
+    return {
+        "status": "success",
+        "face_recognition_enabled": settings.ENABLE_FACE_RECOGNITION,
+        "message": "Biometrische Gesichtserkennung aktiviert" if request.enabled else "Biometrische Gesichtserkennung deaktiviert (DSGVO / Ressourcensparen)",
+    }
+
 
 
 @router.get("/health")

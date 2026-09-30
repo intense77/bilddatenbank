@@ -40,8 +40,25 @@
         </button>
       </nav>
 
+      <!-- Biometrie Schalter (Art. 9 DSGVO / KDG § 29) -->
+      <div class="flex items-center gap-2 bg-slate-950/80 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs" title="Schaltet die biometrische Gesichts- & Porträterkennung ein oder aus (Art. 9 DSGVO / § 29 KDG)">
+        <label for="face-recognition-toggle" class="cursor-pointer flex items-center gap-2 select-none">
+          <span class="text-slate-400 font-medium hidden md:inline text-[11px]">Gesichter</span>
+          <div class="relative inline-flex items-center">
+            <input
+              type="checkbox"
+              id="face-recognition-toggle"
+              onchange="handleFaceToggleChange(event)"
+              class="toggle-switch-input absolute w-3.5 h-3.5 rounded-full bg-slate-400 appearance-none cursor-pointer transition-transform duration-200 left-0.5 z-10"
+            />
+            <div class="toggle-switch-track w-8 h-4 rounded-full bg-slate-800 border border-slate-700 transition-colors duration-200"></div>
+          </div>
+          <span id="face-toggle-status-label" class="font-mono text-[10px] text-amber-400 font-semibold min-w-[20px]">aus</span>
+        </label>
+      </div>
+
       <!-- System Health Indicator -->
-      <div id="health-badge" class="hidden sm:flex items-center gap-2 text-xs font-mono px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400">
+      <div id="health-badge" class="hidden lg:flex items-center gap-2 text-xs font-mono px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-slate-400">
         <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
         <span id="health-status">Qdrant bereit</span>
       </div>

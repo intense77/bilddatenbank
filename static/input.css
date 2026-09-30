@@ -97,3 +97,14 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+/* Biometrie Toggle Switch */
+.toggle-switch-input:checked {
+  transform: translateX(14px);
+  background-color: #f59e0b;
+}
+.toggle-switch-input:checked + .toggle-switch-track {
+  background-color: rgba(245, 158, 11, 0.3);
+  border-color: rgba(245, 158, 11, 0.6);
+}
+

@@ -49,3 +49,10 @@ def get_indexing_service() -> IndexingService:
 @lru_cache(maxsize=1)
 def get_clustering_service() -> ClusteringService:
     return ClusteringService(qdrant_service=get_qdrant_service())
+
+
+def clear_face_service_cache():
+    """Löscht den Cache für get_face_service und get_indexing_service bei Schalterwechsel."""
+    get_face_service.cache_clear()
+    get_indexing_service.cache_clear()
+
