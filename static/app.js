@@ -352,8 +352,18 @@ function renderSearchResults(items, container) {
         </div>
         ${metaBadgesHtml ? `<div class="mt-2 flex flex-wrap items-center gap-1">${metaBadgesHtml}</div>` : ''}
         <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
-          <span class="truncate max-w-[120px] font-mono">${escapeHtml(item.file_path.split('/').slice(-2, -1)[0] || 'Archiv')}</span>
-          ${actionText}
+          <span class="truncate max-w-[110px] font-mono">${escapeHtml(item.file_path.split('/').slice(-2, -1)[0] || 'Archiv')}</span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              onclick="quickRotateCardImage(event, '${escapeHtml(item.file_path)}', 90)"
+              class="px-2 py-0.5 rounded bg-slate-800/90 hover:bg-amber-500 hover:text-slate-950 text-slate-300 hover:border-amber-500 font-mono text-[10px] transition border border-slate-700 flex items-center gap-1 shadow-sm"
+              title="Bild 90° im Uhrzeigersinn drehen (verlustfrei)"
+            >
+              <span>↻</span> 90°
+            </button>
+            ${actionText}
+          </div>
         </div>
       </div>
     `;
