@@ -73,24 +73,25 @@ class IndexingService:
             except ValueError:
                 rel_path = file_path.name
 
-            # 1. CLIP Embedding (512-dim)
-            clip_vector = self.clip.embed_image(path_str)
+            file_size = os.path.getsize(abs_path)
+            with Image.open(abs_path) as raw_img:
+                # Metadaten aus dem geöffneten Rohbild extrahieren
+                meta = metadata_service.extract_metadata(file_path, img=raw_img)
+                # EXIF-Ausrichtung anwenden und Pixel im RAM sichern
+                pil_img = ImageOps.exif_transpose(raw_img).convert("RGB")
+                pil_img.load()
+                width, height = pil_img.size
 
-            # 2. Optionale Gesichtserkennung & ArcFace Embeddings (512-dim)
+            # 1. CLIP Embedding (512-dim) - direkt aus RAM
+            clip_vector = self.clip.embed_image(pil_img)
+
+            # 2. Optionale Gesichtserkennung & ArcFace Embeddings (512-dim) - direkt aus RAM
             if self.face is not None:
-                faces_data = self.face.extract_faces(path_str)
+                faces_data = self.face.extract_faces(pil_img)
             else:
                 faces_data = []
 
-            file_size = os.path.getsize(abs_path)
-            with Image.open(abs_path) as img:
-                img = ImageOps.exif_transpose(img)
-                width, height = img.size
-
             now_iso = datetime.now(timezone.utc).isoformat()
-
-            # 3. Metadaten extrahieren (EXIF, IPTC, XMP, Sidecar JSON)
-            meta = metadata_service.extract_metadata(file_path)
 
             # Bild-ID deterministisch aus relativem Pfad bilden (Idempotenz analog indexer.py)
             image_id = str(uuid.uuid5(UUID_NAMESPACE, rel_path))

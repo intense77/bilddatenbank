@@ -2,7 +2,7 @@ import json
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from PIL import Image, ExifTags, IptcImagePlugin
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ class MetadataService:
 
         return {}
 
-    def extract_metadata(self, file_path: Path) -> Dict[str, Any]:
+    def extract_metadata(self, file_path: Union[str, Path], img: Optional[Image.Image] = None) -> Dict[str, Any]:
         """
         Konsolidierte archivische Metadaten-Extraktion.
         Führt EXIF, IPTC, XMP und JSON-Sidecars zusammen zu einem standardisierten Schema:
@@ -166,6 +166,7 @@ class MetadataService:
         - keywords: Liste an Schlagwörtern
         - sidecar_data: Rohe Sidecar-Zusatzfelder
         """
+        file_path = Path(file_path)
         title: Optional[str] = None
         creator: Optional[str] = None
         date: Optional[str] = None
@@ -176,10 +177,15 @@ class MetadataService:
 
         # 1. Bildheader auslesen (EXIF, IPTC, XMP)
         try:
-            with Image.open(file_path) as img:
+            if img is not None:
                 exif = self.extract_exif(img)
                 iptc = self.extract_iptc(img)
                 xmp = self.extract_xmp(img)
+            else:
+                with Image.open(file_path) as opened_img:
+                    exif = self.extract_exif(opened_img)
+                    iptc = self.extract_iptc(opened_img)
+                    xmp = self.extract_xmp(opened_img)
 
                 # Datum ermitteln
                 date = (

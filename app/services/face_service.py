@@ -82,11 +82,12 @@ class FaceService:
         try:
             self.app = FaceAnalysis(
                 name=self.model_name,
+                allowed_modules=["detection", "recognition"],
                 providers=providers,
             )
             # ctx_id=0 für GPU (sofern CUDAExecutionProvider greift), ansonsten CPU
             self.app.prepare(ctx_id=0, det_size=self.det_size)
-            logger.info("InsightFace erfolgreich initialisiert.")
+            logger.info("InsightFace erfolgreich initialisiert (Module: detection, recognition).")
         except Exception as e:
             logger.warning(
                 "Initialisierung mit CUDAExecutionProvider fehlgeschlagen (%s). Versuche reines CPUExecutionProvider...",
@@ -94,6 +95,7 @@ class FaceService:
             )
             self.app = FaceAnalysis(
                 name=self.model_name,
+                allowed_modules=["detection", "recognition"],
                 providers=["CPUExecutionProvider"],
             )
             self.app.prepare(ctx_id=-1, det_size=self.det_size)

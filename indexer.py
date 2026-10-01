@@ -282,16 +282,18 @@ def main():
 
             try:
                 file_size = os.path.getsize(file_path)
-                with Image.open(file_path) as img:
-                    img = ImageOps.exif_transpose(img)
-                    width, height = img.size
+                with Image.open(file_path) as raw_img:
+                    # Metadaten aus dem geöffneten Rohbild extrahieren (verhindert 2. Lesezugriff übers NAS)
+                    meta = metadata_service.extract_metadata(file_path, img=raw_img)
+                    # EXIF-Ausrichtung anwenden und Pixel im RAM sichern
+                    pil_img = ImageOps.exif_transpose(raw_img).convert("RGB")
+                    pil_img.load()
+                    width, height = pil_img.size
+
                 now_iso = datetime.now(timezone.utc).isoformat()
 
-                # Metadaten extrahieren (EXIF, IPTC, XMP, Sidecar JSON)
-                meta = metadata_service.extract_metadata(file_path)
-
-                # 3. CLIP-Embedding berechnen (archive_images)
-                clip_vector = clip_service.embed_image(file_path)
+                # 3. CLIP-Embedding berechnen (archive_images) - direkt aus RAM
+                clip_vector = clip_service.embed_image(pil_img)
                 image_point = rest_models.PointStruct(
                     id=image_id,
                     vector=clip_vector,
@@ -317,9 +319,9 @@ def main():
                 )
                 image_points.append(image_point)
 
-                # 4. Optionale Gesichtserkennung (archive_faces)
+                # 4. Optionale Gesichtserkennung (archive_faces) - direkt aus RAM
                 if face_service is not None:
-                    detected_faces = face_service.extract_faces(file_path)
+                    detected_faces = face_service.extract_faces(pil_img)
                     for face_idx, face in enumerate(detected_faces):
                         face_id = str(uuid.uuid5(UUID_NAMESPACE, f"{rel_path}#face_{face_idx}"))
                         orig_w = face.get("orig_width") or width
