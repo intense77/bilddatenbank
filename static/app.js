@@ -493,6 +493,14 @@ function renderStackComparisonItems(items, container) {
         <div class="pt-2 flex items-center gap-2">
           <button
             type="button"
+            onclick="quickRotateCardImage(event, '${escapeHtml(it.file_path || '').replace(/'/g, "\\'")}', 90)"
+            class="px-2 py-1.5 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-300 rounded-lg text-xs font-medium border border-slate-700 transition flex items-center gap-1 shadow-sm"
+            title="Bild 90° im Uhrzeigersinn drehen (verlustfrei)"
+          >
+            <span>↻</span> 90°
+          </button>
+          <button
+            type="button"
             onclick="closeStackModal(); openImageModal('${escapeHtml(it.file_path || '').replace(/'/g, "\\'")}', '${escapeHtml(it.file_name || '').replace(/'/g, "\\'")}')"
             class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition text-center"
           >
@@ -725,6 +733,18 @@ function openClusterDetail(cluster) {
           >
           <!-- Bounding Box Overlay will be positioned once image loads -->
         </div>
+        <!-- Schnell-Dreh Button oben rechts auf dem Bild -->
+        <button
+          type="button"
+          onclick="rotateClusterCardImage(event, '${escapeHtml(face.file_path).replace(/'/g, "\\'")}', 90, ${idx})"
+          class="absolute top-3 right-3 p-1.5 rounded-lg bg-slate-900/80 hover:bg-amber-500 hover:text-slate-950 text-slate-300 border border-slate-700/80 transition-all shadow-md backdrop-blur-sm z-20"
+          title="Bild 90° im Uhrzeigersinn drehen (verlustfrei)"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+            <path d="M21 3v5h-5"></path>
+          </svg>
+        </button>
       </div>
       <div class="p-3 border-t border-slate-800 flex items-center justify-between text-xs gap-2">
         <div class="truncate max-w-[170px]">
@@ -732,6 +752,26 @@ function openClusterDetail(cluster) {
           <span class="text-slate-500 font-mono text-[11px]">Konfidenz: ${(face.det_score * 100).toFixed(1)}%</span>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
+          <!-- Verlustfreies Drehen Buttons direkt in der Cluster-Karte -->
+          <div class="flex items-center rounded-lg bg-slate-800 border border-slate-700 p-0.5 shadow-sm" title="Verlustfreies Drehen (JPEG DCT / Lossless)">
+            <button
+              type="button"
+              onclick="rotateClusterCardImage(event, '${escapeHtml(face.file_path).replace(/'/g, "\\'")}', -90, ${idx})"
+              class="px-2 py-1 text-slate-300 hover:text-amber-400 text-[11px] font-medium transition"
+              title="90° gegen den Uhrzeigersinn drehen"
+            >
+              ↺ 90°
+            </button>
+            <div class="w-[1px] h-3 bg-slate-700"></div>
+            <button
+              type="button"
+              onclick="rotateClusterCardImage(event, '${escapeHtml(face.file_path).replace(/'/g, "\\'")}', 90, ${idx})"
+              class="px-2 py-1 text-slate-300 hover:text-amber-400 text-[11px] font-medium transition"
+              title="90° im Uhrzeigersinn drehen"
+            >
+              ↻ 90°
+            </button>
+          </div>
           <button
             onclick="openImageModal('${escapeHtml(face.file_path)}', '${escapeHtml(fileName)}')"
             class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition"
@@ -825,6 +865,91 @@ function openClusterDetail(cluster) {
 function closeClusterDetail() {
   activeCluster = null;
   loadClusters();
+}
+
+async function rotateClusterCardImage(event, filePath, angle, idx) {
+  event.stopPropagation();
+  const btn = event.currentTarget;
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="animate-spin inline-block">⏳</span>';
+
+  try {
+    showToast(`Drehe Bild um ${angle > 0 ? '+' : ''}${angle}° verlustfrei...`, false);
+    const result = await rotateImageFile(filePath, angle);
+    if (!result || !result.success) throw new Error(result?.message || 'Drehung fehlgeschlagen');
+
+    const ts = Date.now();
+    const imgElem = document.getElementById(`cluster-img-${idx}`);
+    const wrapElem = document.getElementById(`cluster-bbox-wrap-${idx}`);
+
+    if (imgElem) {
+      let baseSrc = imgElem.src.split('&t=')[0].split('?t=')[0];
+      const sep = baseSrc.includes('?') ? '&' : '?';
+      imgElem.src = `${baseSrc}${sep}t=${ts}`;
+
+      // Bounding-Box nach Bildladung neu aus der API ermitteln
+      const updateBoxes = () => {
+        fetch(`/images/details?path=${encodeURIComponent(filePath)}&t=${ts}`)
+          .then(r => r.json())
+          .then(d => {
+            if (wrapElem) {
+              wrapElem.querySelectorAll('.face-bbox').forEach(e => e.remove());
+              if (d.faces && d.faces.length > 0) {
+                d.faces.forEach((f) => {
+                  let left, top, width, height;
+                  if (f.bbox_percent) {
+                    left = f.bbox_percent.left;
+                    top = f.bbox_percent.top;
+                    width = f.bbox_percent.width;
+                    height = f.bbox_percent.height;
+                  } else if (f.bbox && f.bbox.length === 4 && d.width && d.height) {
+                    const [x1, y1, x2, y2] = f.bbox;
+                    left = (x1 / d.width) * 100;
+                    top = (y1 / d.height) * 100;
+                    width = ((x2 - x1) / d.width) * 100;
+                    height = ((y2 - y1) / d.height) * 100;
+                  } else {
+                    return;
+                  }
+                  const box = document.createElement('div');
+                  box.className = 'face-bbox active';
+                  box.style.position = 'absolute';
+                  box.style.border = '2px solid #f59e0b';
+                  box.style.zIndex = '15';
+                  box.style.pointerEvents = 'none';
+                  box.style.left = `${left}%`;
+                  box.style.top = `${top}%`;
+                  box.style.width = `${width}%`;
+                  box.style.height = `${height}%`;
+
+                  const tag = document.createElement('div');
+                  tag.className = 'face-bbox-tag';
+                  tag.textContent = activeCluster?.label || 'Diese Person';
+                  box.appendChild(tag);
+                  wrapElem.appendChild(box);
+                });
+              }
+            }
+          })
+          .catch(() => {});
+      };
+
+      if (imgElem.complete) {
+        updateBoxes();
+      } else {
+        imgElem.addEventListener('load', updateBoxes, { once: true });
+      }
+    }
+
+    updateAllThumbnailsOnPage(filePath, ts);
+    showToast(`✓ Bild in Clusteransicht verlustfrei gedreht (${result.faces_detected} Gesichter erkannt)`, false);
+  } catch (err) {
+    showToast(`Fehler beim Drehen: ${err.message}`, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
 }
 
 async function handleClusterLabelSubmit(e) {
