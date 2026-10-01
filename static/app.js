@@ -439,23 +439,33 @@ function openClusterDetail(cluster) {
     const wrapElem = card.querySelector(`#cluster-bbox-wrap-${idx}`);
 
     function renderBox() {
-      // Entferne evtl. vorhandene Boxen
       wrapElem.querySelectorAll('.face-bbox').forEach(e => e.remove());
-      if (!face.bbox || face.bbox.length !== 4) return;
 
-      // Wir holen die natürlichen Dimensionen des Bildes
-      const natW = imgElem.naturalWidth;
-      const natH = imgElem.naturalHeight;
-      if (!natW || !natH) return;
+      let left, top, width, height;
 
-      const [x1, y1, x2, y2] = face.bbox;
-      const left = (x1 / natW) * 100;
-      const top = (y1 / natH) * 100;
-      const width = ((x2 - x1) / natW) * 100;
-      const height = ((y2 - y1) / natH) * 100;
+      if (face.bbox_percent) {
+        left = face.bbox_percent.left;
+        top = face.bbox_percent.top;
+        width = face.bbox_percent.width;
+        height = face.bbox_percent.height;
+      } else if (face.bbox && face.bbox.length === 4) {
+        const origW = face.orig_width || imgElem.naturalWidth;
+        const origH = face.orig_height || imgElem.naturalHeight;
+        if (!origW || !origH) return;
+        const [x1, y1, x2, y2] = face.bbox;
+        left = (x1 / origW) * 100;
+        top = (y1 / origH) * 100;
+        width = ((x2 - x1) / origW) * 100;
+        height = ((y2 - y1) / origH) * 100;
+      } else {
+        return;
+      }
 
       const box = document.createElement('div');
       box.className = 'face-bbox active';
+      box.style.position = 'absolute';
+      box.style.border = '2px solid #f59e0b';
+      box.style.pointerEvents = 'none';
       box.style.left = `${left}%`;
       box.style.top = `${top}%`;
       box.style.width = `${width}%`;
@@ -469,11 +479,8 @@ function openClusterDetail(cluster) {
       wrapElem.appendChild(box);
     }
 
-    if (imgElem.complete && imgElem.naturalWidth) {
-      renderBox();
-    } else {
-      imgElem.addEventListener('load', renderBox);
-    }
+    renderBox();
+    imgElem.addEventListener('load', renderBox);
 
     // Klick auf das Bild öffnet das große Modal
     wrapElem.addEventListener('click', () => openImageModal(face.file_path, fileName));
@@ -675,20 +682,34 @@ async function openImageModal(filePath, fileName) {
     // Bounding Boxes auf dem vergrößerten Bild platzieren
     function drawModalBoxes() {
       wrapper.querySelectorAll('.face-bbox').forEach(e => e.remove());
-      const natW = img.naturalWidth;
-      const natH = img.naturalHeight;
-      if (!natW || !natH || !data.faces) return;
+      if (!data.faces || data.faces.length === 0) return;
 
       data.faces.forEach((f, idx) => {
-        if (!f.bbox || f.bbox.length !== 4) return;
-        const [x1, y1, x2, y2] = f.bbox;
-        const left = (x1 / natW) * 100;
-        const top = (y1 / natH) * 100;
-        const width = ((x2 - x1) / natW) * 100;
-        const height = ((y2 - y1) / natH) * 100;
+        let left, top, width, height;
+
+        if (f.bbox_percent) {
+          left = f.bbox_percent.left;
+          top = f.bbox_percent.top;
+          width = f.bbox_percent.width;
+          height = f.bbox_percent.height;
+        } else if (f.bbox && f.bbox.length === 4) {
+          const origW = f.orig_width || data.width || img.naturalWidth;
+          const origH = f.orig_height || data.height || img.naturalHeight;
+          if (!origW || !origH) return;
+          const [x1, y1, x2, y2] = f.bbox;
+          left = (x1 / origW) * 100;
+          top = (y1 / origH) * 100;
+          width = ((x2 - x1) / origW) * 100;
+          height = ((y2 - y1) / origH) * 100;
+        } else {
+          return;
+        }
 
         const box = document.createElement('div');
         box.className = 'face-bbox';
+        box.style.position = 'absolute';
+        box.style.border = '2px solid #38bdf8';
+        box.style.pointerEvents = 'none';
         box.style.left = `${left}%`;
         box.style.top = `${top}%`;
         box.style.width = `${width}%`;
@@ -703,11 +724,8 @@ async function openImageModal(filePath, fileName) {
       });
     }
 
-    if (img.complete && img.naturalWidth) {
-      drawModalBoxes();
-    } else {
-      img.onload = drawModalBoxes;
-    }
+    drawModalBoxes();
+    img.addEventListener('load', drawModalBoxes);
 
   } catch (err) {
     facesList.innerHTML = '<span class="text-rose-400">Details nicht geladen</span>';

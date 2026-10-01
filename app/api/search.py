@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
-from PIL import Image
+from PIL import Image, ImageOps
 
 from app.core.config import settings
 from app.core.security import validate_safe_image_path
@@ -45,6 +45,9 @@ class FaceSearchResult(BaseModel):
     score: float
     file_path: str
     bbox: List[int]
+    bbox_percent: Optional[Dict[str, float]] = None
+    orig_width: Optional[int] = None
+    orig_height: Optional[int] = None
     det_score: float
     cluster_id: Optional[str] = None
     label: Optional[str] = None
@@ -58,6 +61,9 @@ class ClusterFaceItem(BaseModel):
     face_id: str
     file_path: Optional[str] = None
     bbox: Optional[List[int]] = None
+    bbox_percent: Optional[Dict[str, float]] = None
+    orig_width: Optional[int] = None
+    orig_height: Optional[int] = None
     det_score: Optional[float] = None
 
 
@@ -178,12 +184,28 @@ async def search_faces_by_image(
     results = []
     for hit in hits:
         payload = hit.payload or {}
+        orig_w = payload.get("orig_width")
+        orig_h = payload.get("orig_height")
+        bbox = payload.get("bbox", [0, 0, 0, 0])
+        bbox_pct = payload.get("bbox_percent")
+        if not bbox_pct and orig_w and orig_h and bbox and len(bbox) == 4:
+            x1, y1, x2, y2 = bbox
+            bbox_pct = {
+                "left": round((x1 / orig_w) * 100, 4),
+                "top": round((y1 / orig_h) * 100, 4),
+                "width": round(((x2 - x1) / orig_w) * 100, 4),
+                "height": round(((y2 - y1) / orig_h) * 100, 4),
+            }
+
         results.append(
             FaceSearchResult(
                 id=str(hit.id),
                 score=hit.score,
                 file_path=payload.get("file_path") or payload.get("image_path", ""),
-                bbox=payload.get("bbox", [0, 0, 0, 0]),
+                bbox=bbox,
+                bbox_percent=bbox_pct,
+                orig_width=orig_w,
+                orig_height=orig_h,
                 det_score=payload.get("det_score", 1.0),
                 cluster_id=payload.get("cluster_id"),
                 label=payload.get("label"),
@@ -310,7 +332,8 @@ def get_image_details(
     file_path = validate_safe_image_path(path)
 
     try:
-        with Image.open(file_path) as img:
+        with Image.open(file_path) as raw_img:
+            img = ImageOps.exif_transpose(raw_img)
             width, height = img.size
     except Exception:
         width, height = 0, 0
@@ -332,9 +355,25 @@ def get_image_details(
     faces = []
     for r in face_records:
         p = r.payload or {}
+        orig_w = p.get("orig_width") or width
+        orig_h = p.get("orig_height") or height
+        bbox = p.get("bbox", [])
+        bbox_pct = p.get("bbox_percent")
+        if not bbox_pct and orig_w and orig_h and bbox and len(bbox) == 4:
+            x1, y1, x2, y2 = bbox
+            bbox_pct = {
+                "left": round((x1 / orig_w) * 100, 4),
+                "top": round((y1 / orig_h) * 100, 4),
+                "width": round(((x2 - x1) / orig_w) * 100, 4),
+                "height": round(((y2 - y1) / orig_h) * 100, 4),
+            }
+
         faces.append({
             "face_id": str(r.id),
-            "bbox": p.get("bbox", []),
+            "bbox": bbox,
+            "bbox_percent": bbox_pct,
+            "orig_width": orig_w,
+            "orig_height": orig_h,
             "det_score": p.get("det_score", 1.0),
             "cluster_id": p.get("cluster_id"),
             "label": p.get("label"),

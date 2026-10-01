@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from PIL import Image
+from PIL import Image, ImageOps
 from qdrant_client.http import models as rest_models
 
 from app.core.config import settings
@@ -84,6 +84,7 @@ class IndexingService:
 
             file_size = os.path.getsize(abs_path)
             with Image.open(abs_path) as img:
+                img = ImageOps.exif_transpose(img)
                 width, height = img.size
 
             now_iso = datetime.now(timezone.utc).isoformat()
@@ -129,6 +130,18 @@ class IndexingService:
                 if cluster_id_mapping and face_id in cluster_id_mapping:
                     cluster_id = cluster_id_mapping[face_id]
 
+                orig_w = face_info.get("orig_width") or width
+                orig_h = face_info.get("orig_height") or height
+                bbox_pct = face_info.get("bbox_percent")
+                if not bbox_pct and orig_w and orig_h and face_info.get("bbox") and len(face_info["bbox"]) == 4:
+                    x1, y1, x2, y2 = face_info["bbox"]
+                    bbox_pct = {
+                        "left": round((x1 / orig_w) * 100, 4),
+                        "top": round((y1 / orig_h) * 100, 4),
+                        "width": round(((x2 - x1) / orig_w) * 100, 4),
+                        "height": round(((y2 - y1) / orig_h) * 100, 4),
+                    }
+
                 face_point = rest_models.PointStruct(
                     id=face_id,
                     vector=face_info["embedding"],
@@ -137,6 +150,9 @@ class IndexingService:
                         "relative_path": rel_path,
                         "image_path": path_str,
                         "bbox": face_info["bbox"],
+                        "bbox_percent": bbox_pct,
+                        "orig_width": orig_w,
+                        "orig_height": orig_h,
                         "face_id": face_id,
                         "cluster_id": cluster_id,
                         "det_score": face_info["det_score"],

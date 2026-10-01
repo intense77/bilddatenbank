@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Tuple
-from PIL import Image
+from PIL import Image, ImageOps
 
 # Logger Setup mit strukturiertem Format
 logging.basicConfig(
@@ -283,6 +283,7 @@ def main():
             try:
                 file_size = os.path.getsize(file_path)
                 with Image.open(file_path) as img:
+                    img = ImageOps.exif_transpose(img)
                     width, height = img.size
                 now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -321,6 +322,18 @@ def main():
                     detected_faces = face_service.extract_faces(file_path)
                     for face_idx, face in enumerate(detected_faces):
                         face_id = str(uuid.uuid5(UUID_NAMESPACE, f"{rel_path}#face_{face_idx}"))
+                        orig_w = face.get("orig_width") or width
+                        orig_h = face.get("orig_height") or height
+                        bbox_pct = face.get("bbox_percent")
+                        if not bbox_pct and orig_w and orig_h and face.get("bbox") and len(face["bbox"]) == 4:
+                            x1, y1, x2, y2 = face["bbox"]
+                            bbox_pct = {
+                                "left": round((x1 / orig_w) * 100, 4),
+                                "top": round((y1 / orig_h) * 100, 4),
+                                "width": round(((x2 - x1) / orig_w) * 100, 4),
+                                "height": round(((y2 - y1) / orig_h) * 100, 4),
+                            }
+
                         face_point = rest_models.PointStruct(
                             id=face_id,
                             vector=face["embedding"],
@@ -329,6 +342,9 @@ def main():
                                 "relative_path": rel_path,
                                 "image_path": abs_path_str,
                                 "bbox": face["bbox"],
+                                "bbox_percent": bbox_pct,
+                                "orig_width": orig_w,
+                                "orig_height": orig_h,
                                 "det_score": face["det_score"],
                                 "face_id": face_id,
                                 "parent_image_id": image_id,

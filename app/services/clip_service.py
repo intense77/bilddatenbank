@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import List, Union
 import torch
-from PIL import Image, ImageFile, UnidentifiedImageError
+from PIL import Image, ImageFile, ImageOps, UnidentifiedImageError
 import open_clip
 
 from app.core.config import settings
@@ -17,6 +17,7 @@ def load_image_rgb(image_input: Union[str, Path, Image.Image]) -> Image.Image:
     """
     Lädt ein Bild sicher und konvertiert es robust in den RGB-Farbraum.
     Unterstützt Pfade (TIFF, JPEG, PNG, etc.) und PIL Image-Objekte.
+    Entzerrt die EXIF-Orientierung für konsistente Koordinaten mit Browser-Anzeige.
     Fängt CMYK, Transparenzen (Alpha-Kanal mit weißem Hintergrund) und Graustufen ab.
     """
     try:
@@ -29,6 +30,9 @@ def load_image_rgb(image_input: Union[str, Path, Image.Image]) -> Image.Image:
             img = Image.open(path)
         else:
             raise TypeError(f"Nicht unterstützter Bildtyp: {type(image_input)}")
+
+        # EXIF-Orientierung (Drehung/Spiegelung) entzerren
+        img = ImageOps.exif_transpose(img)
 
         # Erzwinge das Laden der Pixeldaten, um korrumpierte Dateien frühzeitig zu erkennen
         img.load()

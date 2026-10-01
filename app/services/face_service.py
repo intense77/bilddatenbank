@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Union
 import numpy as np
-from PIL import Image, ImageFile, UnidentifiedImageError
+from PIL import Image, ImageFile, ImageOps, UnidentifiedImageError
 
 from app.core.config import settings
 
@@ -16,6 +16,7 @@ def load_image_rgb(image_input: Union[str, Path, Image.Image]) -> Image.Image:
     """
     Lädt ein Bild sicher und konvertiert es robust in den RGB-Farbraum.
     Unterstützt Pfade (TIFF, JPEG, PNG, etc.) und PIL Image-Objekte.
+    Entzerrt die EXIF-Orientierung, damit Pixelkoordinaten mit der Browser-Darstellung übereinstimmen.
     Fängt CMYK, Transparenzen und Graustufen ab.
     """
     try:
@@ -29,6 +30,8 @@ def load_image_rgb(image_input: Union[str, Path, Image.Image]) -> Image.Image:
         else:
             raise TypeError(f"Nicht unterstützter Bildtyp: {type(image_input)}")
 
+        # EXIF-Orientierung (Drehung/Spiegelung) entzerren
+        img = ImageOps.exif_transpose(img)
         img.load()
 
         if img.mode != "RGB":
@@ -111,6 +114,8 @@ class FaceService:
             logger.warning("Bild konnte nicht geladen werden (%s): %s", image_path, e)
             return []
 
+        orig_w, orig_h = img.size
+
         # InsightFace erwartet BGR numpy-Array (OpenCV / numpy)
         rgb_array = np.array(img)
         bgr_array = rgb_array[:, :, ::-1]
@@ -131,9 +136,27 @@ class FaceService:
 
             # bbox als Ganzzahlen [x1, y1, x2, y2]
             bbox_coords = [int(round(coord)) for coord in face.bbox.tolist()]
+            x1, y1, x2, y2 = bbox_coords
+
+            # Normalisierte Prozentwerte für Browser-Overlay berechnen:
+            # bbox_percent = { left: x1/orig_w * 100, top: y1/orig_h * 100, width: (x2-x1)/orig_w * 100, height: (y2-y1)/orig_h * 100 }
+            left_pct = (x1 / orig_w) * 100 if orig_w > 0 else 0.0
+            top_pct = (y1 / orig_h) * 100 if orig_h > 0 else 0.0
+            width_pct = ((x2 - x1) / orig_w) * 100 if orig_w > 0 else 0.0
+            height_pct = ((y2 - y1) / orig_h) * 100 if orig_h > 0 else 0.0
+
+            bbox_percent = {
+                "left": round(left_pct, 4),
+                "top": round(top_pct, 4),
+                "width": round(width_pct, 4),
+                "height": round(height_pct, 4),
+            }
 
             results.append({
                 "bbox": bbox_coords,
+                "bbox_percent": bbox_percent,
+                "orig_width": orig_w,
+                "orig_height": orig_h,
                 "det_score": float(face.det_score) if hasattr(face, "det_score") else 1.0,
                 "embedding": [float(val) for val in emb.tolist()],
             })

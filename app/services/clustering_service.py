@@ -190,10 +190,25 @@ class ClusteringService:
             if label and not clusters_map[cluster_id]["label"]:
                 clusters_map[cluster_id]["label"] = label
 
+            orig_w = payload.get("orig_width")
+            orig_h = payload.get("orig_height")
+            bbox_pct = payload.get("bbox_percent")
+            if not bbox_pct and orig_w and orig_h and bbox and len(bbox) == 4:
+                x1, y1, x2, y2 = bbox
+                bbox_pct = {
+                    "left": round((x1 / orig_w) * 100, 4),
+                    "top": round((y1 / orig_h) * 100, 4),
+                    "width": round(((x2 - x1) / orig_w) * 100, 4),
+                    "height": round(((y2 - y1) / orig_h) * 100, 4),
+                }
+
             face_entry = {
                 "face_id": str(face["id"]),
                 "file_path": file_path,
                 "bbox": bbox,
+                "bbox_percent": bbox_pct,
+                "orig_width": orig_w,
+                "orig_height": orig_h,
                 "det_score": det_score,
             }
 
