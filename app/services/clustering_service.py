@@ -2,7 +2,7 @@ import io
 import base64
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 import numpy as np
 from PIL import Image
 from sklearn.cluster import DBSCAN
@@ -260,16 +260,29 @@ class ClusteringService:
         )
 
         # 2. Zugehörige Bilder in archive_images ermitteln und deren Personen-Liste synchronisieren
-        parent_img_ids = set()
-        for r in records:
-            p = r.payload or {}
-            pid = p.get("parent_image_id")
-            if pid:
-                parent_img_ids.add(pid)
+        parent_img_ids = {
+            r.payload.get("parent_image_id")
+            for r in records
+            if r.payload and r.payload.get("parent_image_id")
+        }
+        self._sync_parent_images_persons(parent_img_ids)
 
+        logger.info(
+            "Cluster '%s' mit Label '%s' versehen (%d Gesichter, %d Bilder aktualisiert).",
+            cluster_id,
+            clean_label,
+            len(point_ids),
+            len(parent_img_ids),
+        )
+        return len(point_ids)
+
+    def _sync_parent_images_persons(self, parent_img_ids: Set[str]) -> None:
+        """
+        Synchronisiert das 'persons'-Feld in archive_images für eine Menge von Elternbildern
+        anhand aller verbleibenden gelabelten Gesichter in archive_faces.
+        """
         for img_id in parent_img_ids:
             try:
-                # Hole alle Gesichter dieses Eltern-Bildes, um die Liste der erkannten Personen zu bilden
                 img_faces, _ = self.qdrant.client.scroll(
                     collection_name=settings.COLLECTION_FACES,
                     scroll_filter=rest_models.Filter(
@@ -297,11 +310,142 @@ class ClusteringService:
             except Exception as e:
                 logger.warning("Konnte Elternbild %s nicht mit Personenliste aktualisieren: %s", img_id, e)
 
-        logger.info(
-            "Cluster '%s' mit Label '%s' versehen (%d Gesichter, %d Bilder aktualisiert).",
-            cluster_id,
-            clean_label,
-            len(point_ids),
-            len(parent_img_ids),
+    def remove_face_from_cluster(self, face_id: str) -> bool:
+        """
+        Entfernt ein Gesicht aus einem Personen-Cluster (Ausschluss / 'Nicht diese Person').
+        Löscht cluster_id und label aus dem Qdrant-Payload und synchronisiert das Elternbild.
+        """
+        records = self.qdrant.client.retrieve(
+            collection_name=settings.COLLECTION_FACES,
+            ids=[face_id],
+            with_payload=True,
+            with_vectors=False,
         )
-        return len(point_ids)
+        if not records:
+            return False
+
+        point = records[0]
+        payload = point.payload or {}
+        parent_img_id = payload.get("parent_image_id")
+        old_cluster = payload.get("cluster_id")
+
+        # Aus Cluster entfernen: cluster_id und label aus dem Payload löschen
+        self.qdrant.client.delete_payload(
+            collection_name=settings.COLLECTION_FACES,
+            keys=["cluster_id", "label"],
+            points=[face_id],
+        )
+
+        if parent_img_id:
+            self._sync_parent_images_persons({parent_img_id})
+
+        logger.info("Gesicht %s aus Cluster '%s' entfernt.", face_id, old_cluster)
+        return True
+
+    def merge_clusters(
+        self,
+        source_cluster_id: str,
+        target_cluster_id: str,
+        target_label: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Führt zwei Personen-Cluster zusammen:
+        - Weist allen Gesichtern von source_cluster_id die target_cluster_id zu.
+        - Bestimmt ein konsolidiertes Label (target_label, Ziel-Label oder Quell-Label).
+        - Aktualisiert das Label für alle Gesichter im zusammengeführten Ziel-Cluster.
+        - Synchronisiert die Personen-Metadaten aller betroffenen Elternbilder in archive_images.
+        """
+        if source_cluster_id == target_cluster_id:
+            return {"status": "error", "message": "Quell- und Zielcluster dürfen nicht identisch sein.", "merged_count": 0}
+
+        # Alle Gesichter des Quell-Clusters laden
+        source_records, _ = self.qdrant.client.scroll(
+            collection_name=settings.COLLECTION_FACES,
+            scroll_filter=rest_models.Filter(
+                must=[rest_models.FieldCondition(key="cluster_id", match=rest_models.MatchValue(value=source_cluster_id))]
+            ),
+            limit=10000,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not source_records:
+            return {"status": "not_found", "merged_count": 0}
+
+        source_point_ids = [r.id for r in source_records]
+
+        # Alle Gesichter des Ziel-Clusters laden
+        target_records, _ = self.qdrant.client.scroll(
+            collection_name=settings.COLLECTION_FACES,
+            scroll_filter=rest_models.Filter(
+                must=[rest_models.FieldCondition(key="cluster_id", match=rest_models.MatchValue(value=target_cluster_id))]
+            ),
+            limit=10000,
+            with_payload=True,
+            with_vectors=False,
+        )
+        target_point_ids = [r.id for r in target_records]
+
+        # Konsolidiertes Label bestimmen
+        final_label = None
+        if target_label and target_label.strip():
+            final_label = target_label.strip()
+        else:
+            # 1. Prüfe ob Ziel-Cluster bereits ein Label hat
+            for r in target_records:
+                l = (r.payload or {}).get("label")
+                if l and l.strip():
+                    final_label = l.strip()
+                    break
+            # 2. Falls nicht, prüfe ob Quell-Cluster ein Label hatte
+            if not final_label:
+                for r in source_records:
+                    l = (r.payload or {}).get("label")
+                    if l and l.strip():
+                        final_label = l.strip()
+                        break
+
+        # Quell-Punkte auf Ziel-Cluster aktualisieren
+        source_payload: Dict[str, Any] = {"cluster_id": target_cluster_id}
+        if final_label:
+            source_payload["label"] = final_label
+        self.qdrant.client.set_payload(
+            collection_name=settings.COLLECTION_FACES,
+            payload=source_payload,
+            points=source_point_ids,
+        )
+
+        # Falls ein final_label vorliegt, auch alle bestehenden Ziel-Punkte aktualisieren
+        if final_label and target_point_ids:
+            self.qdrant.client.set_payload(
+                collection_name=settings.COLLECTION_FACES,
+                payload={"label": final_label},
+                points=target_point_ids,
+            )
+
+        # Alle betroffenen Elternbilder sammeln und synchronisieren
+        affected_parent_ids = set()
+        for r in source_records + target_records:
+            pid = (r.payload or {}).get("parent_image_id")
+            if pid:
+                affected_parent_ids.add(pid)
+
+        self._sync_parent_images_persons(affected_parent_ids)
+
+        logger.info(
+            "Cluster '%s' (%d Gesichter) erfolgreich in '%s' zusammengeführt (Label: '%s', %d Bilder aktualisiert).",
+            source_cluster_id,
+            len(source_point_ids),
+            target_cluster_id,
+            final_label,
+            len(affected_parent_ids),
+        )
+
+        return {
+            "status": "success",
+            "merged_count": len(source_point_ids),
+            "source_cluster_id": source_cluster_id,
+            "target_cluster_id": target_cluster_id,
+            "total_faces": len(source_point_ids) + len(target_point_ids),
+            "label": final_label,
+            "affected_images": len(affected_parent_ids),
+        }

@@ -10,9 +10,9 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   - [ ] **Crop-to-Search (Bildauschnitt-Suche):**
     * Möglichkeit, im Web-Frontend per Maus einen Rahmen um ein Bilddetail zu ziehen (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät oder ein Gemälde im Hintergrund).
     * Backend schneidet den Bildbereich serverseitig zu, berechnet das OpenCLIP-Embedding und sucht visuell ähnliche Details im Gesamtarchiv.
-  - [ ] **Cluster-Merge & -Split (Personen-Kuratierung):**
-    * *Cluster-Merge:* Zwei getrennte Personen-Cluster zusammenführen (z. B. wenn eine historische Persönlichkeit in jungen Jahren und im Seniorenalter aufgrund von Altersveränderungen getrennt gruppiert wurde).
-    * *Cluster-Split / Ausschluss:* Falsch zugeordnete Gesichter mit einem Klick aus einem Cluster entfernen („Nicht diese Person“) und als unzugeordneten Noise-Point markieren.
+  - [x] **Cluster-Merge & -Split (Personen-Kuratierung):**
+    * *Cluster-Merge:* Zwei getrennte Personen-Cluster zusammenführen (`POST /faces/clusters/merge`) inklusive automatischer Konsolidierung des Namens und Resynchronisation der Elternbilder.
+    * *Cluster-Split / Ausschluss:* Falsch zugeordnete Gesichter mit einem Klick („Nicht diese Person“ / `POST /faces/{face_id}/remove-from-cluster`) aus einem Cluster entfernen und als unzugeordneten Punkt markieren.
   - [ ] **Historische Zeitleiste & Facettierung:**
     * Interaktiver Schieberegler nach Entstehungsjahr/Epoche (z. B. *1880–1914*, *1914–1939*, *1945–1970*) unter Nutzung von Qdrant-Bereichsfiltern (`gte`/`lte`).
     * Filter nach bekannten Archivsignaturen, Beständen oder Fotografen/Ateliers.

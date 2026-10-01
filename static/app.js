@@ -527,17 +527,29 @@ function openClusterDetail(cluster) {
           <!-- Bounding Box Overlay will be positioned once image loads -->
         </div>
       </div>
-      <div class="p-3 border-t border-slate-800 flex items-center justify-between text-xs">
-        <div class="truncate max-w-[200px]">
+      <div class="p-3 border-t border-slate-800 flex items-center justify-between text-xs gap-2">
+        <div class="truncate max-w-[170px]">
           <span class="font-medium text-slate-200 truncate block">${escapeHtml(fileName)}</span>
           <span class="text-slate-500 font-mono text-[11px]">Konfidenz: ${(face.det_score * 100).toFixed(1)}%</span>
         </div>
-        <button
-          onclick="openImageModal('${escapeHtml(face.file_path)}', '${escapeHtml(fileName)}')"
-          class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition"
-        >
-          Großansicht
-        </button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button
+            onclick="openImageModal('${escapeHtml(face.file_path)}', '${escapeHtml(fileName)}')"
+            class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition"
+          >
+            Großansicht
+          </button>
+          <button
+            onclick="handleRemoveFaceFromCluster('${escapeHtml(face.face_id)}', this)"
+            title="Gesicht aus diesem Cluster entfernen (Nicht diese Person)"
+            class="px-2 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 hover:border-rose-500/40 rounded-lg text-[11px] font-medium transition flex items-center gap-1"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+            <span class="hidden sm:inline">Entfernen</span>
+          </button>
+        </div>
       </div>
     `;
 
@@ -629,6 +641,144 @@ async function handleClusterLabelSubmit(e) {
     showToast(`Fehler: ${err.message}`, true);
   }
 }
+
+async function handleRemoveFaceFromCluster(faceId, btnElement) {
+  if (!confirm('Möchten Sie dieses Gesicht wirklich aus dem Personen-Cluster entfernen ("Nicht diese Person")?')) {
+    return;
+  }
+
+  btnElement.disabled = true;
+  try {
+    const res = await fetch(`/faces/${encodeURIComponent(faceId)}/remove-from-cluster`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error(`Fehler (${res.status})`);
+
+    const card = btnElement.closest('.bg-slate-900');
+    if (card) {
+      card.style.transition = 'all 0.3s ease';
+      card.style.opacity = '0';
+      card.style.transform = 'scale(0.92)';
+      setTimeout(() => {
+        card.remove();
+        if (activeCluster) {
+          activeCluster.faces = (activeCluster.faces || []).filter(f => f.face_id !== faceId);
+          activeCluster.face_count = activeCluster.faces.length;
+          document.getElementById('cd-stats').textContent = `${activeCluster.face_count} Vorkommen in historischen Scans (Cluster ID: ${activeCluster.cluster_id})`;
+
+          const target = allLoadedClusters.find(c => c.cluster_id === activeCluster.cluster_id);
+          if (target) {
+            target.faces = activeCluster.faces;
+            target.face_count = activeCluster.face_count;
+          }
+          updateClusterCounts();
+
+          if (activeCluster.face_count === 0) {
+            showToast('Cluster enthält keine Gesichter mehr und wurde aufgelöst.');
+            closeClusterDetail();
+          }
+        }
+      }, 300);
+    }
+    showToast('Gesicht erfolgreich aus dem Personen-Cluster entfernt.');
+  } catch (err) {
+    btnElement.disabled = false;
+    showToast(`Fehler beim Entfernen: ${err.message}`, true);
+  }
+}
+
+function openMergeClusterModal() {
+  if (!activeCluster) return;
+
+  const modal = document.getElementById('cluster-merge-modal');
+  const sourceInfo = document.getElementById('merge-source-info');
+  const targetSelect = document.getElementById('merge-target-select');
+
+  const sourceDisplayName = activeCluster.label || `Person ${activeCluster.cluster_id.replace('cluster_', '#')}`;
+  sourceInfo.textContent = `${sourceDisplayName} (${activeCluster.cluster_id}, ${activeCluster.face_count} Gesichter)`;
+
+  // Andere Cluster herausfiltern
+  const otherClusters = allLoadedClusters.filter(c => c.cluster_id !== activeCluster.cluster_id);
+  if (otherClusters.length === 0) {
+    showToast('Keine weiteren Personen-Cluster vorhanden zum Zusammenführen.', true);
+    return;
+  }
+
+  targetSelect.innerHTML = otherClusters.map(c => {
+    const cName = c.label ? `${c.label} (${c.cluster_id})` : `Person ${c.cluster_id.replace('cluster_', '#')}`;
+    return `<option value="${escapeHtml(c.cluster_id)}">${escapeHtml(cName)} — ${c.face_count} Gesichter</option>`;
+  }).join('');
+
+  // Initialen Namen setzen
+  handleMergeTargetChange();
+
+  modal.classList.remove('hidden');
+}
+
+function handleMergeTargetChange() {
+  const targetSelect = document.getElementById('merge-target-select');
+  const nameInput = document.getElementById('merge-target-name-input');
+  const selectedTargetId = targetSelect.value;
+  const targetCluster = allLoadedClusters.find(c => c.cluster_id === selectedTargetId);
+
+  // Bevorzuge Ziel-Label, sonst Quell-Label
+  const suggestedLabel = (targetCluster && targetCluster.label) || (activeCluster && activeCluster.label) || '';
+  nameInput.value = suggestedLabel;
+}
+
+function closeMergeClusterModal() {
+  const modal = document.getElementById('cluster-merge-modal');
+  modal.classList.add('hidden');
+}
+
+async function executeClusterMerge() {
+  if (!activeCluster) return;
+
+  const targetSelect = document.getElementById('merge-target-select');
+  const nameInput = document.getElementById('merge-target-name-input');
+  const confirmBtn = document.getElementById('confirm-merge-btn');
+
+  const targetClusterId = targetSelect.value;
+  const targetLabel = nameInput.value.trim();
+
+  if (!targetClusterId) {
+    showToast('Bitte wählen Sie ein Ziel-Cluster aus.', true);
+    return;
+  }
+
+  confirmBtn.disabled = true;
+  confirmBtn.classList.add('opacity-50');
+
+  try {
+    const res = await fetch('/faces/clusters/merge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_cluster_id: activeCluster.cluster_id,
+        target_cluster_id: targetClusterId,
+        target_label: targetLabel || null,
+      }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `Serverfehler (${res.status})`);
+    }
+
+    const data = await res.json();
+    closeMergeClusterModal();
+    showToast(`Cluster erfolgreich zusammengeführt! Insgesamt ${data.total_faces} Gesichter nun unter "${data.label || data.target_cluster_id}".`);
+
+    // Cluster neu laden und zur Übersicht zurückkehren
+    closeClusterDetail();
+  } catch (err) {
+    showToast(`Fehler beim Zusammenführen: ${err.message}`, true);
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.classList.remove('opacity-50');
+  }
+}
+
 
 async function triggerClustering() {
   const btn = document.getElementById('run-clustering-btn');

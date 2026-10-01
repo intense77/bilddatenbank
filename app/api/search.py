@@ -62,6 +62,12 @@ class ClusterLabelRequest(BaseModel):
     label: str = Field(..., min_length=1, description="Klarname der Person, z. B. 'Bischof Müller'", example="Bischof Müller")
 
 
+class ClusterMergeRequest(BaseModel):
+    source_cluster_id: str = Field(..., description="ID des Quell-Clusters, das aufgelöst wird", example="cluster_1")
+    target_cluster_id: str = Field(..., description="ID des Ziel-Clusters, in das integriert wird", example="cluster_0")
+    target_label: Optional[str] = Field(None, description="Optionaler gemeinsamer Name für das zusammengeführte Cluster", example="Bischof Ulrich")
+
+
 class ClusterFaceItem(BaseModel):
     face_id: str
     file_path: Optional[str] = None
@@ -395,6 +401,62 @@ def label_cluster(
         "cluster_id": cluster_id,
         "label": final_label.strip(),
         "updated_faces": updated_count,
+    }
+
+
+@router.post("/faces/clusters/merge")
+def merge_clusters(
+    request: ClusterMergeRequest,
+    clustering_service: ClusteringService = Depends(get_clustering_service),
+):
+    """
+    Führt zwei Personen-Cluster zusammen (z. B. bei Altersunterschieden oder veränderten Lichtverhältnissen).
+    Alle Gesichter des Quell-Clusters werden in das Ziel-Cluster integriert.
+    """
+    if not settings.ENABLE_FACE_RECOGNITION:
+        raise HTTPException(
+            status_code=403,
+            detail="Biometrische Gesichtserkennung ist in der Systemkonfiguration deaktiviert (ENABLE_FACE_RECOGNITION=false)."
+        )
+
+    if request.source_cluster_id == request.target_cluster_id:
+        raise HTTPException(status_code=400, detail="Quell- und Ziel-Cluster dürfen nicht identisch sein.")
+
+    result = clustering_service.merge_clusters(
+        source_cluster_id=request.source_cluster_id,
+        target_cluster_id=request.target_cluster_id,
+        target_label=request.target_label,
+    )
+
+    if result.get("status") == "not_found" or result.get("merged_count", 0) == 0:
+        raise HTTPException(status_code=404, detail=f"Keine Gesichter im Quell-Cluster '{request.source_cluster_id}' gefunden.")
+
+    return result
+
+
+@router.post("/faces/{face_id}/remove-from-cluster")
+def remove_face_from_cluster(
+    face_id: str,
+    clustering_service: ClusteringService = Depends(get_clustering_service),
+):
+    """
+    Entfernt ein fälschlicherweise zugeordnetes Gesicht aus seinem Cluster ('Nicht diese Person').
+    Setzt cluster_id und label auf None und bereinigt die Personen-Liste des Elternbildes.
+    """
+    if not settings.ENABLE_FACE_RECOGNITION:
+        raise HTTPException(
+            status_code=403,
+            detail="Biometrische Gesichtserkennung ist in der Systemkonfiguration deaktiviert (ENABLE_FACE_RECOGNITION=false)."
+        )
+
+    success = clustering_service.remove_face_from_cluster(face_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Gesichtspunkt '{face_id}' nicht gefunden.")
+
+    return {
+        "status": "success",
+        "face_id": face_id,
+        "message": "Gesicht erfolgreich aus Cluster entfernt.",
     }
 
 
