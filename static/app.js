@@ -570,15 +570,27 @@ function openClusterDetail(cluster) {
         top = face.bbox_percent.top;
         width = face.bbox_percent.width;
         height = face.bbox_percent.height;
-      } else if (face.bbox && face.bbox.length === 4) {
-        const origW = face.orig_width || imgElem.naturalWidth;
-        const origH = face.orig_height || imgElem.naturalHeight;
-        if (!origW || !origH) return;
+      } else if (face.orig_width && face.orig_height && face.bbox && face.bbox.length === 4) {
         const [x1, y1, x2, y2] = face.bbox;
-        left = (x1 / origW) * 100;
-        top = (y1 / origH) * 100;
-        width = ((x2 - x1) / origW) * 100;
-        height = ((y2 - y1) / origH) * 100;
+        left = (x1 / face.orig_width) * 100;
+        top = (y1 / face.orig_height) * 100;
+        width = ((x2 - x1) / face.orig_width) * 100;
+        height = ((y2 - y1) / face.orig_height) * 100;
+      } else if (face.file_path) {
+        // Robuster Fallback: Bild-Details abrufen, um exakte Prozent-Koordinaten zu erhalten
+        fetch(`/images/details?path=${encodeURIComponent(face.file_path)}`)
+          .then(r => r.json())
+          .then(d => {
+            if (d.faces && d.faces.length > 0) {
+              const matched = d.faces.find(f => f.face_id === face.face_id) || d.faces[0];
+              if (matched && matched.bbox_percent) {
+                face.bbox_percent = matched.bbox_percent;
+                renderBox();
+              }
+            }
+          })
+          .catch(() => {});
+        return;
       } else {
         return;
       }

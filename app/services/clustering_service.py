@@ -166,6 +166,8 @@ class ClusteringService:
         faces = self.fetch_all_faces(with_vectors=False)
         clusters_map: Dict[str, Dict[str, Any]] = {}
 
+        dimensions_cache: Dict[str, Tuple[int, int]] = {}
+
         for face in faces:
             payload = face["payload"]
             cluster_id = payload.get("cluster_id")
