@@ -587,6 +587,7 @@ function openClusterDetail(cluster) {
       box.className = 'face-bbox active';
       box.style.position = 'absolute';
       box.style.border = '2px solid #f59e0b';
+      box.style.zIndex = '15';
       box.style.pointerEvents = 'none';
       box.style.left = `${left}%`;
       box.style.top = `${top}%`;
@@ -602,7 +603,9 @@ function openClusterDetail(cluster) {
     }
 
     renderBox();
-    imgElem.addEventListener('load', renderBox);
+    if (!imgElem.complete) {
+      imgElem.addEventListener('load', renderBox, { once: true });
+    }
 
     // Klick auf das Bild öffnet das große Modal
     wrapElem.addEventListener('click', () => openImageModal(face.file_path, fileName));
@@ -973,6 +976,7 @@ async function openImageModal(filePath, fileName) {
         box.className = 'face-bbox';
         box.style.position = 'absolute';
         box.style.border = '2px solid #38bdf8';
+        box.style.zIndex = '15';
         box.style.pointerEvents = 'none';
         box.style.left = `${left}%`;
         box.style.top = `${top}%`;
@@ -989,7 +993,9 @@ async function openImageModal(filePath, fileName) {
     }
 
     drawModalBoxes();
-    img.addEventListener('load', drawModalBoxes);
+    if (!img.complete) {
+      img.addEventListener('load', drawModalBoxes, { once: true });
+    }
 
   } catch (err) {
     facesList.innerHTML = '<span class="text-rose-400">Details nicht geladen</span>';
