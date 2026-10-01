@@ -13,6 +13,11 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
   * Konsolidierte Extraktion aus EXIF/TIFF-Headern, IPTC Core, XMP (Dublin Core) und JSON-Begleitdateien (`datei.json` / `datei.ext.json`).
   * Indexierung standardisierter Kernfelder: Titel/Objektbezeichnung, Datierung, Urheber/Fotograf, Archivsignatur/Inventarnummer, Beschreibung, Rechte/Lizenz und Schlagwörter.
   * Anklickbare Schlagwort-Filterchips in der Web-Oberfläche für explorative Recherche.
+* **Personen-Kuratierung & Hybride Freitextsuche:**
+  * Automatisches DBSCAN-Personen-Clustering mit Klarnamenzuweisung (*„Bischof Ulrich“*).
+  * Integrierte Kuratierungs-Werkzeuge: **Cluster-Merge** zum Zusammenführen getrennter Bestände und **Cluster-Split / Ausschluss** (*„Nicht diese Person“*) zum Entfernen falsch zugeordneter Porträts.
+  * Hybride Relevanz-Verschmelzung: Benannte Personen werden in der normalen Freitextsuche automatisch erkannt und mit 100 % Relevanz und Personen-Badge ganz oben platziert.
+  * Vollautomatische EXIF-Orientierungs-Entzerrung (`PIL.ImageOps.exif_transpose`) und normalisierte Prozent-Bounding-Boxes für fehlerfreies Rendering in allen Browsern.
 * **Ressourcen- & Speicheroptimierung:**
   * Automatischer Thumbnail- und Bildausschnitt-Cache (`.cache/thumbnails/`) mit MD5-Invalidierung zur schnellen Anzeige historischer Großformate und TIFF-Dateien.
   * Optimierte Vektorsuche und speicherschonendes Clustering.
@@ -134,6 +139,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 | `GET` / `POST` | `/search/faces/by-image` | Porträt- und Gesichtssuche anhand eines Bild-Uploads oder Bildpfads. |
 | `GET` | `/faces/clusters` | Abruf aller erkannten Personen-Cluster inkl. Vorschaubildern. |
 | `POST` | `/faces/clusters/{id}/label` | Zuweisung eines Klarnamens zu einem Personen-Cluster. |
+| `POST` | `/faces/clusters/merge` | Führt zwei Personen-Cluster zusammen (mit Namens-Konsolidierung). |
+| `POST` | `/faces/{face_id}/remove-from-cluster` | Entfernt ein Gesicht aus einem Cluster („Nicht diese Person“). |
 | `POST` | `/faces/clusters/run` | Ausführung des DBSCAN-Clusterings über alle erkannten Gesichter. |
 | `GET` | `/images/details` | Abruf von Metadaten, Abmessungen und Gesichts-Bounding-Boxes zu einem Bild. |
 | `GET` | `/images/serve` | Sichere Auslieferung von Archivbildern mit Konvertierung und Thumbnail-Cache. |

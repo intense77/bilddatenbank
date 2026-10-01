@@ -68,12 +68,15 @@ Gesichts-Embeddings (ArcFace 512-dim) stellen nach § 4 Nr. 14 KDG (bzw. Art. 4 
 Sollten auf Fotografien lebende Personen abgebildet sein, stehen diesen die gesetzlichen Betroffenenrechte zu:
 
 1. **Recht auf Auskunft (§ 17 KDG):** Auskunft darüber, ob und welche Bildmerkmale verarbeitet werden.
-2. **Recht auf Löschung („Recht auf Vergessenwerden“, § 19 KDG / Art. 17 DSGVO):**
+2. **Recht auf Berichtigung (§ 18 KDG / Art. 16 DSGVO):**
+   * **Manuelle Kuratierung:** Fehlerhafte automatische Personen-Zuweisungen können durch Archivare umgehend korrigiert werden. Über den Ausschluss-Button (*„Nicht diese Person“*, `POST /faces/{face_id}/remove-from-cluster`) wird ein Gesicht mit einem Klick aus einem Personen-Cluster gelöst.
+   * **Namens-Konsolidierung:** Getrennte Cluster können per Cluster-Merge (`POST /faces/clusters/merge`) verschmolzen werden; alle Metadaten betroffener Archivbilder werden in Qdrant vollautomatisch synchronisiert.
+3. **Recht auf Löschung („Recht auf Vergessenwerden“, § 19 KDG / Art. 17 DSGVO):**
    * **Punktgenaue API-Löschung:** Über den Endpunkt `DELETE /images/record?path=...` können einzelne Bildvektoren und alle damit verknüpften Gesichtsvektoren sofort und unwiderruflich aus Qdrant entfernt werden.
    * **Automatisches Pruning:** Wird ein Bild aus dem Dateisystem entfernt, bereinigt der Befehl `indexer.py --prune` oder der Endpunkt `POST /api/system/prune` alle verwaisten Vektoreinträge aus der Datenbank.
-3. **Recht auf Einschränkung der Verarbeitung (§ 20 KDG):**
+4. **Recht auf Einschränkung der Verarbeitung (§ 20 KDG):**
    * Gezielter Ausschluss bestimmter Sammlungen oder Ordner von der Gesichtserkennung über `--skip-faces`.
-4. **Widerspruchsrecht (§ 23 KDG):**
+5. **Widerspruchsrecht (§ 23 KDG):**
    * Betroffene können der Verwendung ihrer Abbildung widersprechen. Das Archiv prüft den Ausgleich zwischen Schutzinteressen der Person und dem kirchlichen Dokumentationsauftrag.
 
 ---

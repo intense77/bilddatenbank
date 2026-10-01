@@ -206,6 +206,11 @@
 <li>Konsolidierte Extraktion aus EXIF/TIFF-Headern, IPTC Core, XMP (Dublin Core) und JSON-Begleitdateien (<code>datei.json</code> / <code>datei.ext.json</code>).</li>
 <li>Indexierung standardisierter Kernfelder: Titel/Objektbezeichnung, Datierung, Urheber/Fotograf, Archivsignatur/Inventarnummer, Beschreibung, Rechte/Lizenz und Schlagwörter.</li>
 <li>Anklickbare Schlagwort-Filterchips in der Web-Oberfläche für explorative Recherche.</li>
+<li><strong>Personen-Kuratierung &amp; Hybride Freitextsuche:</strong></li>
+<li>Automatisches DBSCAN-Personen-Clustering mit Klarnamenzuweisung (<em>„Bischof Ulrich“</em>).</li>
+<li>Integrierte Kuratierungs-Werkzeuge: <strong>Cluster-Merge</strong> zum Zusammenführen getrennter Bestände und <strong>Cluster-Split / Ausschluss</strong> (<em>„Nicht diese Person“</em>) zum Entfernen falsch zugeordneter Porträts.</li>
+<li>Hybride Relevanz-Verschmelzung: Benannte Personen werden in der normalen Freitextsuche automatisch erkannt und mit 100 % Relevanz und Personen-Badge ganz oben platziert.</li>
+<li>Vollautomatische EXIF-Orientierungs-Entzerrung (<code>PIL.ImageOps.exif_transpose</code>) und normalisierte Prozent-Bounding-Boxes für fehlerfreies Rendering in allen Browsern.</li>
 <li><strong>Ressourcen- &amp; Speicheroptimierung:</strong></li>
 <li>Automatischer Thumbnail- und Bildausschnitt-Cache (<code>.cache/thumbnails/</code>) mit MD5-Invalidierung zur schnellen Anzeige historischer Großformate und TIFF-Dateien.</li>
 <li>Optimierte Vektorsuche und speicherschonendes Clustering.</li>
@@ -339,6 +344,16 @@ python indexer.py --source-dir /pfad/zu/den/bildern --dry-run
 </tr>
 <tr>
 <td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/faces/clusters/merge</code></td>
+<td style="text-align: left;">Führt zwei Personen-Cluster zusammen (mit Namens-Konsolidierung).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
+<td style="text-align: left;"><code>/faces/{face_id}/remove-from-cluster</code></td>
+<td style="text-align: left;">Entfernt ein Gesicht aus einem Cluster („Nicht diese Person“).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST</code></td>
 <td style="text-align: left;"><code>/faces/clusters/run</code></td>
 <td style="text-align: left;">Ausführung des DBSCAN-Clusterings über alle erkannten Gesichter.</td>
 </tr>
@@ -386,10 +401,10 @@ python indexer.py --source-dir /pfad/zu/den/bildern --dry-run
 </table>
 <hr />
 <h2 id="dokumentation-weitergabe">📄 Dokumentation &amp; Weitergabe</h2>
-<p>Zusätzlich zu dieser Datei stehen für die Weitergabe an Archivpersonal, Museumsleitung und Datenschutzbeauftragte eigenständige Dokumente bereit:<br />
-* <strong><a href="file:///home/norbert/Bilderdatenbank/anleitung.html">anleitung.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/anleitung.md">anleitung.md</a></strong>: Ausführliche Anleitung für Archivare und Kuratoren.<br />
-* <strong><a href="file:///home/norbert/Bilderdatenbank/datenschutz.html">datenschutz.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/datenschutz.md">datenschutz.md</a></strong>: Datenschutzkonzept, TOMs und Rechtsgrundlagen (Art. 6, 9, 17, 89 DSGVO).<br />
-* <strong><a href="file:///home/norbert/Bilderdatenbank/lizenzen.html">lizenzen.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/lizenzen.md">lizenzen.md</a></strong>: Lizenzen der verwendeten Open-Source-Bibliotheken und KI-Modelle.<br />
+<p>Zusätzlich zu dieser Datei stehen für die Weitergabe an Archivpersonal, Museumsleitung und Datenschutzbeauftragte eigenständige Dokumente bereit:
+* <strong><a href="file:///home/norbert/Bilderdatenbank/anleitung.html">anleitung.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/anleitung.md">anleitung.md</a></strong>: Ausführliche Anleitung für Archivare und Kuratoren.
+* <strong><a href="file:///home/norbert/Bilderdatenbank/datenschutz.html">datenschutz.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/datenschutz.md">datenschutz.md</a></strong>: Datenschutzkonzept, TOMs und Rechtsgrundlagen (Art. 6, 9, 17, 89 DSGVO).
+* <strong><a href="file:///home/norbert/Bilderdatenbank/lizenzen.html">lizenzen.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/lizenzen.md">lizenzen.md</a></strong>: Lizenzen der verwendeten Open-Source-Bibliotheken und KI-Modelle.
 * <strong><a href="file:///home/norbert/Bilderdatenbank/todo.html">todo.html</a></strong> / <strong><a href="file:///home/norbert/Bilderdatenbank/todo.md">todo.md</a></strong>: Zukünftige Entwicklungsziele (DBSCAN $O(N \log N)$ Optimierung, Provenienz-Historie, LIDO/Dublin Core Export).</p>
     </article>
     <footer>

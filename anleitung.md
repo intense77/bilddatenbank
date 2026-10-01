@@ -145,20 +145,30 @@ Legen Sie im gleichen Verzeichnis wie das Bild eine Begleitdatei ab:
 Nach dem Start erreichen Sie die Oberfläche unter **[http://localhost:8000/](http://localhost:8000/)**.
 
 ### Tab 1: Freitext-Suche
-1. **Suchleiste:** Geben Sie ein Motiv, ein Thema oder eine Epoche ein (z. B. *„gotischer Altar“*, *„Marktplatz 1910“*, *„Soldaten im Feld“*).
-2. **Relevanz-Filter (Schwellenwert):**
+1. **Suchleiste:** Geben Sie ein Motiv, ein Thema, eine Epoche oder einen Personennamen ein (z. B. *„gotischer Altar“*, *„Marktplatz 1910“*, *„Soldaten im Feld“* oder *„Bischof Ulrich“*).
+2. **Hybride Personensuche:** Sobald Sie nach dem Namen einer erfassten Person suchen, erkennt das System dies automatisch. Treffer, auf denen diese Person zu sehen ist, werden mit **100 % Relevanz** ganz oben platziert und mit einem Personen-Badge (z. B. `👤 Bischof Ulrich`) optisch hervorgehoben.
+3. **Relevanz-Filter (Schwellenwert):**
    * *Standard (ab 23 %)*: Filtert unpassende Zufallstreffer aus (empfohlen).
    * *Streng (ab 25 %)*: Zeigt nur sehr eindeutige Treffer.
    * *Locker (ab 20 %)*: Zeigt auch Bilder mit entfernter thematischer Ähnlichkeit.
    * *Alle Treffer*: Zeigt stets die nächsten mathematischen Nachbarn.
-3. **Ergebnis-Karten:** Jedes Bild zeigt den berechneten Score (z. B. `78% Score`), den archivalischen Titel, den Dateinamen sowie Tags für Datierung und Signatur.
+4. **Ergebnis-Karten:** Jedes Bild zeigt den berechneten Score (z. B. `78% Score`), den archivalischen Titel, den Dateinamen, Tags für Datierung/Signatur sowie erkannte Personen.
 
 ### Tab 2: Personen & Cluster
-*(Nur aktiv, wenn `ENABLE_FACE_RECOGNITION=true` gesetzt ist)*
-1. **Cluster-Übersicht:** Zeigt runde Porträtausschnitte aller Gesichter, die die KI als dieselbe Person identifiziert hat.
-2. **Cluster ansehen:** Klick auf eine Person öffnet die Detailansicht mit allen Archivbildern, auf denen die Person vorkommt. Das Gesicht wird auf dem Bild mit einer Markierungsbox hervorgehoben.
-3. **Klarname zuweisen:** Tragen Sie den Personennamen ein (z. B. *„Bischof Müller“*) und klicken Sie auf **Speichern**. Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen.
-4. **Cluster neu berechnen:** Ein Klick auf *„Cluster neu berechnen“* führt das DBSCAN-Clustering erneut aus.
+*(Nur aktiv, wenn `ENABLE_FACE_RECOGNITION=true` bzw. der Gesichtserkennungs-Schalter aktiv ist)*
+1. **Echtzeit-Suchfeld & Schnellfilter:**
+   * **Suchleiste:** Filtern Sie die Personenliste in Echtzeit nach Namen oder Cluster-ID.
+   * **Filterchips:** Wechseln Sie mit einem Klick zwischen *„Alle“*, *„Benannt“* (nur Personen mit vergebenem Klarnamen) und *„Unbenannt“* (offene Personen-Cluster zur Erschließung).
+2. **Cluster-Übersicht:** Zeigt runde Porträtausschnitte aller Gesichter, die die KI als dieselbe Person identifiziert hat, inklusive Anzahl der Vorkommen im Archiv.
+3. **Cluster ansehen:** Klick auf eine Person öffnet die Detailansicht mit allen Archivbildern, auf denen die Person vorkommt. Das Gesicht wird auf jedem Scan präzise mit einer goldenen Bounding Box umrahmt (inkl. automatischer EXIF-Entzerrung bei hochformatigen oder gedrehten Scans).
+4. **Klarname zuweisen:** Tragen Sie den Personennamen ein (z. B. *„Bischof Ulrich“*) und klicken Sie auf **Speichern**. Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen und automatisch für die Freitextsuche in den Bildmetadaten synchronisiert.
+5. **Cluster zusammenführen (Merge):**
+   * Mit dem Button **„Zusammenführen…“** können Sie zwei getrennte Cluster vereinen (z. B. wenn eine Persönlichkeit in jungen Jahren und im Seniorenalter aufgrund veränderter Gesichtszüge getrennt gruppiert wurde).
+   * Wählen Sie das Ziel-Cluster aus und vergeben Sie den gemeinsamen Klarnamen. Alle Gesichter und Elternbilder werden sofort konsolidiert.
+6. **Falsch zugeordnete Gesichter ausschließen (Split / „Nicht diese Person“):**
+   * Auf jeder Bildkarte in der Cluster-Detailansicht befindet sich der Button **„Entfernen“** (*„Nicht diese Person“*).
+   * Entfernt ein versehentlich zugeordnetes Porträt aus dem Cluster und aktualisiert das Elternbild, ohne die übrigen Gesichter zu verändern.
+7. **Cluster neu berechnen:** Ein Klick auf *„Cluster neu berechnen“* führt das DBSCAN-Clustering über alle archivierten Gesichter erneut aus.
 
 ### Tab 3: Bestände & Upload
 Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:
