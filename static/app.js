@@ -269,8 +269,13 @@ function renderSearchResults(items, container) {
     const displayTitle = item.title || item.file_name;
     const subTitle = item.title ? item.file_name : (item.creator || '');
 
-    // Metadata Badges (Datierung, Signatur)
+    // Metadata Badges (Personen, Datierung, Signatur)
     let metaBadgesHtml = '';
+    if (item.persons && item.persons.length > 0) {
+      item.persons.forEach(p => {
+        metaBadgesHtml += `<span class="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-medium text-[10px] flex items-center gap-1">👤 ${escapeHtml(p)}</span>`;
+      });
+    }
     if (item.date) {
       metaBadgesHtml += `<span class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-400/90 font-mono text-[10px]">${escapeHtml(item.date)}</span>`;
     }
@@ -313,6 +318,139 @@ function renderSearchResults(items, container) {
 
 // --- 2. Personen & Cluster ---
 
+let allLoadedClusters = [];
+let clusterSearchQuery = '';
+let clusterCategoryFilter = 'all'; // 'all' | 'named' | 'unnamed'
+
+function handleClusterSearchInput(val) {
+  clusterSearchQuery = (val || '').trim();
+  const clearBtn = document.getElementById('clusters-search-clear');
+  if (clearBtn) {
+    if (clusterSearchQuery) {
+      clearBtn.classList.remove('hidden');
+    } else {
+      clearBtn.classList.add('hidden');
+    }
+  }
+  applyClusterFilters();
+}
+
+function clearClusterFilter() {
+  clusterSearchQuery = '';
+  const input = document.getElementById('clusters-search-input');
+  if (input) input.value = '';
+  const clearBtn = document.getElementById('clusters-search-clear');
+  if (clearBtn) clearBtn.classList.add('hidden');
+  applyClusterFilters();
+}
+
+function setClusterCategoryFilter(category) {
+  clusterCategoryFilter = category;
+
+  ['all', 'named', 'unnamed'].forEach(cat => {
+    const btn = document.getElementById(`cluster-filter-btn-${cat}`);
+    if (!btn) return;
+    if (cat === category) {
+      btn.className = 'px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-medium transition';
+    } else {
+      btn.className = 'px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 font-medium transition';
+    }
+  });
+
+  applyClusterFilters();
+}
+
+function updateClusterCounts() {
+  const allCount = allLoadedClusters.length;
+  const namedCount = allLoadedClusters.filter(c => c.label && c.label.trim().length > 0).length;
+  const unnamedCount = allCount - namedCount;
+
+  const countAll = document.getElementById('count-all-clusters');
+  const countNamed = document.getElementById('count-named-clusters');
+  const countUnnamed = document.getElementById('count-unnamed-clusters');
+
+  if (countAll) countAll.textContent = allCount;
+  if (countNamed) countNamed.textContent = namedCount;
+  if (countUnnamed) countUnnamed.textContent = unnamedCount;
+}
+
+function applyClusterFilters() {
+  const grid = document.getElementById('clusters-grid');
+  const empty = document.getElementById('clusters-empty');
+  if (!grid || !empty) return;
+
+  updateClusterCounts();
+
+  let filtered = allLoadedClusters;
+
+  if (clusterCategoryFilter === 'named') {
+    filtered = filtered.filter(c => c.label && c.label.trim().length > 0);
+  } else if (clusterCategoryFilter === 'unnamed') {
+    filtered = filtered.filter(c => !c.label || c.label.trim().length === 0);
+  }
+
+  if (clusterSearchQuery) {
+    const qLower = clusterSearchQuery.toLowerCase();
+    filtered = filtered.filter(c => {
+      const labelMatch = c.label && c.label.toLowerCase().includes(qLower);
+      const idMatch = c.cluster_id && (c.cluster_id.toLowerCase().includes(qLower) || c.cluster_id.replace('cluster_', '#').includes(qLower));
+      return labelMatch || idMatch;
+    });
+  }
+
+  grid.innerHTML = '';
+
+  if (filtered.length === 0) {
+    empty.classList.remove('hidden');
+    if (clusterSearchQuery || clusterCategoryFilter !== 'all') {
+      empty.innerHTML = `
+        <div class="py-12 text-center space-y-3">
+          <p class="text-sm font-medium text-slate-300">Keine Personen-Cluster gefunden für diesen Filter</p>
+          <p class="text-xs text-slate-500 font-mono">Suchfilter: "${escapeHtml(clusterSearchQuery || clusterCategoryFilter)}"</p>
+          <button onclick="clearClusterFilter(); setClusterCategoryFilter('all')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-amber-400 font-medium transition">
+            Filter zurücksetzen
+          </button>
+        </div>
+      `;
+    } else {
+      empty.innerHTML = `
+        <p class="text-base text-slate-400 font-medium">Keine Personen-Cluster vorhanden</p>
+        <p class="text-xs text-slate-500 mt-1">Indexieren Sie Bilder mit Gesichtern und starten Sie die Cluster-Berechnung.</p>
+      `;
+    }
+    return;
+  }
+
+  empty.classList.add('hidden');
+
+  filtered.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'group bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-xl overflow-hidden p-4 shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col items-center text-center';
+
+    const displayName = c.label || `Person ${c.cluster_id.replace('cluster_', '#')}`;
+    const avatarSrc = c.preview_image || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="%231e293b"><circle cx="50" cy="50" r="40" fill="%23334155"/></svg>';
+
+    card.innerHTML = `
+      <div class="w-20 h-20 rounded-full overflow-hidden bg-slate-950 border-2 border-slate-700 group-hover:border-amber-400 transition-colors shadow-inner flex items-center justify-center mb-3">
+        <img src="${avatarSrc}" alt="Avatar" class="w-full h-full object-cover">
+      </div>
+      <h4 class="text-sm font-semibold text-slate-100 group-hover:text-amber-400 transition truncate w-full" title="${escapeHtml(displayName)}">
+        ${escapeHtml(displayName)}
+      </h4>
+      <span class="mt-1 text-xs text-slate-400 font-mono">
+        ${c.face_count} ${c.face_count === 1 ? 'Porträt' : 'Porträts'}
+      </span>
+      ${c.label ? `<span class="mt-1.5 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium truncate max-w-full">✓ Benannt</span>` : `<span class="mt-1.5 px-2 py-0.5 rounded bg-slate-800 text-slate-500 text-[10px] font-medium">Unbenannt</span>`}
+      <span class="mt-3 text-[11px] text-amber-500/90 font-medium group-hover:underline">
+        Archivbilder ansehen →
+      </span>
+    `;
+
+    card.addEventListener('click', () => openClusterDetail(c));
+    grid.appendChild(card);
+  });
+}
+
 async function loadClusters() {
   const spinner = document.getElementById('clusters-spinner');
   const grid = document.getElementById('clusters-grid');
@@ -339,37 +477,8 @@ async function loadClusters() {
     const clusters = await res.json();
 
     spinner.classList.add('hidden');
-
-    if (clusters.length === 0) {
-      empty.classList.remove('hidden');
-      return;
-    }
-
-    clusters.forEach(c => {
-      const card = document.createElement('div');
-      card.className = 'group bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-xl overflow-hidden p-4 shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col items-center text-center';
-
-      const displayName = c.label || `Person ${c.cluster_id.replace('cluster_', '#')}`;
-      const avatarSrc = c.preview_image || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="%231e293b"><circle cx="50" cy="50" r="40" fill="%23334155"/></svg>';
-
-      card.innerHTML = `
-        <div class="w-20 h-20 rounded-full overflow-hidden bg-slate-950 border-2 border-slate-700 group-hover:border-amber-400 transition-colors shadow-inner flex items-center justify-center mb-3">
-          <img src="${avatarSrc}" alt="Avatar" class="w-full h-full object-cover">
-        </div>
-        <h4 class="text-sm font-semibold text-slate-100 group-hover:text-amber-400 transition truncate w-full" title="${escapeHtml(displayName)}">
-          ${escapeHtml(displayName)}
-        </h4>
-        <span class="mt-1 text-xs text-slate-400 font-mono">
-          ${c.face_count} ${c.face_count === 1 ? 'Porträt' : 'Porträts'}
-        </span>
-        <span class="mt-3 text-[11px] text-amber-500/90 font-medium group-hover:underline">
-          Archivbilder ansehen →
-        </span>
-      `;
-
-      card.addEventListener('click', () => openClusterDetail(c));
-      grid.appendChild(card);
-    });
+    allLoadedClusters = clusters;
+    applyClusterFilters();
 
   } catch (err) {
     spinner.classList.add('hidden');
@@ -511,6 +620,9 @@ async function handleClusterLabelSubmit(e) {
     const data = await res.json();
 
     activeCluster.label = label;
+    const target = allLoadedClusters.find(c => c.cluster_id === activeCluster.cluster_id);
+    if (target) target.label = label;
+    updateClusterCounts();
     document.getElementById('cd-title').textContent = label;
     showToast(`Name "${label}" für ${data.updated_faces} Gesichter gespeichert!`);
   } catch (err) {

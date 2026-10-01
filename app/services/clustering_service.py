@@ -228,8 +228,10 @@ class ClusteringService:
     def label_cluster(self, cluster_id: str, label: str) -> int:
         """
         Weist allen Gesichtern eines Personen-Clusters einen Klarnamen zu.
-        Aktualisiert den Payload in Qdrant.
+        Aktualisiert den Payload in Qdrant (sowohl in archive_faces als auch in archive_images).
         """
+        clean_label = label.strip()
+
         # Suche alle Punkte des Clusters
         records, _ = self.qdrant.client.scroll(
             collection_name=settings.COLLECTION_FACES,
@@ -242,7 +244,7 @@ class ClusteringService:
                 ]
             ),
             limit=10000,
-            with_payload=False,
+            with_payload=True,
             with_vectors=False,
         )
 
@@ -250,10 +252,56 @@ class ClusteringService:
         if not point_ids:
             return 0
 
+        # 1. Label in archive_faces aktualisieren
         self.qdrant.client.set_payload(
             collection_name=settings.COLLECTION_FACES,
-            payload={"label": label.strip()},
+            payload={"label": clean_label},
             points=point_ids,
         )
-        logger.info("Cluster '%s' mit Label '%s' versehen (%d Gesichter).", cluster_id, label, len(point_ids))
+
+        # 2. Zugehörige Bilder in archive_images ermitteln und deren Personen-Liste synchronisieren
+        parent_img_ids = set()
+        for r in records:
+            p = r.payload or {}
+            pid = p.get("parent_image_id")
+            if pid:
+                parent_img_ids.add(pid)
+
+        for img_id in parent_img_ids:
+            try:
+                # Hole alle Gesichter dieses Eltern-Bildes, um die Liste der erkannten Personen zu bilden
+                img_faces, _ = self.qdrant.client.scroll(
+                    collection_name=settings.COLLECTION_FACES,
+                    scroll_filter=rest_models.Filter(
+                        must=[
+                            rest_models.FieldCondition(
+                                key="parent_image_id",
+                                match=rest_models.MatchValue(value=img_id),
+                            )
+                        ]
+                    ),
+                    limit=100,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                distinct_labels = sorted(list({
+                    f.payload.get("label").strip()
+                    for f in img_faces
+                    if f.payload and f.payload.get("label") and f.payload.get("label").strip()
+                }))
+                self.qdrant.client.set_payload(
+                    collection_name=settings.COLLECTION_IMAGES,
+                    payload={"persons": distinct_labels},
+                    points=[img_id],
+                )
+            except Exception as e:
+                logger.warning("Konnte Elternbild %s nicht mit Personenliste aktualisieren: %s", img_id, e)
+
+        logger.info(
+            "Cluster '%s' mit Label '%s' versehen (%d Gesichter, %d Bilder aktualisiert).",
+            cluster_id,
+            clean_label,
+            len(point_ids),
+            len(parent_img_ids),
+        )
         return len(point_ids)

@@ -1,6 +1,8 @@
 import io
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
+import re
+import uuid
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -24,6 +26,8 @@ from qdrant_client.http import models as rest_models
 
 router = APIRouter(tags=["Suche & Cluster"])
 
+UUID_NAMESPACE = uuid.UUID("3d4b6845-816b-4e45-8b3c-9ad51b5bbfcb")
+
 
 # --- Pydantic Modelle ---
 
@@ -38,6 +42,7 @@ class SemanticSearchResult(BaseModel):
     signature: Optional[str] = Field(None, description="Archivsignatur / Inventarnummer")
     description: Optional[str] = Field(None, description="Objektbeschreibung")
     keywords: Optional[List[str]] = Field(default=[], description="Schlagwörter")
+    persons: Optional[List[str]] = Field(default=[], description="Erkannte & benannte Personen")
 
 
 class FaceSearchResult(BaseModel):
@@ -95,41 +100,167 @@ def search_semantic(
     qdrant: QdrantService = Depends(get_qdrant_service),
 ):
     """
-    Vektorisiert den Suchtext via CLIP, führt Vektorsuche in `archive_images` durch
-    und liefert sortierte Dateipfade + Scores.
+    Vektorisiert den Suchtext via CLIP und führt Vektorsuche in `archive_images` durch.
+    Erkennt zudem automatisch benannte Personen aus `archive_faces` und führt eine
+    hybride Relevanz-Verschmelzung durch, damit namentlich gesuchte Personen sofort
+    mit 100% Relevanz an erster Stelle stehen.
     """
+    q_clean = q.strip().lower()
+    q_words = [w for w in re.split(r"[^\w]+", q_clean) if len(w) >= 2]
+
+    # 1. Personen-Namenssuche in archive_faces
+    matched_person_images: Dict[str, Dict[str, Any]] = {}
+    try:
+        face_records, _ = qdrant.client.scroll(
+            collection_name=settings.COLLECTION_FACES,
+            limit=5000,
+            with_payload=True,
+            with_vectors=False,
+        )
+        for r in face_records:
+            p = r.payload or {}
+            lbl = p.get("label")
+            if not lbl or not isinstance(lbl, str):
+                continue
+            lbl_clean = lbl.strip()
+            lbl_lower = lbl_clean.lower()
+            lbl_words = [w for w in re.split(r"[^\w]+", lbl_lower) if len(w) >= 2]
+
+            # Matching Kriterien:
+            # - Exakter Treffer: "bischof müller" == "bischof müller" -> 1.0
+            # - Teilstring: "müller" in "bischof müller" oder umgekehrt -> 0.98
+            # - Wort-Übereinstimmung -> 0.95
+            is_match = False
+            match_score = 0.0
+
+            if q_clean == lbl_lower:
+                is_match = True
+                match_score = 1.0
+            elif q_clean in lbl_lower or lbl_lower in q_clean:
+                is_match = True
+                match_score = 0.98
+            elif any(qw in lbl_words or any(qw in lw for lw in lbl_words) for qw in q_words):
+                is_match = True
+                match_score = 0.95
+
+            if is_match:
+                img_path = p.get("file_path") or p.get("image_path")
+                if img_path:
+                    if img_path not in matched_person_images:
+                        matched_person_images[img_path] = {
+                            "labels": {lbl_clean},
+                            "score": match_score,
+                            "parent_image_id": p.get("parent_image_id"),
+                        }
+                    else:
+                        matched_person_images[img_path]["labels"].add(lbl_clean)
+                        matched_person_images[img_path]["score"] = max(
+                            matched_person_images[img_path]["score"], match_score
+                        )
+    except Exception as e:
+        logger.warning("Personen-Suche in archive_faces fehlgeschlagen: %s", e)
+
+    # 2. CLIP Semantische Vektorsuche
+    hits = []
     try:
         query_vector = clip_service.embed_text(q)
+        hits = qdrant.search_images(
+            query_vector=query_vector,
+            limit=limit,
+            score_threshold=score_threshold,
+        )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Fehler bei der Textvektorisierung: {str(e)}")
+        logger.warning("CLIP Textvektorisierung fehlgeschlagen: %s", e)
 
-    hits = qdrant.search_images(
-        query_vector=query_vector,
-        limit=limit,
-        score_threshold=score_threshold,
-    )
+    results_map: Dict[str, SemanticSearchResult] = {}
 
-    results = []
+    # Zuerst CLIP-Hits verarbeiten
     for hit in hits:
         payload = hit.payload or {}
         file_path = payload.get("file_path") or payload.get("image_path", "")
+        if not file_path:
+            continue
         file_name = payload.get("file_name") or payload.get("filename") or Path(file_path).name
 
-        results.append(
-            SemanticSearchResult(
-                id=str(hit.id),
-                score=hit.score,
-                file_path=file_path,
-                file_name=file_name,
-                title=payload.get("title"),
-                creator=payload.get("creator"),
-                date=payload.get("date"),
-                signature=payload.get("signature"),
-                description=payload.get("description"),
-                keywords=payload.get("keywords") or [],
-            )
+        score = float(hit.score)
+        matched_persons = set(payload.get("persons") or [])
+
+        # Wurde das Bild zusätzlich durch Personen-Match gefunden?
+        if file_path in matched_person_images:
+            p_info = matched_person_images[file_path]
+            matched_persons.update(p_info["labels"])
+            score = max(score, p_info["score"])
+
+        results_map[file_path] = SemanticSearchResult(
+            id=str(hit.id),
+            score=round(score, 4),
+            file_path=file_path,
+            file_name=file_name,
+            title=payload.get("title"),
+            creator=payload.get("creator"),
+            date=payload.get("date"),
+            signature=payload.get("signature"),
+            description=payload.get("description"),
+            keywords=payload.get("keywords") or [],
+            persons=sorted(list(matched_persons)),
         )
-    return results
+
+    # Nun noch alle Personen-Treffer hinzufügen, falls CLIP sie nicht in den Top-Hits hatte
+    for file_path, p_info in matched_person_images.items():
+        if file_path in results_map:
+            continue
+
+        img_payload = {}
+        parent_id = p_info.get("parent_image_id")
+        try:
+            if parent_id:
+                ret = qdrant.client.retrieve(
+                    collection_name=settings.COLLECTION_IMAGES,
+                    ids=[parent_id],
+                    with_payload=True,
+                )
+                if ret:
+                    img_payload = ret[0].payload or {}
+            if not img_payload:
+                rec, _ = qdrant.client.scroll(
+                    collection_name=settings.COLLECTION_IMAGES,
+                    scroll_filter=rest_models.Filter(
+                        should=[
+                            rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=file_path)),
+                            rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=file_path)),
+                        ]
+                    ),
+                    limit=1,
+                    with_payload=True,
+                )
+                if rec:
+                    img_payload = rec[0].payload or {}
+                    parent_id = str(rec[0].id)
+        except Exception as e:
+            logger.warning("Bilddaten für %s konnten nicht geladen werden: %s", file_path, e)
+
+        file_name = img_payload.get("file_name") or img_payload.get("filename") or Path(file_path).name
+        all_persons = set(img_payload.get("persons") or [])
+        all_persons.update(p_info["labels"])
+
+        fallback_id = str(parent_id or uuid.uuid5(UUID_NAMESPACE, Path(file_path).name))
+        results_map[file_path] = SemanticSearchResult(
+            id=fallback_id,
+            score=round(p_info["score"], 4),
+            file_path=file_path,
+            file_name=file_name,
+            title=img_payload.get("title"),
+            creator=img_payload.get("creator"),
+            date=img_payload.get("date"),
+            signature=img_payload.get("signature"),
+            description=img_payload.get("description"),
+            keywords=img_payload.get("keywords") or [],
+            persons=sorted(list(all_persons)),
+        )
+
+    # Sortiere nach Score absteigend und liefere maximal 'limit' Ergebnisse
+    sorted_results = sorted(results_map.values(), key=lambda r: r.score, reverse=True)
+    return sorted_results[:limit]
 
 
 @router.api_route("/search/faces/by-image", methods=["GET", "POST"], response_model=List[FaceSearchResult])
