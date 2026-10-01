@@ -212,6 +212,14 @@
 <li><em>Cluster-Split / Ausschluss:</em> Falsch zugeordnete Gesichter mit einem Klick („Nicht diese Person“ / <code>POST /faces/{face_id}/remove-from-cluster</code>) aus einem Cluster entfernen und als unzugeordneten Punkt markieren.</li>
 </ul>
 </li>
+<li>[x] <strong>Verlustfreie Bilddrehung (Lossless Image Rotation):</strong><ul>
+<li>Physikalisches, 100 % verlustfreies 90°/180°/270°-Transponieren von JPEG-Scans via DCT-Koeffizienten-Transformation (<code>jpegtran</code>) ohne Pixel-Rekompression oder Generationsverluste.</li>
+<li>Erhalt sämtlicher archivischer Metadaten-Marker (EXIF, IPTC, XMP, ICC-Profile) und automatische Normalisierung des EXIF-Orientation-Tags auf 1.</li>
+<li>Mathematisch verlustfreie Transformation für PNG, TIFF und WebP.</li>
+<li>Schnellzugriff per <code>↺ 90°</code> und <code>↻ 90°</code> im Bild-Detailmodal sowie Schnell-Drehbutton auf Suchkarten.</li>
+<li>Automatische Invalidierung des Thumbnail-Caches und Live-Reindexierung in Qdrant (aufgerichtetes CLIP-Embedding &amp; Gesichts-Detektion).</li>
+</ul>
+</li>
 <li>[ ] <strong>Historische Zeitleiste &amp; Facettierung:</strong><ul>
 <li>Interaktiver Schieberegler nach Entstehungsjahr/Epoche (z. B. <em>1880–1914</em>, <em>1914–1939</em>, <em>1945–1970</em>) unter Nutzung von Qdrant-Bereichsfiltern (<code>gte</code>/<code>lte</code>).</li>
 <li>Filter nach bekannten Archivsignaturen, Beständen oder Fotografen/Ateliers.</li>

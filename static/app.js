@@ -331,6 +331,17 @@ function renderSearchResults(items, container) {
         <span class="absolute top-2 right-2 px-2 py-0.5 rounded text-[11px] font-mono font-medium border ${scoreColor} backdrop-blur-md">
           ${scorePct}% Score
         </span>
+        <button
+          type="button"
+          onclick="quickRotateCardImage(event, '${escapeHtml(item.file_path)}', 90)"
+          class="absolute bottom-2 right-2 p-1.5 rounded-lg bg-slate-900/80 hover:bg-amber-500 hover:text-slate-950 text-slate-300 opacity-0 group-hover:opacity-100 transition-all shadow-md backdrop-blur-sm z-10"
+          title="Bild verlustfrei um 90° im Uhrzeigersinn drehen"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+            <path d="M21 3v5h-5"></path>
+          </svg>
+        </button>
       </div>
       <div class="p-3 flex-1 flex flex-col justify-between">
         <div>
@@ -995,7 +1006,7 @@ async function triggerClustering() {
 
 // --- 3. Bild-Detailansicht (Modal) mit Bounding-Boxen ---
 
-async function openImageModal(filePath, fileName) {
+async function openImageModal(filePath, fileName, cacheBuster = null) {
   const modal = document.getElementById('image-modal');
   const img = document.getElementById('modal-img');
   const title = document.getElementById('modal-filename');
@@ -1010,7 +1021,8 @@ async function openImageModal(filePath, fileName) {
 
   title.textContent = fileName || filePath.split('/').pop();
   pathElem.textContent = filePath;
-  rawLink.href = `/images/serve?path=${encodeURIComponent(filePath)}`;
+  const cbParam = cacheBuster ? `&t=${cacheBuster}` : '';
+  rawLink.href = `/images/serve?path=${encodeURIComponent(filePath)}${cbParam}`;
 
   // Vorherige Bounding Boxes und Tags leeren
   wrapper.querySelectorAll('.face-bbox').forEach(e => e.remove());
@@ -1023,7 +1035,7 @@ async function openImageModal(filePath, fileName) {
   };
 
   // Bildquelle setzen
-  img.src = `/images/serve?path=${encodeURIComponent(filePath)}&max_dim=1200`;
+  img.src = `/images/serve?path=${encodeURIComponent(filePath)}&max_dim=1200${cbParam}`;
 
   // Duplikats- & Variantenprüfung im Hintergrund
   checkModalImageVariants(filePath);
@@ -1214,6 +1226,102 @@ document.addEventListener('keydown', (e) => {
     closeImageModal();
   }
 });
+
+// ================= VERLUSTFREIES DREHEN =================
+
+let isRotatingImage = false;
+
+async function rotateImageFile(filePath, angle = 90) {
+  if (isRotatingImage) return null;
+  isRotatingImage = true;
+  try {
+    const res = await fetch('/images/rotate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: filePath, angle: angle }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Fehler beim Drehen' }));
+      throw new Error(err.detail || `Serverfehler (${res.status})`);
+    }
+
+    const data = await res.json();
+    return data;
+  } finally {
+    isRotatingImage = false;
+  }
+}
+
+async function rotateCurrentModalImage(angle = 90) {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
+    showToast('Kein Bild im Modal geöffnet', true);
+    return;
+  }
+  const filePath = currentModalImageDetails.filePath;
+  const fileName = currentModalImageDetails.fileName;
+  const leftBtn = document.getElementById('modal-rotate-left-btn');
+  const rightBtn = document.getElementById('modal-rotate-right-btn');
+  const activeBtn = angle < 0 ? leftBtn : rightBtn;
+  const originalHtml = activeBtn ? activeBtn.innerHTML : '';
+
+  try {
+    if (activeBtn) {
+      activeBtn.disabled = true;
+      activeBtn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Drehe...</span>';
+    }
+    showToast(`Drehe Bild verlustfrei um ${angle > 0 ? '+' : ''}${angle}°...`, false);
+
+    const result = await rotateImageFile(filePath, angle);
+    if (!result || !result.success) {
+      throw new Error(result?.message || 'Drehung fehlgeschlagen');
+    }
+
+    const timestamp = Date.now();
+    // Modal-Inhalt komplett mit Cache-Buster neu laden
+    await openImageModal(filePath, fileName, timestamp);
+
+    // Alle Thumbnails auf der Seite synchronisieren
+    updateAllThumbnailsOnPage(filePath, timestamp);
+
+    const methodNote = result.rotation_method === 'lossless_jpegtran_dct' ? ' (100% verlustfreies DCT-Transponieren)' : '';
+    showToast(`✓ Bild verlustfrei um ${angle}° gedreht${methodNote} • ${result.faces_detected} Gesichter erkannt`, false);
+  } catch (err) {
+    showToast(`Fehler beim Drehen: ${err.message}`, true);
+  } finally {
+    if (activeBtn) {
+      activeBtn.disabled = false;
+      activeBtn.innerHTML = originalHtml;
+    }
+  }
+}
+
+async function quickRotateCardImage(event, filePath, angle = 90) {
+  event.stopPropagation();
+  try {
+    showToast(`Drehe Bild verlustfrei um ${angle}°...`, false);
+    const result = await rotateImageFile(filePath, angle);
+    if (!result || !result.success) {
+      throw new Error(result?.message || 'Drehung fehlgeschlagen');
+    }
+    const timestamp = Date.now();
+    updateAllThumbnailsOnPage(filePath, timestamp);
+    showToast(`✓ Bild verlustfrei gedreht (${result.faces_detected} Gesichter neu erfasst)`, false);
+  } catch (err) {
+    showToast(`Fehler beim Drehen: ${err.message}`, true);
+  }
+}
+
+function updateAllThumbnailsOnPage(filePath, timestamp) {
+  const encPath = encodeURIComponent(filePath);
+  document.querySelectorAll('img').forEach(imgElem => {
+    if (imgElem.src && (imgElem.src.includes(encPath) || imgElem.src.includes(filePath))) {
+      let baseSrc = imgElem.src.split('&t=')[0].split('?t=')[0];
+      const separator = baseSrc.includes('?') ? '&' : '?';
+      imgElem.src = `${baseSrc}${separator}t=${timestamp}`;
+    }
+  });
+}
 
 // Ähnliche Bilder via CLIP suchen
 async function searchSimilarImages(filePath) {

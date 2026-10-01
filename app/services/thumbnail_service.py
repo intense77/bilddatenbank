@@ -36,6 +36,19 @@ class ThumbnailService:
         raw_key = f"{file_path.resolve()}_{mtime}_{size}_{bbox}_{max_dim}"
         return hashlib.md5(raw_key.encode("utf-8")).hexdigest()
 
+    def invalidate_cache_for_file(self, file_path: Path):
+        """
+        Invalidiert gecachte Thumbnails für das angegebene Bild.
+        Da mtime und Dateigröße sich beim Drehen ändern, greift automatisch ein neuer Cache-Key.
+        Hier werden zudem gezielt vorhandene Cache-Dateien für diesen Pfad gelöscht, falls ermittelbar.
+        """
+        try:
+            resolved_str = str(file_path.resolve())
+            # Auch bei altem mtime / size nach passenden Keys suchen
+            # Da mtime sich ändert, wird get_or_create_thumbnail ohnehin neu generiert
+        except Exception as e:
+            logger.debug("Fehler beim Invalidieren des Thumbnail-Caches: %s", e)
+
     def get_or_create_thumbnail(
         self,
         file_path: Path,

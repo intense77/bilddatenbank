@@ -16,6 +16,7 @@ from app.api.deps import (
     get_qdrant_service,
     get_clustering_service,
     get_variant_service,
+    get_image_rotation_service,
 )
 from app.services.clip_service import ClipService, load_image_rgb
 from app.services.face_service import FaceService
@@ -75,6 +76,11 @@ class ClusterMergeRequest(BaseModel):
     source_cluster_id: str = Field(..., description="ID des Quell-Clusters, das aufgelöst wird", example="cluster_1")
     target_cluster_id: str = Field(..., description="ID des Ziel-Clusters, in das integriert wird", example="cluster_0")
     target_label: Optional[str] = Field(None, description="Optionaler gemeinsamer Name für das zusammengeführte Cluster", example="Bischof Ulrich")
+
+
+class RotateImageRequest(BaseModel):
+    path: str = Field(..., description="Lokaler Dateipfad des Archivbildes")
+    angle: int = Field(default=90, description="Drehwinkel in Grad: 90 (rechts/CW), 180, 270 bzw. -90 (links/CCW)")
 
 
 class ClusterFaceItem(BaseModel):
@@ -538,6 +544,31 @@ def serve_image(
         media_type = "image/webp"
 
     return FileResponse(path=file_path, media_type=media_type, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.post("/images/rotate")
+def rotate_image(
+    req: RotateImageRequest,
+    rotation_service = Depends(get_image_rotation_service),
+):
+    """
+    Dreht eine Bilddatei verlustfrei (z.B. 90° im Uhrzeigersinn oder gegen den Uhrzeigersinn).
+    - JPEG: Echtes physikalisch verlustfreies DCT-Transponieren via jpegtran mit Erhalt aller Metadaten
+    - PNG/TIFF/WebP: Mathematisch verlustfreie Transformation
+    - Normalisierung des EXIF-Orientation-Tags auf 1
+    - Aktualisiert anschließend automatisch den Thumbnail-Cache und den Qdrant-Index (CLIP & Gesichter).
+    """
+    file_path = validate_safe_image_path(req.path)
+    try:
+        result = rotation_service.rotate_image(file_path=file_path, angle=req.angle)
+        return result
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Fehler beim Drehen des Bildes (%s): %s", req.path, e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Drehen des Bildes: {e}")
 
 
 @router.get("/images/details")

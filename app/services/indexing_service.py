@@ -53,6 +53,7 @@ class IndexingService:
         file_path: Path,
         cluster_id_mapping: Optional[dict[str, str]] = None,
         base_dir: Optional[Path] = None,
+        forced_rel_path: Optional[str] = None,
     ) -> Tuple[bool, int]:
         """
         Verarbeitet eine einzelne Bilddatei:
@@ -67,11 +68,14 @@ class IndexingService:
 
         try:
             # Relativen Pfad bestimmen (für stabile UUIDv5-Identifikation)
-            resolved_base = (base_dir or Path(settings.ARCHIVE_DATA_DIR)).resolve()
-            try:
-                rel_path = abs_path.relative_to(resolved_base).as_posix()
-            except ValueError:
-                rel_path = file_path.name
+            if forced_rel_path:
+                rel_path = forced_rel_path
+            else:
+                resolved_base = (base_dir or Path(settings.ARCHIVE_DATA_DIR)).resolve()
+                try:
+                    rel_path = abs_path.relative_to(resolved_base).as_posix()
+                except ValueError:
+                    rel_path = file_path.name
 
             file_size = os.path.getsize(abs_path)
             with Image.open(abs_path) as raw_img:
@@ -178,6 +182,55 @@ class IndexingService:
         except Exception as e:
             logger.error("Fehler bei der Indizierung von '%s': %s", path_str, e, exc_info=True)
             return False, 0
+
+    def reindex_single_image(self, file_path: Path) -> Tuple[bool, int]:
+        """
+        Reindexiert ein einzelnes Bild nach einer Änderung (z.B. verlustfreies Drehen):
+        1. Ermittelt existierenden relativen Pfad aus Qdrant
+        2. Löscht alte Gesichts-Vektoren aus archive_faces
+        3. Führt index_image_file aus (neues CLIP-Embedding, neue Gesichter, neue Dimensionen)
+        """
+        abs_path = file_path.resolve()
+        path_str = str(abs_path)
+
+        # 1. Existierenden relativen Pfad aus Qdrant abrufen (falls vorhanden)
+        existing_rel_path = None
+        try:
+            records, _ = self.qdrant.client.scroll(
+                collection_name=settings.COLLECTION_IMAGES,
+                scroll_filter=rest_models.Filter(
+                    should=[
+                        rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=path_str)),
+                        rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=path_str)),
+                    ]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+            if records and records[0].payload:
+                existing_rel_path = records[0].payload.get("relative_path")
+        except Exception as e:
+            logger.debug("Konnte existierenden Bild-Point nicht abrufen: %s", e)
+
+        # 2. Alte Gesichts-Points für dieses Bild aus archive_faces entfernen
+        try:
+            self.qdrant.client.delete(
+                collection_name=settings.COLLECTION_FACES,
+                points_selector=rest_models.FilterSelector(
+                    filter=rest_models.Filter(
+                        should=[
+                            rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=path_str)),
+                            rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=path_str)),
+                        ]
+                    )
+                ),
+            )
+        except Exception as e:
+            logger.warning("Fehler beim Löschen alter Gesichts-Points für %s: %s", path_str, e)
+
+        # 3. Neu indexieren
+        return self.index_image_file(file_path, forced_rel_path=existing_rel_path)
 
     def index_folder(
         self,

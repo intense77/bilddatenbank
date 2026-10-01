@@ -57,6 +57,16 @@ def get_variant_service():
     return VariantService(qdrant_service=get_qdrant_service())
 
 
+@lru_cache(maxsize=1)
+def get_image_rotation_service():
+    from app.services.image_rotation_service import ImageRotationService
+    from app.services.thumbnail_service import thumbnail_service
+    return ImageRotationService(
+        indexing_service=get_indexing_service(),
+        thumbnail_service_instance=thumbnail_service,
+    )
+
+
 def clear_face_service_cache():
     """Löscht den Cache für get_face_service und get_indexing_service bei Schalterwechsel."""
     get_face_service.cache_clear()

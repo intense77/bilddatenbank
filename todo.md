@@ -14,6 +14,12 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   - [x] **Cluster-Merge & -Split (Personen-Kuratierung):**
     * *Cluster-Merge:* Zwei getrennte Personen-Cluster zusammenführen (`POST /faces/clusters/merge`) inklusive automatischer Konsolidierung des Namens und Resynchronisation der Elternbilder.
     * *Cluster-Split / Ausschluss:* Falsch zugeordnete Gesichter mit einem Klick („Nicht diese Person“ / `POST /faces/{face_id}/remove-from-cluster`) aus einem Cluster entfernen und als unzugeordneten Punkt markieren.
+  - [x] **Verlustfreie Bilddrehung (Lossless Image Rotation):**
+    * Physikalisches, 100 % verlustfreies 90°/180°/270°-Transponieren von JPEG-Scans via DCT-Koeffizienten-Transformation (`jpegtran`) ohne Pixel-Rekompression oder Generationsverluste.
+    * Erhalt sämtlicher archivischer Metadaten-Marker (EXIF, IPTC, XMP, ICC-Profile) und automatische Normalisierung des EXIF-Orientation-Tags auf 1.
+    * Mathematisch verlustfreie Transformation für PNG, TIFF und WebP.
+    * Schnellzugriff per `↺ 90°` und `↻ 90°` im Bild-Detailmodal sowie Schnell-Drehbutton auf Suchkarten.
+    * Automatische Invalidierung des Thumbnail-Caches und Live-Reindexierung in Qdrant (aufgerichtetes CLIP-Embedding & Gesichts-Detektion).
   - [ ] **Historische Zeitleiste & Facettierung:**
     * Interaktiver Schieberegler nach Entstehungsjahr/Epoche (z. B. *1880–1914*, *1914–1939*, *1945–1970*) unter Nutzung von Qdrant-Bereichsfiltern (`gte`/`lte`).
     * Filter nach bekannten Archivsignaturen, Beständen oder Fotografen/Ateliers.
