@@ -223,13 +223,15 @@
 <ul>
 <li><strong>Ziel:</strong> Vermeidung verstopfter Trefferlisten durch Serienabzüge, Kontaktabzüge oder Mehrfachbelichtungen bei Nachlässen.</li>
 <li><strong>Aufgaben:</strong></li>
-<li>[ ] <strong>Zweistufige Ähnlichkeitserkennung:</strong><ul>
+<li>[x] <strong>Zweistufige Ähnlichkeitserkennung:</strong><ul>
 <li><em>Stufe 1 (Deterministisch):</em> Perceptual Hashing (dHash / pHash via <code>imagehash</code>) für 100 % identische Bilder, Größenvarianten und minimale Crops (extrem schnell, 0 MB VRAM).</li>
-<li><em>Stufe 2 (Optische Varianten):</em> CLIP-Vektordistanz mit hohem Schwellenwert (Cosine-Score &gt; 0.94) für Serienaufnahmen und abweichende Belichtungen.</li>
+<li><em>Stufe 2 (Optische Varianten):</em> CLIP-Vektordistanz mit hohem Schwellenwert (Cosine-Score &gt; 0.92) für Serienaufnahmen und abweichende Belichtungen.</li>
 </ul>
 </li>
-<li>[ ] <strong>Visuelles „Stacking“ im Web-Frontend:</strong><ul>
-<li>Varianten werden nicht destruktiv gelöscht (Erhalt des Bestandszusammenhangs), sondern in den Suchergebnissen zu einem aufklappbaren Bildstapel („+3 Varianten“) zusammengefasst.</li>
+<li>[x] <strong>Visuelles „Stacking“ im Web-Frontend:</strong><ul>
+<li>Varianten werden nicht destruktiv gelöscht (Erhalt des Bestandszusammenhangs), sondern in den Suchergebnissen zu einem Bildstapel („+3 Varianten“) mit visueller Tiefenschattierung zusammengefasst.</li>
+<li>Interaktiver Stack-Inspector &amp; Varianten-Vergleich mit technischer Gegenüberstellung (Auflösung, Master-Empfehlung, Dateigröße, Ähnlichkeit).</li>
+<li>Dedizierter Tab „Duplikate &amp; Stapel“ zur archivweiten Analyse und Durchforstung von Beständen.</li>
 </ul>
 </li>
 </ul>

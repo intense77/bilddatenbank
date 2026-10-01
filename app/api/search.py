@@ -15,11 +15,13 @@ from app.api.deps import (
     get_face_service,
     get_qdrant_service,
     get_clustering_service,
+    get_variant_service,
 )
 from app.services.clip_service import ClipService, load_image_rgb
 from app.services.face_service import FaceService
 from app.services.qdrant_service import QdrantService
 from app.services.clustering_service import ClusteringService
+from app.services.variant_service import VariantService
 from app.services.thumbnail_service import thumbnail_service
 from app.services.metadata_service import metadata_service
 from qdrant_client.http import models as rest_models
@@ -43,6 +45,13 @@ class SemanticSearchResult(BaseModel):
     description: Optional[str] = Field(None, description="Objektbeschreibung")
     keywords: Optional[List[str]] = Field(default=[], description="Schlagwörter")
     persons: Optional[List[str]] = Field(default=[], description="Erkannte & benannte Personen")
+    is_stack: bool = Field(default=False, description="Zeigt an, ob dieses Bild einen Stapel aus Varianten/Duplikaten repräsentiert")
+    variants_count: int = Field(default=0, description="Anzahl der im Stapel zusammengefassten Varianten")
+    variants: Optional[List[Any]] = Field(default=[], description="Liste der zusammengefassten Varianten")
+    variant_type: Optional[str] = Field(default=None, description="Klassifizierung: EXACT_DUPLICATE, FORMAT_VARIANT, SERIES_VARIANT")
+    variant_label: Optional[str] = Field(default=None, description="Lesbare Bezeichnung der Beziehung")
+    variant_similarity: Optional[float] = Field(default=None, description="Ähnlichkeits-Score zur primären Aufnahme")
+    primary_id: Optional[str] = Field(default=None, description="ID der primären Aufnahme bei Varianten")
 
 
 class FaceSearchResult(BaseModel):
@@ -104,6 +113,7 @@ class CropSearchRequest(BaseModel):
     is_normalized: bool = Field(default=True, description="True wenn x, y, width, height relativ im Intervall [0.0, 1.0] angegeben sind")
     limit: int = Field(default=24, ge=1, le=100)
     score_threshold: Optional[float] = Field(default=None, ge=-1.0, le=1.0)
+    stack_variants: bool = Field(default=True, description="Fasst Varianten und Duplikate zu Bildstapeln zusammen")
 
 
 # --- Endpunkte ---
@@ -113,8 +123,10 @@ def search_semantic(
     q: str = Query(..., description="Natürlicher Suchtext (z. B. 'historischer Marktplatz', 'Soldatenporträt')"),
     limit: int = Query(default=20, ge=1, le=100, description="Maximale Anzahl Ergebnisse"),
     score_threshold: Optional[float] = Query(default=None, ge=-1.0, le=1.0, description="Mindest-Ähnlichkeitsscore"),
+    stack_variants: bool = Query(default=True, description="Fasst Varianten und Duplikate zu Bildstapeln zusammen"),
     clip_service: ClipService = Depends(get_clip_service),
     qdrant: QdrantService = Depends(get_qdrant_service),
+    variant_service: VariantService = Depends(get_variant_service),
 ):
     """
     Vektorisiert den Suchtext via CLIP und führt Vektorsuche in `archive_images` durch.
@@ -178,12 +190,13 @@ def search_semantic(
         logger.warning("Personen-Suche in archive_faces fehlgeschlagen: %s", e)
 
     # 2. CLIP Semantische Vektorsuche
+    fetch_limit = limit * 2 if stack_variants else limit
     hits = []
     try:
         query_vector = clip_service.embed_text(q)
         hits = qdrant.search_images(
             query_vector=query_vector,
-            limit=limit,
+            limit=fetch_limit,
             score_threshold=score_threshold,
         )
     except Exception as e:
@@ -277,6 +290,8 @@ def search_semantic(
 
     # Sortiere nach Score absteigend und liefere maximal 'limit' Ergebnisse
     sorted_results = sorted(results_map.values(), key=lambda r: r.score, reverse=True)
+    if stack_variants:
+        sorted_results = variant_service.stack_search_results(sorted_results, similarity_threshold=0.92)
     return sorted_results[:limit]
 
 
@@ -630,8 +645,10 @@ def get_image_details(
 def search_similar_images(
     image_path: str = Query(..., description="Pfad zum Referenzbild"),
     limit: int = Query(default=20, ge=1, le=100),
+    stack_variants: bool = Query(default=True, description="Fasst Varianten und Duplikate zu Bildstapeln zusammen"),
     clip_service: ClipService = Depends(get_clip_service),
     qdrant: QdrantService = Depends(get_qdrant_service),
+    variant_service: VariantService = Depends(get_variant_service),
 ):
     """
     Sucht optisch ähnliche Bilder zu einem vorhandenen Archivbild mittels CLIP-Embedding.
@@ -643,7 +660,8 @@ def search_similar_images(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Fehler bei der Vektorisierung: {e}")
 
-    hits = qdrant.search_images(query_vector=image_vector, limit=limit)
+    fetch_limit = limit * 2 if stack_variants else limit
+    hits = qdrant.search_images(query_vector=image_vector, limit=fetch_limit)
     results = []
     for hit in hits:
         p = hit.payload or {}
@@ -663,7 +681,11 @@ def search_similar_images(
                 persons=p.get("persons") or [],
             )
         )
-    return results
+
+    if stack_variants:
+        results = variant_service.stack_search_results(results, similarity_threshold=0.92)
+
+    return results[:limit]
 
 
 @router.post("/search/crop", response_model=List[SemanticSearchResult])
@@ -671,6 +693,7 @@ def search_by_crop(
     request: CropSearchRequest,
     clip_service: ClipService = Depends(get_clip_service),
     qdrant: QdrantService = Depends(get_qdrant_service),
+    variant_service: VariantService = Depends(get_variant_service),
 ):
     """
     Crop-to-Search (Bildausschnitt-Suche):
@@ -710,9 +733,10 @@ def search_by_crop(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Fehler bei der Bildausschnitt-Verarbeitung: {e}")
 
+    fetch_limit = request.limit * 2 if request.stack_variants else request.limit
     hits = qdrant.search_images(
         query_vector=crop_vector,
-        limit=request.limit,
+        limit=fetch_limit,
         score_threshold=request.score_threshold,
     )
 
@@ -735,7 +759,48 @@ def search_by_crop(
                 persons=p.get("persons") or [],
             )
         )
-    return results
+
+    if request.stack_variants:
+        results = variant_service.stack_search_results(results, similarity_threshold=0.92)
+
+    return results[:request.limit]
+
+
+@router.get("/images/variants")
+def get_image_variants(
+    path: str = Query(..., description="Dateipfad des Referenzbildes"),
+    limit: int = Query(default=25, ge=1, le=100),
+    score_threshold: float = Query(default=0.88, ge=0.5, le=1.0),
+    variant_service: VariantService = Depends(get_variant_service),
+):
+    """
+    Sucht gezielt alle Duplikate, Größen-/Ausschnittsvarianten und Serienaufnahmen
+    zu einem ausgewählten Bild im Gesamtbestand.
+    """
+    file_path = validate_safe_image_path(path)
+    return variant_service.find_variants_for_image(
+        image_path=file_path,
+        limit=limit,
+        score_threshold=score_threshold,
+    )
+
+
+@router.get("/archive/variant-clusters")
+def get_variant_clusters(
+    eps: float = Query(default=0.075, ge=0.01, le=0.5, description="DBSCAN Epsilon für Bildvektoren"),
+    min_samples: int = Query(default=2, ge=2, le=20, description="Mindestanzahl Bilder pro Stapel"),
+    limit_groups: int = Query(default=100, ge=1, le=500),
+    variant_service: VariantService = Depends(get_variant_service),
+):
+    """
+    Liefert archivweite Duplikat- und Variantengruppen (Serienaufnahmen, Repros),
+    damit Archivare redundante oder zusammenhängende Scans überblicken können.
+    """
+    return variant_service.get_archive_variant_clusters(
+        eps=eps,
+        min_samples=min_samples,
+        limit_groups=limit_groups,
+    )
 
 
 @router.delete("/images/record")

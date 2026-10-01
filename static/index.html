@@ -37,6 +37,11 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
           </svg>
           <span>Personen &amp; Cluster</span>
+        <button id="tab-duplicates-btn" onclick="switchTab('duplicates')" class="px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+          </svg>
+          <span>Duplikate &amp; Stapel</span>
         </button>
         <button id="tab-import-btn" onclick="switchTab('import')" class="px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,6 +111,10 @@
               <option value="40">40 Treffer</option>
               <option value="80">80 Treffer</option>
             </select>
+            <label class="flex items-center gap-1.5 px-3 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-xs sm:text-sm text-slate-300 cursor-pointer hover:border-slate-600 transition select-none" title="Fasst Varianten, Repros und Serienaufnahmen automatisch zu Bildstapeln zusammen">
+              <input type="checkbox" id="search-stack-variants" class="rounded accent-amber-500 w-3.5 h-3.5" checked>
+              <span class="flex items-center gap-1 font-medium">📚 <span class="hidden sm:inline">Varianten</span> stapeln</span>
+            </label>
             <button
               type="submit"
               id="search-submit-btn"
@@ -528,6 +537,92 @@
 
     </section>
 
+    <!-- ================= TAB 4: Duplikate & Bildstapel ================= -->
+    <section id="tab-duplicates" class="hidden space-y-6">
+      
+      <!-- Duplicates Header -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xl">📚</span>
+            <h2 class="text-base sm:text-lg font-semibold text-slate-100">Duplikats- &amp; Varianten-Erkennung (Deduping &amp; Stacking)</h2>
+          </div>
+          <p class="text-xs text-slate-400 mt-1 max-w-3xl">
+            Erkennt identische Repros, Größen-/Ausschnittsvarianten und Serienaufnahmen (OpenCLIP &amp; Perceptual Hash). 
+            Erhält den 100%igen Archivzusammenhang ohne Löschung.
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button
+            onclick="loadArchiveDuplicates()"
+            class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs sm:text-sm font-medium rounded-xl border border-slate-700 transition flex items-center gap-2"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <span>Bestand scannen</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Duplicates Stats Banner -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg font-bold">
+            📚
+          </div>
+          <div>
+            <span id="dup-stat-groups" class="text-xl font-bold font-mono text-slate-100">0</span>
+            <p class="text-[11px] text-slate-400">Variantengruppen / Stapel</p>
+          </div>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-lg font-bold">
+            🖼️
+          </div>
+          <div>
+            <span id="dup-stat-images" class="text-xl font-bold font-mono text-emerald-400">0</span>
+            <p class="text-[11px] text-slate-400">Erfasste Mehrfachaufnahmen</p>
+          </div>
+        </div>
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 text-lg font-bold">
+            🛡️
+          </div>
+          <div>
+            <span class="text-xl font-bold font-mono text-sky-400">100%</span>
+            <p class="text-[11px] text-slate-400">Archivisch verlustfrei (KDG/DSGVO)</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter & Controls -->
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-3">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-400 font-medium">Empfindlichkeit:</span>
+          <select id="dup-filter-eps" onchange="loadArchiveDuplicates()" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-amber-500">
+            <option value="0.05">Streng (Fast nur 100% identische Scans)</option>
+            <option value="0.075" selected>Standard (Duplikate &amp; Serienaufnahmen)</option>
+            <option value="0.10">Locker (Weiter gefasste Bildserien)</option>
+          </select>
+        </div>
+        <div class="text-xs text-slate-500 font-mono" id="dup-showing-count">
+          Lade Bildstapel...
+        </div>
+      </div>
+
+      <!-- Spinner -->
+      <div id="dup-spinner" class="py-16 flex flex-col items-center justify-center gap-3">
+        <div class="w-9 h-9 border-3 border-amber-500/20 border-t-amber-500 rounded-full animate-spin"></div>
+        <span class="text-sm text-slate-400 font-mono">Analysiere Archiv auf Duplikate &amp; Bildvarianten...</span>
+      </div>
+
+      <!-- Groups Grid -->
+      <div id="dup-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <!-- Groups injected by JS -->
+      </div>
+    </section>
+
     <!-- Footer mit Dokumentationslinks -->
     <footer class="mt-12 pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
       <div class="flex items-center gap-1.5 font-mono">
@@ -575,6 +670,16 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
             </svg>
             <span>Ähnliche Bilder suchen</span>
+          </button>
+          <button
+            id="modal-variants-btn"
+            type="button"
+            onclick="openVariantsForCurrentModal()"
+            class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs sm:text-sm font-medium transition flex items-center gap-1.5"
+            title="Gezielt nach Duplikaten, Größenvarianten und Serienaufnahmen dieses Bildes suchen"
+          >
+            <span class="text-amber-400">📚</span>
+            <span>Varianten (<span id="modal-variants-count">0</span>)</span>
           </button>
           <button
             onclick="closeImageModal()"
@@ -837,6 +942,42 @@
     </div>
   </div>
 
+  <!-- ================= BILDSTAPEL & VARIANTEN-VERGLEICH MODAL ================= -->
+  <div id="stack-modal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+        <div class="flex items-center gap-2.5 truncate">
+          <span class="text-xl">📚</span>
+          <div class="truncate">
+            <h4 id="stack-modal-title" class="text-sm sm:text-base font-semibold text-slate-100 truncate">Bildstapel &amp; Varianten-Vergleich</h4>
+            <p id="stack-modal-subtitle" class="text-xs text-slate-400 font-mono truncate">Vergleich von Aufnahmen, Auflösungen &amp; Details</p>
+          </div>
+        </div>
+        <button onclick="closeStackModal()" class="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Body: Comparison Grid -->
+      <div class="p-5 overflow-y-auto flex-1 space-y-4">
+        <div id="stack-modal-items" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- Rendered items with side-by-side technical specs -->
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-3 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between text-xs text-slate-400">
+        <span id="stack-modal-info">Erhalt aller Varianten für den historischen Bestandskontext</span>
+        <button onclick="closeStackModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition font-medium">
+          Schließen
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div id="toast" class="fixed bottom-5 right-5 z-50 max-w-sm bg-slate-800 border border-slate-700 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm pointer-events-none">
     <div id="toast-icon" class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
@@ -847,6 +988,6 @@
     <span id="toast-message">Meldung</span>
   </div>
 
-  <script src="/app.js?v=2.4"></script>
+  <script src="/app.js?v=2.5"></script>
 </body>
 </html>

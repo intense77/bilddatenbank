@@ -30,29 +30,37 @@ function switchTab(tab) {
   const searchSec = document.getElementById('tab-search');
   const facesSec = document.getElementById('tab-faces');
   const importSec = document.getElementById('tab-import');
+  const dupSec = document.getElementById('tab-duplicates');
   const searchBtn = document.getElementById('tab-search-btn');
   const facesBtn = document.getElementById('tab-faces-btn');
   const importBtn = document.getElementById('tab-import-btn');
+  const dupBtn = document.getElementById('tab-duplicates-btn');
 
   // Alle Sektionen ausblenden
-  searchSec.classList.add('hidden');
-  facesSec.classList.add('hidden');
+  if (searchSec) searchSec.classList.add('hidden');
+  if (facesSec) facesSec.classList.add('hidden');
   if (importSec) importSec.classList.add('hidden');
+  if (dupSec) dupSec.classList.add('hidden');
 
   const activeCls = 'px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all bg-amber-500 text-slate-950 font-semibold shadow-sm flex items-center gap-2';
   const inactiveCls = 'px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2';
 
-  searchBtn.className = inactiveCls;
-  facesBtn.className = inactiveCls;
+  if (searchBtn) searchBtn.className = inactiveCls;
+  if (facesBtn) facesBtn.className = inactiveCls;
   if (importBtn) importBtn.className = inactiveCls;
+  if (dupBtn) dupBtn.className = inactiveCls;
 
   if (tab === 'search') {
-    searchSec.classList.remove('hidden');
-    searchBtn.className = activeCls;
+    if (searchSec) searchSec.classList.remove('hidden');
+    if (searchBtn) searchBtn.className = activeCls;
   } else if (tab === 'faces') {
-    facesSec.classList.remove('hidden');
-    facesBtn.className = activeCls;
+    if (facesSec) facesSec.classList.remove('hidden');
+    if (facesBtn) facesBtn.className = activeCls;
     loadClusters();
+  } else if (tab === 'duplicates') {
+    if (dupSec) dupSec.classList.remove('hidden');
+    if (dupBtn) dupBtn.className = activeCls;
+    loadArchiveDuplicates();
   } else if (tab === 'import') {
     if (importSec) importSec.classList.remove('hidden');
     if (importBtn) importBtn.className = activeCls;
@@ -226,9 +234,11 @@ async function executeSearch(query, limit = 20) {
 
   const thresholdElem = document.getElementById('search-threshold');
   const threshold = thresholdElem ? parseFloat(thresholdElem.value) : 0;
+  const stackToggle = document.getElementById('search-stack-variants');
+  const stackVariants = stackToggle ? stackToggle.checked : true;
 
   try {
-    let url = `/search/semantic?q=${encodeURIComponent(query)}&limit=${limit}`;
+    let url = `/search/semantic?q=${encodeURIComponent(query)}&limit=${limit}&stack_variants=${stackVariants}`;
     if (threshold > 0) {
       url += `&score_threshold=${threshold}`;
     }
@@ -254,11 +264,16 @@ async function executeSearch(query, limit = 20) {
   }
 }
 
+let currentSearchResults = [];
+
 function renderSearchResults(items, container) {
+  currentSearchResults = items || [];
   container.innerHTML = '';
-  items.forEach(item => {
+  items.forEach((item, itemIdx) => {
     const card = document.createElement('div');
-    card.className = 'group bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl overflow-hidden shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col';
+    const isStack = !!item.is_stack && (item.variants_count > 0);
+    const stackClass = isStack ? ' stack-card' : '';
+    card.className = `group bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl overflow-hidden shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col${stackClass}`;
     
     // Score als Prozent
     const scorePct = Math.round(item.score * 100);
@@ -269,6 +284,21 @@ function renderSearchResults(items, container) {
     const safePath = encodeURIComponent(item.file_path);
     const displayTitle = item.title || item.file_name;
     const subTitle = item.title ? item.file_name : (item.creator || '');
+
+    // Stack Badge oben links
+    let stackBadgeHtml = '';
+    if (isStack) {
+      stackBadgeHtml = `
+        <button
+          type="button"
+          onclick="event.stopPropagation(); openStackModal(${itemIdx})"
+          class="absolute top-2 left-2 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500 text-slate-950 shadow-md hover:bg-amber-400 transition-all flex items-center gap-1 z-10 backdrop-blur-sm"
+          title="Dieser Bildstapel fasst ${item.variants_count + 1} verwandte Aufnahmen/Duplikate zusammen. Klicken zum Vergleichen."
+        >
+          <span>📚</span>
+          <span>+${item.variants_count} <span class="hidden sm:inline">Varianten</span></span>
+        </button>`;
+    }
 
     // Metadata Badges (Personen, Datierung, Signatur)
     let metaBadgesHtml = '';
@@ -284,6 +314,10 @@ function renderSearchResults(items, container) {
       metaBadgesHtml += `<span class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono text-[10px] truncate max-w-[100px]">${escapeHtml(item.signature)}</span>`;
     }
 
+    const actionText = isStack 
+      ? `<span class="text-amber-400 font-semibold group-hover:underline">Stapel prüfen (${item.variants_count + 1}) →</span>` 
+      : `<span class="text-amber-500/80 group-hover:translate-x-0.5 transition-transform">Details →</span>`;
+
     card.innerHTML = `
       <div class="aspect-[4/3] bg-slate-950 relative overflow-hidden flex items-center justify-center">
         <img
@@ -293,6 +327,7 @@ function renderSearchResults(items, container) {
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%23334155\\'><text x=\\'50%\\' y=\\'50%\\' text-anchor=\\'middle\\' fill=\\'%2364748b\\' font-size=\\'12\\'>Scan</text></svg>'"
         >
+        ${stackBadgeHtml}
         <span class="absolute top-2 right-2 px-2 py-0.5 rounded text-[11px] font-mono font-medium border ${scoreColor} backdrop-blur-md">
           ${scorePct}% Score
         </span>
@@ -307,12 +342,154 @@ function renderSearchResults(items, container) {
         ${metaBadgesHtml ? `<div class="mt-2 flex flex-wrap items-center gap-1">${metaBadgesHtml}</div>` : ''}
         <div class="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
           <span class="truncate max-w-[120px] font-mono">${escapeHtml(item.file_path.split('/').slice(-2, -1)[0] || 'Archiv')}</span>
-          <span class="text-amber-500/80 group-hover:translate-x-0.5 transition-transform">Details →</span>
+          ${actionText}
         </div>
       </div>
     `;
 
-    card.addEventListener('click', () => openImageModal(item.file_path, item.file_name));
+    card.addEventListener('click', () => {
+      if (isStack) {
+        openStackModal(itemIdx);
+      } else {
+        openImageModal(item.file_path, item.file_name);
+      }
+    });
+    container.appendChild(card);
+  });
+}
+
+// --- Bildstapel & Varianten Modal ---
+
+function openStackModal(itemIdx) {
+  const item = currentSearchResults[itemIdx];
+  if (!item) return;
+
+  const modal = document.getElementById('stack-modal');
+  const title = document.getElementById('stack-modal-title');
+  const subtitle = document.getElementById('stack-modal-subtitle');
+  const itemsContainer = document.getElementById('stack-modal-items');
+  const info = document.getElementById('stack-modal-info');
+
+  const allItems = [
+    {
+      ...item,
+      is_primary: true,
+      variant_label: 'Haupttreffer (Primäre Aufnahme)',
+      variant_similarity: item.score,
+    },
+    ...(item.variants || [])
+  ];
+
+  title.textContent = `Bildstapel: ${item.file_name || 'Varianten'}`;
+  subtitle.textContent = `${allItems.length} Aufnahmen zusammengefasst • ${allItems.length - 1} redundante Treffer vermieden`;
+  if (info) info.textContent = `Archivisch verlustfrei: Alle ${allItems.length} Aufnahmen bleiben im physischen Bestand erhalten.`;
+
+  renderStackComparisonItems(allItems, itemsContainer);
+  modal.classList.remove('hidden');
+}
+
+function closeStackModal() {
+  const modal = document.getElementById('stack-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function renderStackComparisonItems(items, container) {
+  container.innerHTML = '';
+
+  let maxPixels = 0;
+  let masterIdx = -1;
+  items.forEach((it, idx) => {
+    const px = (it.width || 0) * (it.height || 0);
+    if (px > maxPixels) {
+      maxPixels = px;
+      masterIdx = idx;
+    }
+  });
+
+  items.forEach((it, idx) => {
+    const card = document.createElement('div');
+    const isMaster = (idx === masterIdx && maxPixels > 0);
+    const safePath = encodeURIComponent(it.file_path || '');
+    const isPrimary = !!it.is_primary;
+
+    const relBadge = isPrimary 
+      ? '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">⭐ Hauptaufnahme</span>'
+      : (it.variant_type === 'EXACT_DUPLICATE'
+        ? '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">100% Identischer Scan</span>'
+        : (it.variant_type === 'FORMAT_VARIANT'
+          ? '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">Zuschnitt / Format</span>'
+          : '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/40">Serienaufnahme</span>'));
+
+    const masterBadge = isMaster 
+      ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">Höchste Auflösung</span>' 
+      : '';
+
+    const simPct = it.variant_similarity ? Math.round(it.variant_similarity * 100) : (it.score ? Math.round(it.score * 100) : 100);
+
+    card.className = 'bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-md hover:border-slate-700 transition';
+    card.innerHTML = `
+      <div class="aspect-[4/3] bg-slate-900 relative overflow-hidden flex items-center justify-center">
+        <img
+          src="/images/serve?path=${safePath}&max_dim=600"
+          alt="${escapeHtml(it.file_name || '')}"
+          loading="lazy"
+          class="w-full h-full object-contain"
+        >
+        <span class="absolute top-2 right-2 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-950/80 border border-slate-700 text-slate-300 backdrop-blur-md">
+          ${simPct}% Ähnlichkeit
+        </span>
+      </div>
+      <div class="p-3.5 flex-1 flex flex-col justify-between space-y-3">
+        <div>
+          <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
+            ${relBadge}
+            ${masterBadge}
+          </div>
+          <h5 class="text-xs font-semibold text-slate-100 truncate" title="${escapeHtml(it.file_name || '')}">
+            ${escapeHtml(it.file_name || (it.file_path ? it.file_path.split('/').pop() : 'Bild'))}
+          </h5>
+          <p class="text-[11px] text-slate-400 font-mono truncate mt-0.5" title="${escapeHtml(it.file_path || '')}">
+            ${escapeHtml(it.file_path || '')}
+          </p>
+        </div>
+
+        <div class="space-y-1 pt-2 border-t border-slate-900 text-[11px] font-mono text-slate-400">
+          <div class="flex justify-between">
+            <span class="text-slate-500">Auflösung:</span>
+            <span class="text-slate-200">${it.width && it.height ? `${it.width} &times; ${it.height} px` : 'Unbekannt'}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500">Datierung:</span>
+            <span class="text-amber-400/90">${it.date ? escapeHtml(it.date) : 'Keine Angabe'}</span>
+          </div>
+          ${it.file_size ? `
+          <div class="flex justify-between">
+            <span class="text-slate-500">Dateigröße:</span>
+            <span class="text-slate-300">${(it.file_size / (1024 * 1024)).toFixed(2)} MB</span>
+          </div>` : ''}
+        </div>
+
+        <div class="pt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onclick="closeStackModal(); openImageModal('${escapeHtml(it.file_path || '').replace(/'/g, "\\'")}', '${escapeHtml(it.file_name || '').replace(/'/g, "\\'")}')"
+            class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition text-center"
+          >
+            Details &amp; Zoom
+          </button>
+          <a
+            href="/images/serve?path=${safePath}"
+            target="_blank"
+            class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-700 transition"
+            title="Original im neuen Tab öffnen"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+            </svg>
+          </a>
+        </div>
+      </div>
+    `;
     container.appendChild(card);
   });
 }
@@ -848,6 +1025,9 @@ async function openImageModal(filePath, fileName) {
   // Bildquelle setzen
   img.src = `/images/serve?path=${encodeURIComponent(filePath)}&max_dim=1200`;
 
+  // Duplikats- & Variantenprüfung im Hintergrund
+  checkModalImageVariants(filePath);
+
   modal.classList.remove('hidden');
 
   const metaContainer = document.getElementById('modal-metadata-content');
@@ -1050,8 +1230,11 @@ async function searchSimilarImages(filePath) {
   spinner.classList.remove('hidden');
   resultsBar.classList.add('hidden');
 
+  const stackToggle = document.getElementById('search-stack-variants');
+  const stackVariants = stackToggle ? stackToggle.checked : true;
+
   try {
-    const res = await fetch(`/search/similar?image_path=${encodeURIComponent(filePath)}&limit=20`);
+    const res = await fetch(`/search/similar?image_path=${encodeURIComponent(filePath)}&limit=20&stack_variants=${stackVariants}`);
     if (!res.ok) throw new Error(`Fehler bei der Ähnlichkeitssuche (${res.status})`);
     const data = await res.json();
 
@@ -1265,6 +1448,9 @@ async function searchByCrop(filePath, cropBox, fileName) {
   resultsBar.classList.add('hidden');
 
   try {
+    const stackToggle = document.getElementById('search-stack-variants');
+    const stackVariants = stackToggle ? stackToggle.checked : true;
+
     const res = await fetch('/search/crop', {
       method: 'POST',
       headers: {
@@ -1277,7 +1463,8 @@ async function searchByCrop(filePath, cropBox, fileName) {
         width: cropBox.width,
         height: cropBox.height,
         is_normalized: true,
-        limit: 24
+        limit: 24,
+        stack_variants: stackVariants
       })
     });
 
@@ -1882,6 +2069,187 @@ document.addEventListener('keydown', (e) => {
     if (fbModal && !fbModal.classList.contains('hidden')) {
       closeFolderBrowserModal();
     }
+    const stModal = document.getElementById('stack-modal');
+    if (stModal && !stModal.classList.contains('hidden')) {
+      closeStackModal();
+    }
   }
 });
+
+// --- 5. Duplikate & Bildstapel (Tab 4 & Modal Inspection) ---
+
+let currentModalVariantsData = null;
+
+function checkModalImageVariants(filePath) {
+  const variantsBtn = document.getElementById('modal-variants-btn');
+  const variantsCountBadge = document.getElementById('modal-variants-count');
+  if (!variantsBtn || !variantsCountBadge) return;
+
+  variantsCountBadge.textContent = '...';
+  currentModalVariantsData = null;
+
+  fetch(`/images/variants?path=${encodeURIComponent(filePath)}&limit=15`)
+    .then(r => r.ok ? r.json() : null)
+    .then(varData => {
+      if (varData && varData.total_variants > 0) {
+        variantsCountBadge.textContent = varData.total_variants;
+        variantsBtn.classList.remove('bg-slate-800', 'text-slate-300');
+        variantsBtn.classList.add('bg-amber-500/20', 'border-amber-500/60', 'text-amber-300');
+        variantsBtn.title = `${varData.total_variants} Duplikate / Varianten im Bestand gefunden! Klicken zum Vergleichen.`;
+        currentModalVariantsData = varData;
+      } else {
+        variantsCountBadge.textContent = '0';
+        variantsBtn.classList.remove('bg-amber-500/20', 'border-amber-500/60', 'text-amber-300');
+        variantsBtn.classList.add('bg-slate-800', 'text-slate-300');
+        variantsBtn.title = 'Keine weiteren Varianten im Bestand gefunden.';
+        currentModalVariantsData = null;
+      }
+    })
+    .catch(() => {
+      if (variantsCountBadge) variantsCountBadge.textContent = '0';
+    });
+}
+
+function openVariantsForCurrentModal() {
+  if (!currentModalVariantsData || !currentModalVariantsData.variants || currentModalVariantsData.variants.length === 0) {
+    showToast('Keine weiteren Varianten zu diesem Bild im Bestand gefunden.');
+    return;
+  }
+
+  const modal = document.getElementById('stack-modal');
+  const title = document.getElementById('stack-modal-title');
+  const subtitle = document.getElementById('stack-modal-subtitle');
+  const itemsContainer = document.getElementById('stack-modal-items');
+  const info = document.getElementById('stack-modal-info');
+
+  const ref = currentModalVariantsData.reference_image;
+  const allItems = [
+    {
+      ...ref,
+      is_primary: true,
+      variant_label: 'Referenzbild (Aktuell geöffnet)',
+      variant_similarity: 1.0,
+    },
+    ...currentModalVariantsData.variants
+  ];
+
+  title.textContent = `Varianten & Duplikate: ${ref.file_name || 'Aufnahme'}`;
+  subtitle.textContent = `${allItems.length} Aufnahmen im Archiv gefunden (${currentModalVariantsData.total_variants} Varianten)`;
+  if (info) info.textContent = `Archivisch verlustfrei: Alle Varianten verbleiben im physischen Bestand.`;
+
+  renderStackComparisonItems(allItems, itemsContainer);
+  modal.classList.remove('hidden');
+}
+
+let currentArchiveDuplicateGroups = [];
+
+async function loadArchiveDuplicates() {
+  const grid = document.getElementById('dup-grid');
+  const spinner = document.getElementById('dup-spinner');
+  const epsSelect = document.getElementById('dup-filter-eps');
+  const countText = document.getElementById('dup-showing-count');
+  const statGroups = document.getElementById('dup-stat-groups');
+  const statImages = document.getElementById('dup-stat-images');
+
+  if (!grid || !spinner) return;
+
+  grid.innerHTML = '';
+  spinner.classList.remove('hidden');
+  if (countText) countText.textContent = 'Analysiere Bildbestände...';
+
+  const eps = epsSelect ? parseFloat(epsSelect.value) : 0.075;
+
+  try {
+    const res = await fetch(`/archive/variant-clusters?eps=${eps}&limit_groups=100`);
+    if (!res.ok) throw new Error(`Fehler beim Laden (${res.status})`);
+    const data = await res.json();
+
+    currentArchiveDuplicateGroups = data.groups || [];
+    spinner.classList.add('hidden');
+
+    if (statGroups) statGroups.textContent = data.total_groups || 0;
+    if (statImages) statImages.textContent = data.total_stacked_images || 0;
+    if (countText) countText.textContent = `Zeige ${data.showing_groups || 0} von ${data.total_groups || 0} Stapeln`;
+
+    if (!data.groups || data.groups.length === 0) {
+      grid.innerHTML = `
+        <div class="col-span-full text-center py-16 text-slate-500">
+          <p class="text-base text-slate-400 font-medium">Keine Duplikate oder Varianten gefunden</p>
+          <p class="text-xs text-slate-500 mt-1">Alle archivierten Bilder sind optisch eindeutig oder die Empfindlichkeit ist zu streng.</p>
+        </div>`;
+      return;
+    }
+
+    renderDuplicateGroups(data.groups, grid);
+  } catch (err) {
+    spinner.classList.add('hidden');
+    showToast(`Fehler bei Duplikatsuche: ${err.message}`, true);
+  }
+}
+
+function renderDuplicateGroups(groups, container) {
+  container.innerHTML = '';
+  groups.forEach((grp, idx) => {
+    const card = document.createElement('div');
+    const rep = grp.representative || {};
+    const safePath = encodeURIComponent(rep.file_path || '');
+    const title = rep.title || rep.file_name || `Stapel #${idx + 1}`;
+
+    card.className = 'group bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl overflow-hidden shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col stack-card';
+
+    card.innerHTML = `
+      <div class="aspect-[4/3] bg-slate-950 relative overflow-hidden flex items-center justify-center">
+        <img
+          src="/images/serve?path=${safePath}&max_dim=400"
+          alt="${escapeHtml(title)}"
+          loading="lazy"
+          class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%23334155\\'><text x=\\'50%\\' y=\\'50%\\' text-anchor=\\'middle\\' fill=\\'%2364748b\\' font-size=\\'12\\'>Scan</text></svg>'"
+        >
+        <span class="absolute top-2 left-2 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500 text-slate-950 shadow-md backdrop-blur-md">
+          📚 ${grp.count} Aufnahmen
+        </span>
+        ${rep.width && rep.height ? `
+        <span class="absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-950/80 border border-slate-800 text-slate-400">
+          ${rep.width} &times; ${rep.height}
+        </span>` : ''}
+      </div>
+      <div class="p-3.5 flex-1 flex flex-col justify-between">
+        <div>
+          <h5 class="text-xs font-semibold text-slate-200 truncate group-hover:text-amber-400 transition" title="${escapeHtml(title)}">
+            ${escapeHtml(title)}
+          </h5>
+          <p class="text-[11px] text-slate-400 font-mono truncate mt-0.5" title="${escapeHtml(rep.file_path || '')}">
+            ${escapeHtml(rep.file_path || '')}
+          </p>
+        </div>
+        <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+          <span class="text-slate-500 font-mono">${rep.date || 'Ohne Datum'}</span>
+          <span class="text-amber-400 font-semibold group-hover:translate-x-0.5 transition-transform">Stapel vergleichen →</span>
+        </div>
+      </div>
+    `;
+
+    card.addEventListener('click', () => openDuplicateGroupModal(idx));
+    container.appendChild(card);
+  });
+}
+
+function openDuplicateGroupModal(groupIndex) {
+  const grp = currentArchiveDuplicateGroups[groupIndex];
+  if (!grp) return;
+
+  const modal = document.getElementById('stack-modal');
+  const title = document.getElementById('stack-modal-title');
+  const subtitle = document.getElementById('stack-modal-subtitle');
+  const itemsContainer = document.getElementById('stack-modal-items');
+  const info = document.getElementById('stack-modal-info');
+
+  title.textContent = `Variantengruppe: ${grp.representative.file_name || 'Archiv-Stapel'}`;
+  subtitle.textContent = `${grp.count} identifizierte Aufnahmen &amp; Repros im Bestand`;
+  if (info) info.textContent = `Archivischer Kontext bleibt zu 100% erhalten. Keine automatische Löschung von Quelldateien.`;
+
+  renderStackComparisonItems(grp.items || [], itemsContainer);
+  modal.classList.remove('hidden');
+}
 

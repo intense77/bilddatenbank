@@ -23,11 +23,13 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 ## 2. Duplikats- & Varianten-Erkennung (Deduping & Stacking)
 * **Ziel:** Vermeidung verstopfter Trefferlisten durch Serienabzüge, Kontaktabzüge oder Mehrfachbelichtungen bei Nachlässen.
 * **Aufgaben:**
-  - [ ] **Zweistufige Ähnlichkeitserkennung:**
+  - [x] **Zweistufige Ähnlichkeitserkennung:**
     * *Stufe 1 (Deterministisch):* Perceptual Hashing (dHash / pHash via `imagehash`) für 100 % identische Bilder, Größenvarianten und minimale Crops (extrem schnell, 0 MB VRAM).
-    * *Stufe 2 (Optische Varianten):* CLIP-Vektordistanz mit hohem Schwellenwert (Cosine-Score > 0.94) für Serienaufnahmen und abweichende Belichtungen.
-  - [ ] **Visuelles „Stacking“ im Web-Frontend:**
-    * Varianten werden nicht destruktiv gelöscht (Erhalt des Bestandszusammenhangs), sondern in den Suchergebnissen zu einem aufklappbaren Bildstapel („+3 Varianten“) zusammengefasst.
+    * *Stufe 2 (Optische Varianten):* CLIP-Vektordistanz mit hohem Schwellenwert (Cosine-Score > 0.92) für Serienaufnahmen und abweichende Belichtungen.
+  - [x] **Visuelles „Stacking“ im Web-Frontend:**
+    * Varianten werden nicht destruktiv gelöscht (Erhalt des Bestandszusammenhangs), sondern in den Suchergebnissen zu einem Bildstapel („+3 Varianten“) mit visueller Tiefenschattierung zusammengefasst.
+    * Interaktiver Stack-Inspector & Varianten-Vergleich mit technischer Gegenüberstellung (Auflösung, Master-Empfehlung, Dateigröße, Ähnlichkeit).
+    * Dedizierter Tab „Duplikate & Stapel“ zur archivweiten Analyse und Durchforstung von Beständen.
 
 ---
 

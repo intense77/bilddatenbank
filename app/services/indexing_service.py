@@ -91,6 +91,10 @@ class IndexingService:
             else:
                 faces_data = []
 
+            # 3. Perceptual Hashing (dHash / pHash) zur Duplikats- & Varianten-Erkennung
+            from app.services.variant_service import compute_image_hashes
+            hashes = compute_image_hashes(pil_img)
+
             now_iso = datetime.now(timezone.utc).isoformat()
 
             # Bild-ID deterministisch aus relativem Pfad bilden (Idempotenz analog indexer.py)
@@ -109,6 +113,8 @@ class IndexingService:
                     "width": width,
                     "height": height,
                     "file_size": file_size,
+                    "phash": hashes.get("phash"),
+                    "dhash": hashes.get("dhash"),
                     "faces_count": len(faces_data),
                     "indexed_at": now_iso,
                     "title": meta.get("title"),

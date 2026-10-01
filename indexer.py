@@ -292,8 +292,11 @@ def main():
 
                 now_iso = datetime.now(timezone.utc).isoformat()
 
-                # 3. CLIP-Embedding berechnen (archive_images) - direkt aus RAM
+                # 3. CLIP-Embedding & Perceptual Hashing (dHash / pHash)
                 clip_vector = clip_service.embed_image(pil_img)
+                from app.services.variant_service import compute_image_hashes
+                hashes = compute_image_hashes(pil_img)
+
                 image_point = rest_models.PointStruct(
                     id=image_id,
                     vector=clip_vector,
@@ -306,6 +309,8 @@ def main():
                         "width": width,
                         "height": height,
                         "file_size": file_size,
+                        "phash": hashes.get("phash"),
+                        "dhash": hashes.get("dhash"),
                         "indexed_at": now_iso,
                         "title": meta.get("title"),
                         "creator": meta.get("creator"),
