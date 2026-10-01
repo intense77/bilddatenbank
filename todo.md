@@ -7,9 +7,10 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 ## 1. Kuratierungs-Werkzeuge in der Benutzeroberfläche (Archivare-Tools)
 * **Ziel:** Maximale Arbeitsergonomie bei der wissenschaftlichen Erschließung und Verifikation.
 * **Aufgaben:**
-  - [ ] **Crop-to-Search (Bildauschnitt-Suche):**
-    * Möglichkeit, im Web-Frontend per Maus einen Rahmen um ein Bilddetail zu ziehen (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät oder ein Gemälde im Hintergrund).
-    * Backend schneidet den Bildbereich serverseitig zu, berechnet das OpenCLIP-Embedding und sucht visuell ähnliche Details im Gesamtarchiv.
+  - [x] **Crop-to-Search (Bildausschnitt-Suche / Region-of-Interest):**
+    * Interaktiver Auswahlrahmen im Web-Frontend per Maus über jedem Archivbild im Detail-Modal (z. B. für Altaraufsätze, Wappen, liturgische Geräte oder Gemäldedetails im Hintergrund).
+    * Backend schneidet den gewählten Ausschnitt serverseitig und verlustfrei zu (`POST /search/crop`), berechnet das 512-dim OpenCLIP-Embedding und findet visuell ähnliche Details im Gesamtarchiv.
+    * Trefferliste im Suchgitter mit Angabe der Detail-Dimensionen und Referenzbild.
   - [x] **Cluster-Merge & -Split (Personen-Kuratierung):**
     * *Cluster-Merge:* Zwei getrennte Personen-Cluster zusammenführen (`POST /faces/clusters/merge`) inklusive automatischer Konsolidierung des Namens und Resynchronisation der Elternbilder.
     * *Cluster-Split / Ausschluss:* Falsch zugeordnete Gesichter mit einem Klick („Nicht diese Person“ / `POST /faces/{face_id}/remove-from-cluster`) aus einem Cluster entfernen und als unzugeordneten Punkt markieren.

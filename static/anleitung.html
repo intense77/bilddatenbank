@@ -190,7 +190,7 @@
       <a href="/">← Zurück zur Bildersuche</a>
     </nav>
     <div class="doc-header">
-      <span class="badge">Archivpraxis • Handbuch</span>
+      <span class="badge">Handbuch • Praxisleitfaden</span>
       <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
     </div>
     <article>
@@ -211,16 +211,16 @@
 <h2 id="1-uberblick-funktionsweise">1. Überblick &amp; Funktionsweise</h2>
 <h3 id="was-macht-dieses-system">Was macht dieses System?</h3>
 <p>Klassische Archivdatenbanken verlangen, dass jedes Foto händisch mit starren Schlagworten (Tags) verschlagwortet wird. Fehlt ein Schlagwort oder Schreibvarianten, bleibt das Bild unauffindbar. </p>
-<p>Dieses System kombiniert klassische Erschließungsdaten mit modernen <strong>lokalen KI-Modellen</strong>:
-* <strong>OpenCLIP (ViT-B-32):</strong> Versteht visuelle Konzepte, Szenen, Architekturen und Gegenstände in Bildern. Sie können in natürlicher Sprache suchen (<em>„gotischer Altar“</em>, <em>„Soldaten im Schützengraben“</em>, <em>„Marktplatz mit Kutsche“</em>), ohne dass diese Begriffe vorher eingetippt wurden.
-* <strong>Archivische Metadaten-Fusion:</strong> Liest automatisch vorhandene Bildheader (EXIF, TIFF-Tags, IPTC Core, XMP/Dublin Core) sowie kuratierte Begleitdateien (JSON-Sidecars) ein und stellt diese strukturiert dar.
-* <strong>InsightFace (ArcFace &amp; RetinaFace):</strong> Erkennt Gesichter auf historischen Fotos, selbst bei gealterten, kontrastarmen oder beschädigten Scans (optional aktivierbar).
-* <strong>DBSCAN-Clustering:</strong> Gruppiert mehrfach auftretende Gesichter vollautomatisch zu Personen-Clustern. Sie können einer Person einmalig einen Namen zuweisen (<em>„Bischof Müller“</em>), und alle Fundstellen im Archiv werden synchronisiert.
+<p>Dieses System kombiniert klassische Erschließungsdaten mit modernen <strong>lokalen KI-Modellen</strong>:<br />
+* <strong>OpenCLIP (ViT-B-32):</strong> Versteht visuelle Konzepte, Szenen, Architekturen und Gegenstände in Bildern. Sie können in natürlicher Sprache suchen (<em>„gotischer Altar“</em>, <em>„Soldaten im Schützengraben“</em>, <em>„Marktplatz mit Kutsche“</em>), ohne dass diese Begriffe vorher eingetippt wurden.<br />
+* <strong>Archivische Metadaten-Fusion:</strong> Liest automatisch vorhandene Bildheader (EXIF, TIFF-Tags, IPTC Core, XMP/Dublin Core) sowie kuratierte Begleitdateien (JSON-Sidecars) ein und stellt diese strukturiert dar.<br />
+* <strong>InsightFace (ArcFace &amp; RetinaFace):</strong> Erkennt Gesichter auf historischen Fotos, selbst bei gealterten, kontrastarmen oder beschädigten Scans (optional aktivierbar).<br />
+* <strong>DBSCAN-Clustering:</strong> Gruppiert mehrfach auftretende Gesichter vollautomatisch zu Personen-Clustern. Sie können einer Person einmalig einen Namen zuweisen (<em>„Bischof Müller“</em>), und alle Fundstellen im Archiv werden synchronisiert.<br />
 * <strong>100 % lokal &amp; datensparsam:</strong> Keine Cloud, keine externen APIs, keine CDNs. Alle Daten und Vektoren verbleiben ausschließlich auf Ihrem Rechner. Standardmäßig ist die biometrische Gesichtserkennung deaktiviert (DSGVO Art. 9).</p>
 <hr />
 <h2 id="2-system-starten-beenden">2. System starten &amp; beenden</h2>
-<p>Das System besteht aus zwei Komponenten:
-1. <strong>Qdrant (Vektordatenbank):</strong> Speichert die mathematischen Merkmalsvektoren persistent im Ordner <code>./qdrant_storage</code>.
+<p>Das System besteht aus zwei Komponenten:<br />
+1. <strong>Qdrant (Vektordatenbank):</strong> Speichert die mathematischen Merkmalsvektoren persistent im Ordner <code>./qdrant_storage</code>.<br />
 2. <strong>FastAPI-Server:</strong> Stellt die Suchlogik, die Metadaten-Dienste und die Weboberfläche bereit.</p>
 <h3 id="starten">Starten</h3>
 <p>Öffnen Sie ein Terminal im Projektverzeichnis (<code>/home/norbert/Bilderdatenbank</code>):</p>
@@ -233,15 +233,15 @@
 # 2. Webserver starten
 .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 </code></pre>
-<p>Öffnen Sie nun Ihren Webbrowser (z. B. Firefox oder Chromium):
-* <strong>Web-Frontend:</strong> <a href="http://localhost:8000/">http://localhost:8000/</a>
-* <strong>API-Dokumentation (Swagger UI):</strong> <a href="http://localhost:8000/docs">http://localhost:8000/docs</a>
+<p>Öffnen Sie nun Ihren Webbrowser (z. B. Firefox oder Chromium):<br />
+* <strong>Web-Frontend:</strong> <a href="http://localhost:8000/">http://localhost:8000/</a><br />
+* <strong>API-Dokumentation (Swagger UI):</strong> <a href="http://localhost:8000/docs">http://localhost:8000/docs</a><br />
 * <strong>Qdrant-Datenbank-Dashboard:</strong> <a href="http://localhost:6333/dashboard">http://localhost:6333/dashboard</a></p>
 <h3 id="beenden">Beenden</h3>
 <ul>
 <li>Den Webserver im Terminal mit <code>Strg + C</code> beenden.</li>
-<li>Die Datenbank stoppen:
-  <code>bash
+<li>Die Datenbank stoppen:<br />
+<code>bash
   docker compose stop</code></li>
 </ul>
 <hr />
@@ -312,7 +312,7 @@
 <li><code>.tif</code>, <code>.tiff</code> (auch historische Drucke, Großformate und CMYK-Scans)</li>
 </ul>
 <blockquote>
-<p>[!NOTE]
+<p>[!NOTE]<br />
 <strong>Inkrementelle Speicherung &amp; Idempotenz:</strong> Das Skript erzeugt für jeden relativen Dateipfad eine feste UUIDv5. Wenn Sie später neue Bilder in denselben Ordner ablegen und den Befehl erneut starten, werden <strong>nur neu hinzugekommene Bilder</strong> berechnet. Bereits vorhandene Bilder werden übersprungen.</p>
 </blockquote>
 <hr />
@@ -326,7 +326,7 @@
 </ol>
 <h3 id="kuratierte-json-sidecars-begleitdateien">Kuratierte JSON-Sidecars (Begleitdateien)</h3>
 <p>In der musealen Praxis enthalten TIFF-Scans oft veraltete oder scannergenerierte EXIF-Angaben. Über JSON-Begleitdateien können Archivare korrigierte und erweiterte Angaben hinterlegen, <strong>ohne die Master-Bilddatei antasten zu müssen</strong>.</p>
-<p>Legen Sie im gleichen Verzeichnis wie das Bild eine Begleitdatei ab:
+<p>Legen Sie im gleichen Verzeichnis wie das Bild eine Begleitdatei ab:<br />
 * Für <code>glasplatte_042.tif</code>: entweder <code>glasplatte_042.json</code> oder <code>glasplatte_042.tif.json</code>.</p>
 <p><strong>Beispiel einer JSON-Sidecar-Datei:</strong></p>
 <pre><code class="language-json">{
@@ -340,8 +340,7 @@
 }
 </code></pre>
 <blockquote>
-<p>[!TIP]
-Angaben in der JSON-Sidecar-Datei haben Vorrang vor Kamera-Headerdaten und überschreiben fehlerhafte Scanner-Angaben.</p>
+<p><strong>Tipp:</strong> &gt; Angaben in der JSON-Sidecar-Datei haben Vorrang vor Kamera-Headerdaten und überschreiben fehlerhafte Scanner-Angaben.</p>
 </blockquote>
 <hr />
 <h2 id="5-nutzung-des-web-frontends">5. Nutzung des Web-Frontends</h2>
@@ -350,51 +349,55 @@ Angaben in der JSON-Sidecar-Datei haben Vorrang vor Kamera-Headerdaten und über
 <ol>
 <li><strong>Suchleiste:</strong> Geben Sie ein Motiv, ein Thema, eine Epoche oder einen Personennamen ein (z. B. <em>„gotischer Altar“</em>, <em>„Marktplatz 1910“</em>, <em>„Soldaten im Feld“</em> oder <em>„Bischof Ulrich“</em>).</li>
 <li><strong>Hybride Personensuche:</strong> Sobald Sie nach dem Namen einer erfassten Person suchen, erkennt das System dies automatisch. Treffer, auf denen diese Person zu sehen ist, werden mit <strong>100 % Relevanz</strong> ganz oben platziert und mit einem Personen-Badge (z. B. <code>👤 Bischof Ulrich</code>) optisch hervorgehoben.</li>
-<li><strong>Relevanz-Filter (Schwellenwert):</strong></li>
-<li><em>Standard (ab 23 %)</em>: Filtert unpassende Zufallstreffer aus (empfohlen).</li>
-<li><em>Streng (ab 25 %)</em>: Zeigt nur sehr eindeutige Treffer.</li>
-<li><em>Locker (ab 20 %)</em>: Zeigt auch Bilder mit entfernter thematischer Ähnlichkeit.</li>
-<li><em>Alle Treffer</em>: Zeigt stets die nächsten mathematischen Nachbarn.</li>
+<li><strong>Relevanz-Filter (Schwellenwert):</strong><br />
+   * <em>Standard (ab 23 %)</em>: Filtert unpassende Zufallstreffer aus (empfohlen).<br />
+   * <em>Streng (ab 25 %)</em>: Zeigt nur sehr eindeutige Treffer.<br />
+   * <em>Locker (ab 20 %)</em>: Zeigt auch Bilder mit entfernter thematischer Ähnlichkeit.<br />
+   * <em>Alle Treffer</em>: Zeigt stets die nächsten mathematischen Nachbarn.</li>
 <li><strong>Ergebnis-Karten:</strong> Jedes Bild zeigt den berechneten Score (z. B. <code>78% Score</code>), den archivalischen Titel, den Dateinamen, Tags für Datierung/Signatur sowie erkannte Personen.</li>
 </ol>
 <h3 id="tab-2-personen-cluster">Tab 2: Personen &amp; Cluster</h3>
-<p><em>(Nur aktiv, wenn <code>ENABLE_FACE_RECOGNITION=true</code> bzw. der Gesichtserkennungs-Schalter aktiv ist)</em>
-1. <strong>Echtzeit-Suchfeld &amp; Schnellfilter:</strong>
-   * <strong>Suchleiste:</strong> Filtern Sie die Personenliste in Echtzeit nach Namen oder Cluster-ID.
-   * <strong>Filterchips:</strong> Wechseln Sie mit einem Klick zwischen <em>„Alle“</em>, <em>„Benannt“</em> (nur Personen mit vergebenem Klarnamen) und <em>„Unbenannt“</em> (offene Personen-Cluster zur Erschließung).
-2. <strong>Cluster-Übersicht:</strong> Zeigt runde Porträtausschnitte aller Gesichter, die die KI als dieselbe Person identifiziert hat, inklusive Anzahl der Vorkommen im Archiv.
-3. <strong>Cluster ansehen:</strong> Klick auf eine Person öffnet die Detailansicht mit allen Archivbildern, auf denen die Person vorkommt. Das Gesicht wird auf jedem Scan präzise mit einer goldenen Bounding Box umrahmt (inkl. automatischer EXIF-Entzerrung bei hochformatigen oder gedrehten Scans).
-4. <strong>Klarname zuweisen:</strong> Tragen Sie den Personennamen ein (z. B. <em>„Bischof Ulrich“</em>) und klicken Sie auf <strong>Speichern</strong>. Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen und automatisch für die Freitextsuche in den Bildmetadaten synchronisiert.
-5. <strong>Cluster zusammenführen (Merge):</strong>
-   * Mit dem Button <strong>„Zusammenführen…“</strong> können Sie zwei getrennte Cluster vereinen (z. B. wenn eine Persönlichkeit in jungen Jahren und im Seniorenalter aufgrund veränderter Gesichtszüge getrennt gruppiert wurde).
-   * Wählen Sie das Ziel-Cluster aus und vergeben Sie den gemeinsamen Klarnamen. Alle Gesichter und Elternbilder werden sofort konsolidiert.
-6. <strong>Falsch zugeordnete Gesichter ausschließen (Split / „Nicht diese Person“):</strong>
-   * Auf jeder Bildkarte in der Cluster-Detailansicht befindet sich der Button <strong>„Entfernen“</strong> (<em>„Nicht diese Person“</em>).
-   * Entfernt ein versehentlich zugeordnetes Porträt aus dem Cluster und aktualisiert das Elternbild, ohne die übrigen Gesichter zu verändern.
+<p><em>(Nur aktiv, wenn <code>ENABLE_FACE_RECOGNITION=true</code> bzw. der Gesichtserkennungs-Schalter aktiv ist)</em><br />
+1. <strong>Echtzeit-Suchfeld &amp; Schnellfilter:</strong><br />
+   * <strong>Suchleiste:</strong> Filtern Sie die Personenliste in Echtzeit nach Namen oder Cluster-ID.<br />
+   * <strong>Filterchips:</strong> Wechseln Sie mit einem Klick zwischen <em>„Alle“</em>, <em>„Benannt“</em> (nur Personen mit vergebenem Klarnamen) und <em>„Unbenannt“</em> (offene Personen-Cluster zur Erschließung).<br />
+2. <strong>Cluster-Übersicht:</strong> Zeigt runde Porträtausschnitte aller Gesichter, die die KI als dieselbe Person identifiziert hat, inklusive Anzahl der Vorkommen im Archiv.<br />
+3. <strong>Cluster ansehen:</strong> Klick auf eine Person öffnet die Detailansicht mit allen Archivbildern, auf denen die Person vorkommt. Das Gesicht wird auf jedem Scan präzise mit einer goldenen Bounding Box umrahmt (inkl. automatischer EXIF-Entzerrung bei hochformatigen oder gedrehten Scans).<br />
+4. <strong>Klarname zuweisen:</strong> Tragen Sie den Personennamen ein (z. B. <em>„Bischof Ulrich“</em>) und klicken Sie auf <strong>Speichern</strong>. Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen und automatisch für die Freitextsuche in den Bildmetadaten synchronisiert.<br />
+5. <strong>Cluster zusammenführen (Merge):</strong><br />
+   * Mit dem Button <strong>„Zusammenführen…“</strong> können Sie zwei getrennte Cluster vereinen (z. B. wenn eine Persönlichkeit in jungen Jahren und im Seniorenalter aufgrund veränderter Gesichtszüge getrennt gruppiert wurde).<br />
+   * Wählen Sie das Ziel-Cluster aus und vergeben Sie den gemeinsamen Klarnamen. Alle Gesichter und Elternbilder werden sofort konsolidiert.<br />
+6. <strong>Falsch zugeordnete Gesichter ausschließen (Split / „Nicht diese Person“):</strong><br />
+   * Auf jeder Bildkarte in der Cluster-Detailansicht befindet sich der Button <strong>„Entfernen“</strong> (<em>„Nicht diese Person“</em>).<br />
+   * Entfernt ein versehentlich zugeordnetes Porträt aus dem Cluster und aktualisiert das Elternbild, ohne die übrigen Gesichter zu verändern.<br />
 7. <strong>Cluster neu berechnen:</strong> Ein Klick auf <em>„Cluster neu berechnen“</em> führt das DBSCAN-Clustering über alle archivierten Gesichter erneut aus.</p>
 <h3 id="tab-3-bestande-upload">Tab 3: Bestände &amp; Upload</h3>
-<p>Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:
-1. <strong>Bestehende Ordner ohne Verschieben einbinden:</strong>
-   * <strong>Grafische Verzeichnisauswahl (Button <em>„Auswählen…“</em>):</strong> Öffnet einen interaktiven Dateisystem-Browser direkt im Webinterface mit Schnellzugriff auf Netzlaufwerke (GVFS/NAS), Persönlichen Ordner (<code>~</code>), Projekt-Daten oder Festplatten-Mounts (<code>/media</code>, <code>/mnt</code>). Sie können sich bequem durch Unterordner klicken und den gewünschten Bestand per Klick übernehmen – ganz ohne Pfad-Tippfehler.
-   * <strong>Manuelle Pfadeingabe:</strong> Unterstützt absolute Pfade, Tilde-Auflösung (<code>~/Bilder</code>) sowie GVFS-Netzwerk-Mounts (<code>/run/user/1000/gvfs/...</code>).
-   * <strong>Vorschau-Button:</strong> Prüft vorab die Erreichbarkeit, zählt die enthaltenen Bilddateien und Sidecars und zeigt Beispieldateien an.
-   * <strong>Ordner jetzt indexieren:</strong> Bindet das Verzeichnis sicher in die Pfad-Sandbox ein (<code>ALLOWED_IMAGE_DIRS</code>) und indexiert alle Bilder inkrementell vor Ort.
-2. <strong>Neue Scans per Drag-and-Drop hochladen:</strong>
-   * Ziehen Sie Bilddateien (JPG, PNG, WEBP, TIF/TIFF) und optionale <code>.json</code>-Sidecars direkt in die gestrichelte Ablagezone.
+<p>Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:<br />
+1. <strong>Bestehende Ordner ohne Verschieben einbinden:</strong><br />
+   * <strong>Grafische Verzeichnisauswahl (Button <em>„Auswählen…“</em>):</strong> Öffnet einen interaktiven Dateisystem-Browser direkt im Webinterface mit Schnellzugriff auf Netzlaufwerke (GVFS/NAS), Persönlichen Ordner (<code>~</code>), Projekt-Daten oder Festplatten-Mounts (<code>/media</code>, <code>/mnt</code>). Sie können sich bequem durch Unterordner klicken und den gewünschten Bestand per Klick übernehmen – ganz ohne Pfad-Tippfehler.<br />
+   * <strong>Manuelle Pfadeingabe:</strong> Unterstützt absolute Pfade, Tilde-Auflösung (<code>~/Bilder</code>) sowie GVFS-Netzwerk-Mounts (<code>/run/user/1000/gvfs/...</code>).<br />
+   * <strong>Vorschau-Button:</strong> Prüft vorab die Erreichbarkeit, zählt die enthaltenen Bilddateien und Sidecars und zeigt Beispieldateien an.<br />
+   * <strong>Ordner jetzt indexieren:</strong> Bindet das Verzeichnis sicher in die Pfad-Sandbox ein (<code>ALLOWED_IMAGE_DIRS</code>) und indexiert alle Bilder inkrementell vor Ort.<br />
+2. <strong>Neue Scans per Drag-and-Drop hochladen:</strong><br />
+   * Ziehen Sie Bilddateien (JPG, PNG, WEBP, TIF/TIFF) und optionale <code>.json</code>-Sidecars direkt in die gestrichelte Ablagezone.<br />
    * Das System speichert die Dateien im Archiv und berechnet sofort alle Merkmals-Embeddings und Metadaten.</p>
 <h3 id="bild-detailansicht-modal">Bild-Detailansicht (Modal)</h3>
-<p>Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:
-* <strong>Bild &amp; Bounding Boxes:</strong> Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter.
-* <strong>Archiv-Metadaten Seitenleiste:</strong> Strukturierte Übersicht mit Titel, Datierung, Urheber, Signatur, Abmessungen, Beschreibung und Lizenz.
-* <strong>Interaktive Schlagwort-Chips:</strong> Ein Klick auf ein Schlagwort (z. B. <code>#Wochenmarkt</code>) schließt das Modal und führt sofort die entsprechende Suche aus.
-* <strong>Ähnliche Bilder suchen:</strong> Nutzt das CLIP-Embedding des Fotos als Referenz und sucht optisch verwandte Motive im Archiv.
+<p>Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:<br />
+* <strong>Bild &amp; Bounding Boxes:</strong> Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter.<br />
+* <strong>Archiv-Metadaten Seitenleiste:</strong> Strukturierte Übersicht mit Titel, Datierung, Urheber, Signatur, Abmessungen, Beschreibung und Lizenz.<br />
+* <strong>Bildausschnitt-Suche (Crop-to-Search):</strong><br />
+  * Klicken Sie in der Kopfzeile auf den Button <strong>„Ausschnitt suchen“</strong>.<br />
+  * Ziehen Sie mit gedrückter linker Maustaste einen Rahmen um das gewünschte Motivdetail (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät, eine Inschrift oder ein Gemälde im Hintergrund).<br />
+  * In der schwebenden Aktionsleiste können Sie die Auswahl mit <strong>„✕“</strong> verwerfen oder mit <strong>„Ausschnitt suchen“</strong> bestätigen.<br />
+  * Das Backend schneidet den Bildausschnitt verlustfrei zu, berechnet das OpenCLIP-Embedding und listet alle im Archiv vorhandenen Scans auf, die dieses oder ein ähnliches Motivdetail enthalten.<br />
+* <strong>Ähnliche Bilder suchen:</strong> Nutzt das gesamte CLIP-Embedding des Fotos als Referenz und sucht optisch verwandte Gesamtmotive im Archiv.<br />
 * <strong>Originaldatei öffnen:</strong> Öffnet den hochauflösenden Scan in einem neuen Browsertab.</p>
 <hr />
 <h2 id="6-haufige-fragen-besonderheiten">6. Häufige Fragen &amp; Besonderheiten</h2>
 <h3 id="warum-erhalte-ich-treffer-fur-worter-die-im-bild-gar-nicht-vorkommen">Warum erhalte ich Treffer für Wörter, die im Bild gar nicht vorkommen?</h3>
-<p>Im Gegensatz zu einer reinen Textsuche in einer Datenbank arbeitet eine Vektorsuche nach dem Prinzip der <strong>„Nächsten Nachbarn“ (k-NN)</strong>:
-* Jedes Bild und jede Suchanfrage ist ein Punkt im 512-dimensionalen Vektorraum.
-* Wenn Sie nach <em>„Dampflokomotive“</em> suchen, aber kein Bild eine Lokomotive zeigt, ermittelt die Datenbank diejenigen Bilder, die dieser Anfrage noch am wenigsten unähnlich sind.
+<p>Im Gegensatz zu einer reinen Textsuche in einer Datenbank arbeitet eine Vektorsuche nach dem Prinzip der <strong>„Nächsten Nachbarn“ (k-NN)</strong>:<br />
+* Jedes Bild und jede Suchanfrage ist ein Punkt im 512-dimensionalen Vektorraum.<br />
+* Wenn Sie nach <em>„Dampflokomotive“</em> suchen, aber kein Bild eine Lokomotive zeigt, ermittelt die Datenbank diejenigen Bilder, die dieser Anfrage noch am wenigsten unähnlich sind.<br />
 * <strong>Lösung:</strong> Nutzen Sie den Relevanz-Filter in der Suchleiste (<em>„Standard (ab 23%)“</em>). Dann erhalten Sie bei fehlenden Motiven korrekterweise <strong>0 Treffer</strong>.</p>
 <h3 id="funktionieren-auch-tiff-dateien-im-browser">Funktionieren auch TIFF-Dateien im Browser?</h3>
 <p>Ja. Webbrowser wie Firefox oder Chrome können TIFF-Dateien gewöhnlich nicht direkt anzeigen. Das Backend wandelt TIFF- und CMYK-Bilder für das Web-Frontend <strong>automatisch und verlustfrei über einen Thumbnail-Cache nach JPEG um</strong>. Ihre Originaldateien auf der Festplatte bleiben unverändert.</p>
@@ -409,26 +412,26 @@ Angaben in der JSON-Sidecar-Datei haben Vorrang vor Kamera-Headerdaten und über
 <li><strong>Ihre Originalbilder:</strong> Verbleiben immer an ihrem ursprünglichen Speicherort (z. B. im Archiv-Verzeichnis). Das System speichert in Qdrant lediglich relative/absolute Pfade und Merkmalsvektoren.</li>
 </ul>
 <h3 id="backup-erstellen">Backup erstellen</h3>
-<p>Um alle indizierten Merkmale, erkannten Gesichter und vergebenen Personennamen zu sichern:
-1. Qdrant stoppen: <code>docker compose stop</code>
-2. Den Ordner kopieren:
-   <code>bash
-   cp -r /home/norbert/Bilderdatenbank/qdrant_storage /pfad/zum/backup/</code>
+<p>Um alle indizierten Merkmale, erkannten Gesichter und vergebenen Personennamen zu sichern:<br />
+1. Qdrant stoppen: <code>docker compose stop</code><br />
+2. Den Ordner kopieren:<br />
+<code>bash
+   cp -r /home/norbert/Bilderdatenbank/qdrant_storage /pfad/zum/backup/</code><br />
 3. Qdrant wieder starten: <code>docker compose start</code></p>
 <h3 id="fehlerbehebung">Fehlerbehebung</h3>
 <h4 id="verbindung-zum-server-unter-localhost8000-fehlgeschlagen">„Verbindung zum Server unter localhost:8000 fehlgeschlagen“</h4>
 <ul>
-<li>Der FastAPI-Server läuft noch nicht. Starten Sie ihn im Terminal:
-  <code>bash
+<li>Der FastAPI-Server läuft noch nicht. Starten Sie ihn im Terminal:<br />
+<code>bash
   cd /home/norbert/Bilderdatenbank
   .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload</code></li>
 </ul>
 <h4 id="verbindung-zu-qdrant-fehlgeschlagen">„Verbindung zu Qdrant fehlgeschlagen“</h4>
 <ul>
-<li>Der Docker-Container von Qdrant ist gestoppt. Starten Sie ihn mit:
-  <code>bash
+<li>Der Docker-Container von Qdrant ist gestoppt. Starten Sie ihn mit:<br />
+<code>bash
   cd /home/norbert/Bilderdatenbank
-  ./start_qdrant.sh</code>
+  ./start_qdrant.sh</code><br />
   Prüfen Sie den Status im Browser unter <a href="http://localhost:6333/dashboard">http://localhost:6333/dashboard</a>.</li>
 </ul>
     </article>

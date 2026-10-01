@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
   checkSystemHealth();
   setupDropzone();
   checkIndexingProgress();
+  setupCropInteraction();
   // Vorbelegung Suche falls gewünscht
   const urlParams = new URLSearchParams(window.location.search);
   const q = urlParams.get('q');
@@ -813,6 +814,7 @@ async function openImageModal(filePath, fileName) {
   const facesList = document.getElementById('modal-faces-list');
 
   currentModalImageDetails = { filePath, fileName };
+  toggleCropMode(false);
 
   title.textContent = fileName || filePath.split('/').pop();
   pathElem.textContent = filePath;
@@ -997,6 +999,7 @@ async function openImageModal(filePath, fileName) {
 function closeImageModal() {
   const modal = document.getElementById('image-modal');
   modal.classList.add('hidden');
+  toggleCropMode(false);
   currentModalImageDetails = null;
 }
 
@@ -1046,6 +1049,243 @@ async function searchSimilarImages(filePath) {
 
     renderSearchResults(data, grid);
     showToast('Ähnliche Bilder via CLIP gefunden.');
+  } catch (err) {
+    spinner.classList.add('hidden');
+    showToast(`Fehler: ${err.message}`, true);
+  }
+}
+
+// --- Crop-to-Search (Bildausschnitt-Suche / ROI) ---
+
+let isCropMode = false;
+let isDrawingCrop = false;
+let cropStart = { x: 0, y: 0 };
+let currentCropBox = null;
+
+function toggleCropMode(forcedState) {
+  const btn = document.getElementById('modal-crop-btn');
+  const btnText = document.getElementById('modal-crop-btn-text');
+  const layer = document.getElementById('crop-selection-layer');
+  const box = document.getElementById('crop-selection-box');
+  const hint = document.getElementById('crop-mode-hint');
+
+  if (typeof forcedState === 'boolean') {
+    isCropMode = forcedState;
+  } else {
+    isCropMode = !isCropMode;
+  }
+
+  if (isCropMode) {
+    if (btn) {
+      btn.classList.add('bg-amber-500', 'text-slate-950', 'border-amber-400', 'font-semibold');
+      btn.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+    }
+    if (btnText) btnText.textContent = 'Modus beenden';
+    if (layer) layer.classList.remove('hidden');
+    if (hint) hint.classList.remove('hidden');
+    cancelCropSelection();
+  } else {
+    if (btn) {
+      btn.classList.remove('bg-amber-500', 'text-slate-950', 'border-amber-400', 'font-semibold');
+      btn.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+    }
+    if (btnText) btnText.textContent = 'Ausschnitt suchen';
+    if (layer) layer.classList.add('hidden');
+    if (box) box.classList.add('hidden');
+    if (hint) hint.classList.add('hidden');
+    currentCropBox = null;
+    isDrawingCrop = false;
+  }
+}
+
+function setupCropInteraction() {
+  const layer = document.getElementById('crop-selection-layer');
+  const wrapper = document.getElementById('modal-bbox-wrapper');
+  const img = document.getElementById('modal-img');
+  const box = document.getElementById('crop-selection-box');
+  const actionsBar = document.getElementById('crop-actions-bar');
+
+  if (!layer || !wrapper || !img || !box) return;
+
+  function getImageMetrics() {
+    const imgRect = img.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    return {
+      imgRect,
+      wrapperRect,
+      leftInWrapper: imgRect.left - wrapperRect.left,
+      topInWrapper: imgRect.top - wrapperRect.top,
+      width: imgRect.width,
+      height: imgRect.height
+    };
+  }
+
+  layer.addEventListener('mousedown', (e) => {
+    if (!isCropMode) return;
+    if (e.button !== 0) return; // nur linke Maustaste
+    e.preventDefault();
+
+    const m = getImageMetrics();
+    if (m.width <= 0 || m.height <= 0) return;
+
+    const relX = Math.max(0, Math.min(m.width, e.clientX - m.imgRect.left));
+    const relY = Math.max(0, Math.min(m.height, e.clientY - m.imgRect.top));
+
+    cropStart = { x: relX, y: relY };
+    isDrawingCrop = true;
+    currentCropBox = null;
+
+    box.style.left = `${m.leftInWrapper + relX}px`;
+    box.style.top = `${m.topInWrapper + relY}px`;
+    box.style.width = '0px';
+    box.style.height = '0px';
+    box.classList.remove('hidden');
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDrawingCrop || !isCropMode) return;
+    e.preventDefault();
+
+    const m = getImageMetrics();
+    const curX = Math.max(0, Math.min(m.width, e.clientX - m.imgRect.left));
+    const curY = Math.max(0, Math.min(m.height, e.clientY - m.imgRect.top));
+
+    const minX = Math.min(cropStart.x, curX);
+    const minY = Math.min(cropStart.y, curY);
+    const w = Math.abs(curX - cropStart.x);
+    const h = Math.abs(curY - cropStart.y);
+
+    box.style.left = `${m.leftInWrapper + minX}px`;
+    box.style.top = `${m.topInWrapper + minY}px`;
+    box.style.width = `${w}px`;
+    box.style.height = `${h}px`;
+
+    // Positioniere Aktionsleiste oberhalb oder unterhalb je nach Platz
+    if (actionsBar) {
+      if (m.topInWrapper + minY + h + 48 > m.wrapperRect.height) {
+        actionsBar.style.bottom = 'auto';
+        actionsBar.style.top = '-44px';
+      } else {
+        actionsBar.style.top = 'auto';
+        actionsBar.style.bottom = '-44px';
+      }
+    }
+  });
+
+  window.addEventListener('mouseup', (e) => {
+    if (!isDrawingCrop) return;
+    isDrawingCrop = false;
+
+    const m = getImageMetrics();
+    const curX = Math.max(0, Math.min(m.width, e.clientX - m.imgRect.left));
+    const curY = Math.max(0, Math.min(m.height, e.clientY - m.imgRect.top));
+
+    const minX = Math.min(cropStart.x, curX);
+    const minY = Math.min(cropStart.y, curY);
+    const w = Math.abs(curX - cropStart.x);
+    const h = Math.abs(curY - cropStart.y);
+
+    if (w < 10 || h < 10) {
+      box.classList.add('hidden');
+      currentCropBox = null;
+      return;
+    }
+
+    currentCropBox = {
+      x: minX / m.width,
+      y: minY / m.height,
+      width: w / m.width,
+      height: h / m.height
+    };
+  });
+}
+
+function cancelCropSelection(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const box = document.getElementById('crop-selection-box');
+  if (box) box.classList.add('hidden');
+  currentCropBox = null;
+  isDrawingCrop = false;
+}
+
+function executeCropSearch(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  if (!currentCropBox) {
+    showToast('Bitte ziehen Sie zuerst einen Rahmen um das gewünschte Bilddetail auf.', true);
+    return;
+  }
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
+    showToast('Kein Bild für die Ausschnitt-Suche aktiv.', true);
+    return;
+  }
+
+  const { filePath, fileName } = currentModalImageDetails;
+  const cropData = { ...currentCropBox };
+
+  closeImageModal();
+  searchByCrop(filePath, cropData, fileName);
+}
+
+async function searchByCrop(filePath, cropBox, fileName) {
+  switchTab('search');
+  const spinner = document.getElementById('search-spinner');
+  const grid = document.getElementById('results-grid');
+  const empty = document.getElementById('search-empty');
+  const resultsBar = document.getElementById('results-bar');
+  const resultsCount = document.getElementById('results-count');
+  const resultsQuery = document.getElementById('results-query');
+
+  grid.innerHTML = '';
+  empty.classList.add('hidden');
+  spinner.classList.remove('hidden');
+  resultsBar.classList.add('hidden');
+
+  try {
+    const res = await fetch('/search/crop', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        image_path: filePath,
+        x: cropBox.x,
+        y: cropBox.y,
+        width: cropBox.width,
+        height: cropBox.height,
+        is_normalized: true,
+        limit: 24
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Fehler bei der Bildausschnitt-Suche (${res.status})`);
+    }
+
+    const data = await res.json();
+    spinner.classList.add('hidden');
+    resultsBar.classList.remove('hidden');
+
+    const pctW = Math.round(cropBox.width * 100);
+    const pctH = Math.round(cropBox.height * 100);
+    const displayName = fileName || filePath.split('/').pop();
+
+    resultsCount.textContent = `${data.length} optisch ähnliche Treffer`;
+    resultsQuery.textContent = `Ausschnitt aus "${displayName}" (${pctW}% × ${pctH}%)`;
+
+    if (data.length === 0) {
+      empty.classList.remove('hidden');
+      return;
+    }
+
+    renderSearchResults(data, grid);
+    showToast(`Bildausschnitt-Suche erfolgreich (${data.length} Treffer)`);
   } catch (err) {
     spinner.classList.add('hidden');
     showToast(`Fehler: ${err.message}`, true);

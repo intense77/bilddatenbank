@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Roadmap & Aufgaben — Lokales Bildarchiv-Suchsystem</title>
+  <title>Roadmap & Offene Aufgaben — Bildarchiv</title>
   <style>
     :root {
       --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -201,9 +201,10 @@
 <ul>
 <li><strong>Ziel:</strong> Maximale Arbeitsergonomie bei der wissenschaftlichen Erschließung und Verifikation.</li>
 <li><strong>Aufgaben:</strong></li>
-<li>[ ] <strong>Crop-to-Search (Bildauschnitt-Suche):</strong><ul>
-<li>Möglichkeit, im Web-Frontend per Maus einen Rahmen um ein Bilddetail zu ziehen (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät oder ein Gemälde im Hintergrund).</li>
-<li>Backend schneidet den Bildbereich serverseitig zu, berechnet das OpenCLIP-Embedding und sucht visuell ähnliche Details im Gesamtarchiv.</li>
+<li>[x] <strong>Crop-to-Search (Bildausschnitt-Suche / Region-of-Interest):</strong><ul>
+<li>Interaktiver Auswahlrahmen im Web-Frontend per Maus über jedem Archivbild im Detail-Modal (z. B. für Altaraufsätze, Wappen, liturgische Geräte oder Gemäldedetails im Hintergrund).</li>
+<li>Backend schneidet den gewählten Ausschnitt serverseitig und verlustfrei zu (<code>POST /search/crop</code>), berechnet das 512-dim OpenCLIP-Embedding und findet visuell ähnliche Details im Gesamtarchiv.</li>
+<li>Trefferliste im Suchgitter mit Angabe der Detail-Dimensionen und Referenzbild.</li>
 </ul>
 </li>
 <li>[x] <strong>Cluster-Merge &amp; -Split (Personen-Kuratierung):</strong><ul>
@@ -288,8 +289,8 @@
 <li><strong>Ziel:</strong> Robuste, speicherschonende Clusterbildung auch bei Beständen von über 20.000 Gesichtern.</li>
 <li><strong>Technischer Hintergrund:</strong></li>
 <li>Derzeit nutzt <a href="file:///home/norbert/Bilderdatenbank/app/services/clustering_service.py">clustering_service.py</a> <code>DBSCAN(metric='cosine')</code>, was in Scikit-Learn eine quadratische $N \times N$-Distanzmatrix im RAM anlegt ($O(N^2)$).</li>
-<li>Da ArcFace-Embeddings L2-normalisiert sind ($|u|=1$), entspricht die Cosine-Distanz mathematisch der halben quadrierten euklidischen Distanz:
-    $$\text{dist}<em>{\text{cosine}}(u, v) = 1 - \langle u, v \rangle = \frac{1}{2} |u - v|^2 \iff |u - v| = \sqrt{2 \cdot \text{dist}</em>{\text{cosine}}(u, v)}$$</li>
+<li>Da ArcFace-Embeddings L2-normalisiert sind ($|u|=1$), entspricht die Cosine-Distanz mathematisch der halben quadrierten euklidischen Distanz:<br />
+    $$\text{dist}<em _text_cosine="\text{cosine">{\text{cosine}}(u, v) = 1 - \langle u, v \rangle = \frac{1}{2} |u - v|^2 \iff |u - v| = \sqrt{2 \cdot \text{dist}</em>$$}}(u, v)</li>
 <li><strong>Aufgaben:</strong></li>
 <li>[ ] Umstellung von <code>metric='cosine'</code> auf <code>metric='euclidean'</code> mit $\varepsilon_{\text{euclid}} = \sqrt{2 \cdot \varepsilon_{\text{cosine}}}$.</li>
 <li>[ ] Nutzung von raumteilenden Bäumen (<code>algorithm='ball_tree'</code> oder <code>'kd_tree'</code>) für $O(N \log N)$ Laufzeit und minimalen Speicherbedarf.</li>

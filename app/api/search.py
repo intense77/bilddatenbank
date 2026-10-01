@@ -95,6 +95,17 @@ class ClusteringRunResponse(BaseModel):
     message: Optional[str] = None
 
 
+class CropSearchRequest(BaseModel):
+    image_path: str = Field(..., description="Lokaler Pfad zum Referenzbild")
+    x: float = Field(..., ge=0.0, description="X-Koordinate der linken oberen Ecke (relativ 0.0-1.0 oder Pixel)")
+    y: float = Field(..., ge=0.0, description="Y-Koordinate der linken oberen Ecke (relativ 0.0-1.0 oder Pixel)")
+    width: float = Field(..., gt=0.0, description="Breite der ausgewählten Region")
+    height: float = Field(..., gt=0.0, description="Höhe der ausgewählten Region")
+    is_normalized: bool = Field(default=True, description="True wenn x, y, width, height relativ im Intervall [0.0, 1.0] angegeben sind")
+    limit: int = Field(default=24, ge=1, le=100)
+    score_threshold: Optional[float] = Field(default=None, ge=-1.0, le=1.0)
+
+
 # --- Endpunkte ---
 
 @router.get("/search/semantic", response_model=List[SemanticSearchResult])
@@ -649,6 +660,79 @@ def search_similar_images(
                 signature=p.get("signature"),
                 description=p.get("description"),
                 keywords=p.get("keywords") or [],
+                persons=p.get("persons") or [],
+            )
+        )
+    return results
+
+
+@router.post("/search/crop", response_model=List[SemanticSearchResult])
+def search_by_crop(
+    request: CropSearchRequest,
+    clip_service: ClipService = Depends(get_clip_service),
+    qdrant: QdrantService = Depends(get_qdrant_service),
+):
+    """
+    Crop-to-Search (Bildausschnitt-Suche):
+    Schneidet den vom Archivar gewählten Bildausschnitt serverseitig zu,
+    erzeugt das 512-dim OpenCLIP-Embedding und sucht visuell ähnliche Details im Gesamtarchiv.
+    """
+    file_path = validate_safe_image_path(request.image_path)
+
+    try:
+        img = load_image_rgb(file_path)
+        img_w, img_h = img.size
+
+        if request.is_normalized:
+            left = max(0, int(request.x * img_w))
+            top = max(0, int(request.y * img_h))
+            crop_w = int(request.width * img_w)
+            crop_h = int(request.height * img_h)
+        else:
+            left = max(0, int(request.x))
+            top = max(0, int(request.y))
+            crop_w = int(request.width)
+            crop_h = int(request.height)
+
+        right = min(img_w, left + crop_w)
+        bottom = min(img_h, top + crop_h)
+
+        if (right - left) < 6 or (bottom - top) < 6:
+            raise HTTPException(
+                status_code=400,
+                detail="Der gewählte Ausschnitt ist zu klein (mindestens 6x6 Pixel erforderlich)."
+            )
+
+        cropped = img.crop((left, top, right, bottom))
+        crop_vector = clip_service.embed_image(cropped)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Fehler bei der Bildausschnitt-Verarbeitung: {e}")
+
+    hits = qdrant.search_images(
+        query_vector=crop_vector,
+        limit=request.limit,
+        score_threshold=request.score_threshold,
+    )
+
+    results = []
+    for hit in hits:
+        p = hit.payload or {}
+        fp = p.get("file_path") or p.get("image_path", "")
+        results.append(
+            SemanticSearchResult(
+                id=str(hit.id),
+                score=round(hit.score, 4),
+                file_path=fp,
+                file_name=p.get("file_name") or p.get("filename") or Path(fp).name,
+                title=p.get("title"),
+                creator=p.get("creator"),
+                date=p.get("date"),
+                signature=p.get("signature"),
+                description=p.get("description"),
+                keywords=p.get("keywords") or [],
+                persons=p.get("persons") or [],
             )
         )
     return results

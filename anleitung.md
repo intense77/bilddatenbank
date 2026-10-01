@@ -185,8 +185,12 @@ Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:
 Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:
 * **Bild & Bounding Boxes:** Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter.
 * **Archiv-Metadaten Seitenleiste:** Strukturierte Übersicht mit Titel, Datierung, Urheber, Signatur, Abmessungen, Beschreibung und Lizenz.
-* **Interaktive Schlagwort-Chips:** Ein Klick auf ein Schlagwort (z. B. `#Wochenmarkt`) schließt das Modal und führt sofort die entsprechende Suche aus.
-* **Ähnliche Bilder suchen:** Nutzt das CLIP-Embedding des Fotos als Referenz und sucht optisch verwandte Motive im Archiv.
+* **Bildausschnitt-Suche (Crop-to-Search):**
+  * Klicken Sie in der Kopfzeile auf den Button **„Ausschnitt suchen“**.
+  * Ziehen Sie mit gedrückter linker Maustaste einen Rahmen um das gewünschte Motivdetail (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät, eine Inschrift oder ein Gemälde im Hintergrund).
+  * In der schwebenden Aktionsleiste können Sie die Auswahl mit **„✕“** verwerfen oder mit **„Ausschnitt suchen“** bestätigen.
+  * Das Backend schneidet den Bildausschnitt verlustfrei zu, berechnet das OpenCLIP-Embedding und listet alle im Archiv vorhandenen Scans auf, die dieses oder ein ähnliches Motivdetail enthalten.
+* **Ähnliche Bilder suchen:** Nutzt das gesamte CLIP-Embedding des Fotos als Referenz und sucht optisch verwandte Gesamtmotive im Archiv.
 * **Originaldatei öffnen:** Öffnet den hochauflösenden Scan in einem neuen Browsertab.
 
 ---
