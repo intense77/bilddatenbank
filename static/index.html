@@ -279,15 +279,17 @@
       <!-- Cluster Detail View (When a cluster is clicked) -->
       <div id="cluster-detail-view" class="hidden space-y-6">
         <div
-          class="flex flex-col md:flex-row md:items-center justify-between bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 gap-4">
+          class="cluster-sticky-bar flex flex-col md:flex-row md:items-center justify-between rounded-2xl p-3.5 sm:p-4 gap-3">
           <div class="flex items-center gap-3">
             <button onclick="closeClusterDetail()"
-              class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition shrink-0"
-              title="Zurück zur Übersicht">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18">
+              class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 transition shrink-0 flex items-center gap-2 font-medium text-xs sm:text-sm shadow-sm group"
+              title="Zurück zur Personen-Übersicht (Esc)">
+              <svg class="w-4 h-4 text-amber-400 group-hover:text-slate-950 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M10 19l-7-7m0 0l7-7m-7 7h18">
                 </path>
               </svg>
+              <span>Zurück zur Übersicht</span>
+              <kbd class="hidden sm:inline px-1.5 py-0.5 text-[10px] font-mono bg-slate-700/80 group-hover:bg-amber-600/30 rounded text-slate-400 group-hover:text-slate-950">Esc</kbd>
             </button>
             <div>
               <h3 id="cd-title" class="text-base font-semibold text-slate-100">Cluster Details</h3>
@@ -1081,6 +1083,27 @@
     </div>
   </div>
 
+  <!-- Floating Navigation Bar in Cluster Detail View -->
+  <div id="cluster-floating-bar" class="cluster-fab-container hidden-fab">
+    <button onclick="closeClusterDetail()"
+      class="px-3.5 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs sm:text-sm shadow-xl flex items-center gap-2 transition hover:scale-105 active:scale-95"
+      title="Zurück zur Personen-Übersicht (Esc)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+      </svg>
+      <span>Zurück zur Übersicht</span>
+      <kbd class="hidden md:inline px-1.5 py-0.5 text-[10px] font-mono bg-amber-600/30 text-slate-950 rounded">Esc</kbd>
+    </button>
+    <button onclick="window.scrollTo({ top: 0, behavior: 'smooth' })"
+      class="px-3 py-2 rounded-full bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 shadow-xl transition flex items-center gap-1.5 hover:scale-105 active:scale-95 text-xs font-medium"
+      title="Ganz nach oben scrollen">
+      <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
+      </svg>
+      <span class="hidden sm:inline">Nach oben</span>
+    </button>
+  </div>
+
   <!-- Toast Notification -->
   <div id="toast"
     class="fixed bottom-5 right-5 z-50 max-w-sm bg-slate-800 border border-slate-700 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm pointer-events-none">
@@ -1093,7 +1116,7 @@
     <span id="toast-message">Meldung</span>
   </div>
 
-  <script src="/app.js?v=3.2"></script>
+  <script src="/app.js?v=3.3"></script>
 </body>
 
 </html>

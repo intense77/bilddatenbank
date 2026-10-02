@@ -705,6 +705,8 @@ async function openClusterDetail(cluster) {
 
   container.classList.add('hidden');
   detailView.classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  updateClusterFabVisibility();
 
   const displayName = cluster.label || `Person ${cluster.cluster_id.replace('cluster_', '#')}`;
   title.textContent = displayName;
@@ -891,11 +893,53 @@ async function openClusterDetail(cluster) {
     // Klick auf das Bild öffnet das große Modal
     wrapElem.addEventListener('click', () => openImageModal(face.file_path, fileName));
   });
+
+  // Komfortable Navigations-Karte am Ende der Bildergalerie
+  if (cluster.faces && cluster.faces.length > 2) {
+    const endCard = document.createElement('div');
+    endCard.className = 'col-span-full py-8 px-6 bg-slate-900/60 border border-slate-800 rounded-2xl text-center space-y-3 mt-4';
+    endCard.innerHTML = `
+      <p class="text-sm text-slate-300 font-medium">Alle ${cluster.faces.length} Porträts dieser Person durchgesehen</p>
+      <div class="flex items-center justify-center gap-3">
+        <button onclick="closeClusterDetail()" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs sm:text-sm rounded-xl transition flex items-center gap-2 shadow-md">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+          <span>Zurück zur Personen-Übersicht</span>
+        </button>
+        <button onclick="window.scrollTo({ top: 0, behavior: 'smooth' })" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-xl border border-slate-700 transition flex items-center gap-2">
+          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+          <span>Nach oben scrollen</span>
+        </button>
+      </div>
+    `;
+    imagesGrid.appendChild(endCard);
+  }
 }
+
+function updateClusterFabVisibility() {
+  const fab = document.getElementById('cluster-floating-bar');
+  if (!fab) return;
+  if (activeCluster && window.scrollY > 200) {
+    fab.classList.remove('hidden-fab');
+  } else {
+    fab.classList.add('hidden-fab');
+  }
+}
+
+window.addEventListener('scroll', updateClusterFabVisibility, { passive: true });
 
 function closeClusterDetail() {
   activeCluster = null;
-  loadClusters();
+  updateClusterFabVisibility();
+  const container = document.getElementById('clusters-container');
+  const detailView = document.getElementById('cluster-detail-view');
+  if (container) container.classList.remove('hidden');
+  if (detailView) detailView.classList.add('hidden');
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  if (allLoadedClusters && allLoadedClusters.length > 0) {
+    applyClusterFilters();
+  } else {
+    loadClusters();
+  }
 }
 
 async function rotateClusterCardImage(event, filePath, angle, idx) {
@@ -1382,13 +1426,6 @@ function closeImageModal() {
 // Schließe Modal bei Klick auf den Hintergrund
 document.getElementById('image-modal')?.addEventListener('click', (e) => {
   if (e.target.id === 'image-modal') {
-    closeImageModal();
-  }
-});
-
-// Tastatur-Shortcut ESC zum Schließen
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
     closeImageModal();
   }
 });
@@ -2336,16 +2373,33 @@ function confirmFolderSelection() {
   scanFolderPreview();
 }
 
-// Tastatur-Shortcut (ESC schließt Modal)
+// Tastatur-Shortcut (ESC schließt Modal bzw. wechselt zurück zur Cluster-Übersicht)
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    // 1. Modals mit Priorität schließen
     const fbModal = document.getElementById('folder-browser-modal');
     if (fbModal && !fbModal.classList.contains('hidden')) {
       closeFolderBrowserModal();
+      return;
     }
     const stModal = document.getElementById('stack-modal');
     if (stModal && !stModal.classList.contains('hidden')) {
       closeStackModal();
+      return;
+    }
+    const mergeModal = document.getElementById('merge-cluster-modal');
+    if (mergeModal && !mergeModal.classList.contains('hidden')) {
+      closeMergeClusterModal();
+      return;
+    }
+    const imgModal = document.getElementById('image-modal');
+    if (imgModal && !imgModal.classList.contains('hidden')) {
+      closeImageModal();
+      return;
+    }
+    // 2. Wenn kein Modal offen ist, aber die Cluster-Einzelansicht aktiv ist:
+    if (activeCluster) {
+      closeClusterDetail();
     }
   }
 });
