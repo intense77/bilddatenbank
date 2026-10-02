@@ -414,6 +414,31 @@ class ClusteringService:
                     payload={"persons": distinct_labels},
                     points=[img_id],
                 )
+
+                # Automatisches Synchronisieren des XMP-Sidecars nach GLAM-Archivstandard
+                try:
+                    from app.services.xmp_service import xmp_service
+                    img_records = self.qdrant.client.retrieve(
+                        collection_name=settings.COLLECTION_IMAGES,
+                        ids=[img_id],
+                        with_payload=True
+                    )
+                    if img_records and img_records[0].payload:
+                        p = img_records[0].payload
+                        fp = p.get("file_path") or p.get("image_path")
+                        if fp:
+                            xmp_service.write_sidecar(
+                                image_path=fp,
+                                title=p.get("title"),
+                                creator=p.get("creator"),
+                                date=p.get("date"),
+                                signature=p.get("signature"),
+                                description=p.get("description"),
+                                persons=distinct_labels,
+                            )
+                except Exception as xmp_err:
+                    logger.debug("Automatisches XMP-Sidecar Schreiben übersprungen: %s", xmp_err)
+
             except Exception as e:
                 logger.warning("Konnte Elternbild %s nicht mit Personenliste aktualisieren: %s", img_id, e)
 

@@ -1372,6 +1372,24 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
           </div>`;
       }
 
+      metaHtml += `
+        <div class="pt-3 border-t border-slate-800 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">XMP-Sidecar (Dublin Core)</span>
+            <span class="text-[10px] text-emerald-400 font-mono">Adobe / IPTC</span>
+          </div>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button type="button" onclick="downloadCurrentModalXmp()" class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-emerald-400 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm" title="Lädt die XMP-Metadaten als XML-Datei herunter">
+              <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              <span>Download</span>
+            </button>
+            <button type="button" onclick="writeCurrentModalXmp()" class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-blue-400 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm" title="Speichert die .xmp Datei direkt neben das Master-Original auf Festplatte/NAS">
+              <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+              <span>Speichern</span>
+            </button>
+          </div>
+        </div>`;
+
       if (!metaHtml) {
         metaHtml = `
           <div class="text-center py-6 text-slate-500 space-y-1">
@@ -1456,6 +1474,7 @@ function closeImageModal() {
   const modal = document.getElementById('image-modal');
   modal.classList.add('hidden');
   toggleCropMode(false);
+  closeModalXmpMenu();
   currentModalImageDetails = null;
 }
 
@@ -3077,5 +3096,134 @@ async function handlePdfExportSubmit(event) {
     if (btnText) btnText.textContent = originalText;
   }
 }
+
+// ================= XMP SIDECAR EXPORT & SYNCHRONISATION =================
+
+function toggleModalXmpMenu(event) {
+  if (event) event.stopPropagation();
+  const menu = document.getElementById('modal-xmp-menu');
+  if (menu) menu.classList.toggle('hidden');
+}
+
+function closeModalXmpMenu() {
+  const menu = document.getElementById('modal-xmp-menu');
+  if (menu) menu.classList.add('hidden');
+}
+
+// Schließe XMP-Menü bei Klicks außerhalb
+document.addEventListener('click', (e) => {
+  const container = document.getElementById('modal-xmp-container');
+  if (container && !container.contains(e.target)) {
+    closeModalXmpMenu();
+  }
+});
+
+function downloadCurrentModalXmp() {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
+    showToast('Kein aktives Bild im Detailfenster gefunden.', true);
+    return;
+  }
+  closeModalXmpMenu();
+  const filePath = currentModalImageDetails.filePath;
+  const fileName = currentModalImageDetails.fileName || filePath.split('/').pop();
+  const baseName = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+
+  const url = `/images/xmp?path=${encodeURIComponent(filePath)}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${baseName}.xmp`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast(`XMP-Sidecar für "${fileName}" heruntergeladen.`, false);
+}
+
+async function writeCurrentModalXmp() {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
+    showToast('Kein aktives Bild im Detailfenster gefunden.', true);
+    return;
+  }
+  closeModalXmpMenu();
+  const filePath = currentModalImageDetails.filePath;
+  showToast('Schreibe XMP-Sidecar...', false);
+
+  try {
+    const res = await fetch(`/images/xmp/write?path=${encodeURIComponent(filePath)}`, {
+      method: 'POST'
+    });
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    if (data.location === 'alongside_master') {
+      const fileName = data.target_path.split('/').pop();
+      showToast(`XMP-Sidecar direkt neben Originaldatei gespeichert: ${fileName}`, false);
+    } else {
+      const fileName = data.target_path.split('/').pop();
+      showToast(`XMP-Sidecar im lokalen Spiegelordner gesichert: ${fileName}`, false);
+    }
+  } catch (err) {
+    console.error('Fehler beim Schreiben der XMP-Datei:', err);
+    showToast(`Fehler beim Schreiben des XMP-Sidecars: ${err.message}`, true);
+  }
+}
+
+async function exportLightboxXmpZip() {
+  if (lightboxItems.length === 0) {
+    showToast('Fügen Sie zuerst Bilder zum Leuchttisch hinzu.', true);
+    return;
+  }
+
+  const btn = document.getElementById('lightbox-export-xmp-btn');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Exportiere...</span>';
+  }
+
+  try {
+    showToast(`Bündle standardkonforme XMP-Sidecars für ${lightboxItems.length} Bilder...`, false);
+    const payload = {
+      items: lightboxItems.map(it => ({
+        file_path: it.file_path,
+        file_name: it.file_name,
+        title: it.title,
+        date: it.date,
+        creator: it.creator,
+        signature: it.signature,
+        persons: it.persons || [],
+        notes: it.notes || null,
+      }))
+    };
+
+    const res = await fetch('/export/xmp-zip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error(`Server-Fehler beim XMP-Export (${res.status})`);
+
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.download = `XMP_Sidecars_${now}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    a.remove();
+
+    showToast(`${lightboxItems.length} XMP-Sidecars erfolgreich exportiert!`, false);
+  } catch (err) {
+    console.error('Fehler beim XMP-Export:', err);
+    showToast(`XMP-Export fehlgeschlagen: ${err.message}`, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+
 
 

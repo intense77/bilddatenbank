@@ -967,3 +967,145 @@ def export_pdf(request: PdfExportRequest):
         },
     )
 
+
+class XmpExportItem(BaseModel):
+    file_path: str
+    file_name: Optional[str] = None
+    title: Optional[str] = None
+    date: Optional[str] = None
+    creator: Optional[str] = None
+    signature: Optional[str] = None
+    persons: List[str] = []
+    notes: Optional[str] = None
+
+
+class XmpBatchRequest(BaseModel):
+    items: List[XmpExportItem] = Field(..., min_length=1)
+
+
+@router.get("/images/xmp")
+def get_image_xmp(
+    path: str = Query(..., description="Dateipfad des Archivbildes"),
+    qdrant: QdrantService = Depends(get_qdrant_service),
+):
+    """
+    Liefert die standardkonforme Adobe XMP Sidecar-Datei (XML) für ein einzelnes Bild.
+    Enthält Titel, Urheber, Datum, Signatur und biometrisch identifizierte Personen (Iptc4xmpExt:PersonInImage).
+    """
+    from app.services.xmp_service import xmp_service
+    file_path = validate_safe_image_path(path)
+
+    meta = {}
+    persons = []
+
+    records, _ = qdrant.client.scroll(
+        collection_name=settings.COLLECTION_IMAGES,
+        scroll_filter=rest_models.Filter(
+            must=[rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=str(file_path)))]
+        ),
+        limit=1,
+        with_payload=True
+    )
+    if records and records[0].payload:
+        p = records[0].payload
+        meta = {
+            "title": p.get("title"),
+            "creator": p.get("creator"),
+            "date": p.get("date"),
+            "signature": p.get("signature"),
+            "description": p.get("description"),
+        }
+        persons = p.get("persons") or []
+
+    xmp_content = xmp_service.generate_xmp_content(
+        file_path=file_path,
+        title=meta.get("title"),
+        description=meta.get("description"),
+        creator=meta.get("creator"),
+        date=meta.get("date"),
+        signature=meta.get("signature"),
+        persons=persons,
+    )
+
+    filename = f"{file_path.stem}.xmp"
+    return Response(
+        content=xmp_content,
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
+@router.post("/images/xmp/write")
+def write_image_xmp(
+    path: str = Query(..., description="Dateipfad des Archivbildes"),
+    force_mirror: bool = Query(default=False, description="Erzwinge Speicherung im lokalen Spiegelordner"),
+    qdrant: QdrantService = Depends(get_qdrant_service),
+):
+    """
+    Schreibt die XMP-Sidecar-Datei physisch auf die Festplatte (bevorzugt neben dem Masterbild,
+    Fallback in den lokalen Metadaten-Spiegelordner).
+    """
+    from app.services.xmp_service import xmp_service
+    file_path = validate_safe_image_path(path)
+
+    meta = {}
+    persons = []
+    records, _ = qdrant.client.scroll(
+        collection_name=settings.COLLECTION_IMAGES,
+        scroll_filter=rest_models.Filter(
+            must=[rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=str(file_path)))]
+        ),
+        limit=1,
+        with_payload=True
+    )
+    if records and records[0].payload:
+        p = records[0].payload
+        meta = {
+            "title": p.get("title"),
+            "creator": p.get("creator"),
+            "date": p.get("date"),
+            "signature": p.get("signature"),
+            "description": p.get("description"),
+        }
+        persons = p.get("persons") or []
+
+    result = xmp_service.write_sidecar(
+        image_path=file_path,
+        title=meta.get("title"),
+        description=meta.get("description"),
+        creator=meta.get("creator"),
+        date=meta.get("date"),
+        signature=meta.get("signature"),
+        persons=persons,
+        force_mirror=force_mirror,
+    )
+    return result
+
+
+@router.post("/export/xmp-zip")
+def export_xmp_zip(request: XmpBatchRequest):
+    """
+    Bündelt XMP-Sidecars für eine Liste ausgewählter Bilder in ein ZIP-Archiv.
+    """
+    from datetime import datetime
+    from app.services.xmp_service import xmp_service
+
+    items_dict = [it.model_dump() for it in request.items]
+    zip_bytes = xmp_service.generate_zip_export(items_dict)
+
+    date_str = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"XMP_Sidecars_{date_str}.zip"
+
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
+

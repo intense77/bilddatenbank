@@ -713,6 +713,18 @@
               <span>PDF-Kontaktabzug</span>
             </button>
 
+            <!-- XMP Sidecars Export Button -->
+            <button type="button" onclick="exportLightboxXmpZip()"
+              id="lightbox-export-xmp-btn"
+              class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+              title="Adobe XMP Sidecars (.xmp) mit Dublin Core & PersonInImage für alle Bilder dieser Mappe als ZIP herunterladen">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>
+              <span>XMP-Sidecars (ZIP)</span>
+            </button>
+
             <!-- Pfade in Zwischenablage kopieren -->
             <button type="button" onclick="copyLightboxPaths()"
               class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
@@ -862,6 +874,26 @@
             <span id="modal-lightbox-icon">💡</span>
             <span id="modal-lightbox-text">Leuchttisch</span>
           </button>
+          <!-- XMP Sidecar Dropdown im Modal -->
+          <div class="relative inline-block" id="modal-xmp-container">
+            <button id="modal-xmp-btn" type="button" onclick="toggleModalXmpMenu(event)"
+              class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+              title="Adobe XMP Sidecar (.xmp) herunterladen oder neben Masterbild speichern">
+              <span class="text-emerald-400">📄</span>
+              <span>XMP</span>
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </button>
+            <div id="modal-xmp-menu" class="hidden absolute right-0 mt-1 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 z-50 text-xs">
+              <button type="button" onclick="downloadCurrentModalXmp()" class="w-full text-left px-3.5 py-2 text-slate-200 hover:bg-slate-800 hover:text-amber-400 flex items-center gap-2 transition">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                <span>.xmp herunterladen</span>
+              </button>
+              <button type="button" onclick="writeCurrentModalXmp()" class="w-full text-left px-3.5 py-2 text-slate-200 hover:bg-slate-800 hover:text-blue-400 flex items-center gap-2 border-t border-slate-800 transition" title="Speichert die XMP-Datei direkt neben das Original">
+                <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                <span>Neben Master speichern</span>
+              </button>
+            </div>
+          </div>
           <button onclick="closeImageModal()"
             class="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1324,7 +1356,7 @@
     </div>
   </div>
 
-  <script src="/app.js?v=3.4"></script>
+  <script src="/app.js?v=3.5"></script>
 </body>
 
 </html>
