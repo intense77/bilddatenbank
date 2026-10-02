@@ -48,23 +48,35 @@
             </path>
           </svg>
           <span>Personen &amp; Cluster</span>
-          <button id="tab-duplicates-btn" onclick="switchTab('duplicates')"
-            class="px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10">
-              </path>
-            </svg>
-            <span>Duplikate &amp; Stapel</span>
-          </button>
-          <button id="tab-import-btn" onclick="switchTab('import')"
-            class="px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-            </svg>
-            <span>Bestände &amp; Upload</span>
-          </button>
+        </button>
+        <button id="tab-duplicates-btn" onclick="switchTab('duplicates')"
+          class="px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10">
+            </path>
+          </svg>
+          <span>Duplikate &amp; Stapel</span>
+        </button>
+        <button id="tab-lightbox-btn" onclick="switchTab('lightbox')"
+          class="px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2"
+          title="Digitaler Leuchttisch &amp; Kuratoren-Mappe">
+          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
+            </path>
+          </svg>
+          <span>Leuchttisch</span>
+          <span id="lightbox-badge" class="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-mono font-semibold">0</span>
+        </button>
+        <button id="tab-import-btn" onclick="switchTab('import')"
+          class="px-3.5 py-1.5 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 transition-all flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+          </svg>
+          <span>Bestände &amp; Upload</span>
+        </button>
       </nav>
 
       <!-- Biometrie Schalter (Art. 9 DSGVO / KDG § 29) -->
@@ -162,7 +174,15 @@
 
       <!-- Results Stats Bar -->
       <div id="results-bar" class="hidden flex items-center justify-between text-xs sm:text-sm text-slate-400 px-1">
-        <span id="results-count">0 Treffer</span>
+        <div class="flex items-center gap-3">
+          <span id="results-count">0 Treffer</span>
+          <button id="add-all-results-to-lightbox-btn" type="button" onclick="addAllCurrentResultsToLightbox()"
+            class="hidden px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5 shadow-sm"
+            title="Alle gefundenen Bilder auf den Leuchttisch legen">
+            <span>💡</span>
+            <span>Alle auf Leuchttisch</span>
+          </button>
+        </div>
         <span id="results-query" class="font-mono text-amber-400/90 truncate max-w-xs sm:max-w-md"></span>
       </div>
 
@@ -645,6 +665,106 @@
       </div>
     </section>
 
+    <!-- ================= TAB 5: Digitaler Leuchttisch & Kuratoren-Mappe ================= -->
+    <section id="tab-lightbox" class="hidden space-y-6">
+
+      <!-- Header & Kontrollleiste -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center flex-shrink-0 shadow-inner border border-amber-500/20 text-lg">
+              💡
+            </div>
+            <div>
+              <h2 class="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
+                <span>Digitaler Leuchttisch &amp; Kuratoren-Mappe</span>
+              </h2>
+              <p class="text-xs text-slate-400 mt-0.5">
+                Stellen Sie Konvolute für Recherchen, Ausstellungen oder Publikationen zusammen und exportieren Sie druckfertige PDF-Kontaktabzüge.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span id="lightbox-count-badge" class="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-amber-400 font-mono text-xs font-semibold">
+              0 Bilder
+            </span>
+          </div>
+        </div>
+
+        <!-- Mappen-Titel & Aktionsknöpfe -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
+          <div class="flex-1 relative">
+            <input type="text" id="lightbox-project-title"
+              placeholder="Projekt- / Mappentitel (z. B. 'Ausstellung Kirchenbau 2026' oder 'Recherche Bischofsbesuch')"
+              oninput="handleLightboxTitleChange(this.value)"
+              class="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- PDF Export Button -->
+            <button type="button" onclick="openPdfExportModal()"
+              id="lightbox-export-pdf-btn"
+              class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs sm:text-sm rounded-xl transition shadow-md flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>
+              <span>PDF-Kontaktabzug</span>
+            </button>
+
+            <!-- Pfade in Zwischenablage kopieren -->
+            <button type="button" onclick="copyLightboxPaths()"
+              class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+              title="Alle Dateipfade dieser Mappe zeilenweise in die Zwischenablage kopieren">
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+              </svg>
+              <span class="hidden sm:inline">Pfade kopieren</span>
+            </button>
+
+            <!-- Leeren Button -->
+            <button type="button" onclick="clearLightboxConfirm()"
+              class="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+              title="Alle Bilder von diesem Leuchttisch entfernen">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+              </svg>
+              <span class="hidden sm:inline">Leeren</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Leuchttisch Grid -->
+      <div id="lightbox-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <!-- Injected via JavaScript -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="lightbox-empty" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-4 shadow-xl">
+        <div class="w-16 h-16 mx-auto rounded-2xl bg-slate-800/80 border border-slate-700 text-amber-400 flex items-center justify-center text-3xl shadow-inner">
+          💡
+        </div>
+        <div>
+          <h3 class="text-base font-semibold text-slate-200">Ihr Leuchttisch ist derzeit leer</h3>
+          <p class="text-xs sm:text-sm text-slate-400 max-w-md mx-auto mt-1 leading-relaxed">
+            Nutzen Sie in der Freitext-Suche, in den Personen-Clustern oder in der Bild-Großansicht das
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-800 text-amber-400 font-medium text-xs border border-slate-700">💡 Leuchttisch</span>-Symbol,
+            um Bilder für Ihre Mappe vorzumerken.
+          </p>
+        </div>
+        <button onclick="switchTab('search')"
+          class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs rounded-xl transition shadow-md inline-flex items-center gap-2">
+          <span>Zurück zur Suche</span>
+          <span>→</span>
+        </button>
+      </div>
+
+    </section>
+
     <!-- Footer mit Dokumentationslinks -->
     <footer
       class="mt-12 pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
@@ -734,6 +854,13 @@
             title="Gezielt nach Duplikaten, Größenvarianten und Serienaufnahmen dieses Bildes suchen">
             <span class="text-amber-400">📚</span>
             <span>Varianten (<span id="modal-variants-count">0</span>)</span>
+          </button>
+          <!-- Leuchttisch Button im Modal -->
+          <button id="modal-lightbox-btn" type="button" onclick="toggleCurrentModalLightbox()"
+            class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+            title="Dieses Bild auf den Leuchttisch legen oder entfernen">
+            <span id="modal-lightbox-icon">💡</span>
+            <span id="modal-lightbox-text">Leuchttisch</span>
           </button>
           <button onclick="closeImageModal()"
             class="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition">
@@ -1116,7 +1243,88 @@
     <span id="toast-message">Meldung</span>
   </div>
 
-  <script src="/app.js?v=3.3"></script>
+  <!-- ================= PDF-EXPORT MODAL ================= -->
+  <div id="pdf-export-modal"
+    class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-md">
+    <div class="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full flex flex-col shadow-2xl overflow-hidden">
+      <!-- Header -->
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center text-sm">
+            📄
+          </div>
+          <div>
+            <h4 class="text-sm sm:text-base font-semibold text-slate-100">PDF-Kontaktabzug &amp; Dossier exportieren</h4>
+            <p class="text-xs text-slate-400">Druckfertiges DIN-A4 Dokument nach Museumsstandard</p>
+          </div>
+        </div>
+        <button onclick="closePdfExportModal()"
+          class="p-1.5 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <form id="pdf-export-form" onsubmit="handlePdfExportSubmit(event)" class="p-5 space-y-4 text-xs sm:text-sm">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Layout-Format</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="flex items-start gap-3 p-3 rounded-xl bg-slate-950 border border-slate-700 cursor-pointer hover:border-amber-500/50 transition">
+              <input type="radio" name="pdf-layout" value="grid" checked class="mt-0.5 accent-amber-500">
+              <div>
+                <span class="block font-semibold text-slate-200">Kontaktabzug (Raster 2×3)</span>
+                <span class="block text-[11px] text-slate-400 mt-0.5">6 Bilder pro DIN-A4-Seite mit Signatur, Datum und Notizen. Handlich &amp; übersichtlich.</span>
+              </div>
+            </label>
+            <label class="flex items-start gap-3 p-3 rounded-xl bg-slate-950 border border-slate-700 cursor-pointer hover:border-amber-500/50 transition">
+              <input type="radio" name="pdf-layout" value="dossier" class="mt-0.5 accent-amber-500">
+              <div>
+                <span class="block font-semibold text-slate-200">Archiv-Dossier (1 Bild / Seite)</span>
+                <span class="block text-[11px] text-slate-400 mt-0.5">Großansicht mit vollständigen Metadaten und Personenliste.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label for="pdf-doc-title" class="block text-xs font-semibold text-slate-300 mb-1">Dokument-Titel</label>
+          <input type="text" id="pdf-doc-title" required
+            class="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+        </div>
+
+        <div>
+          <label for="pdf-doc-subtitle" class="block text-xs font-semibold text-slate-300 mb-1">Untertitel / Bearbeiter / Archiv-Vermerk (optional)</label>
+          <input type="text" id="pdf-doc-subtitle" placeholder="z. B. 'Zusammengestellt für Recherche' oder 'Bestand: Pfarrei St. Josef'"
+            class="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+        </div>
+
+        <div class="pt-2 border-t border-slate-800 flex items-center justify-between">
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="pdf-include-notes" checked class="rounded accent-amber-500">
+            <span class="text-xs text-slate-300 font-medium">Kuratoren-Notizen im PDF andrucken</span>
+          </label>
+          <span id="pdf-items-count-label" class="text-xs font-mono text-slate-400">0 Bilder</span>
+        </div>
+
+        <!-- Footer Buttons -->
+        <div class="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+          <button type="button" onclick="closePdfExportModal()"
+            class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition text-xs font-medium">
+            Abbrechen
+          </button>
+          <button type="submit" id="pdf-submit-btn"
+            class="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-xl transition text-xs sm:text-sm shadow-md flex items-center gap-2">
+            <span id="pdf-btn-icon">⬇</span>
+            <span id="pdf-btn-text">PDF generieren &amp; herunterladen</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js?v=3.4"></script>
 </body>
 
 </html>

@@ -906,3 +906,64 @@ def delete_image_record(
         "deleted_image_ids": target_ids,
         "deleted_paths": target_paths,
     }
+
+
+class PdfExportItem(BaseModel):
+    file_path: str
+    file_name: Optional[str] = None
+    title: Optional[str] = None
+    date: Optional[str] = None
+    creator: Optional[str] = None
+    signature: Optional[str] = None
+    persons: List[str] = []
+    notes: Optional[str] = None
+
+
+class PdfExportRequest(BaseModel):
+    title: str = Field(default="Archiv-Kontaktabzug", description="Dokumenttitel")
+    subtitle: Optional[str] = Field(None, description="Untertitel oder Vermerk")
+    layout: str = Field(default="grid", description="'grid' (Raster 2x3) oder 'dossier' (1 Bild/Seite)")
+    include_notes: bool = Field(default=True, description="Kuratoren-Notizen andrucken")
+    items: List[PdfExportItem] = Field(..., min_length=1, description="Ausgewählte Bilder")
+
+
+@router.post("/export/pdf")
+def export_pdf(request: PdfExportRequest):
+    """
+    Erstellt ein professionelles, druckfähiges DIN-A4-PDF (Kontaktabzug oder Einzeldossier)
+    aus den übergebenen Bildern des digitalen Leuchttischs.
+    """
+    from datetime import datetime
+    from app.services.pdf_export_service import pdf_export_service
+
+    items_dict = [it.model_dump() for it in request.items]
+
+    if request.layout == "dossier":
+        pdf_bytes = pdf_export_service.generate_dossier(
+            items=items_dict,
+            title=request.title,
+            subtitle=request.subtitle,
+            include_notes=request.include_notes,
+        )
+        safe_prefix = "Archiv_Dossier"
+    else:
+        pdf_bytes = pdf_export_service.generate_contact_sheet(
+            items=items_dict,
+            title=request.title,
+            subtitle=request.subtitle,
+            include_notes=request.include_notes,
+        )
+        safe_prefix = "Kontaktabzug"
+
+    date_str = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"{safe_prefix}_{date_str}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
