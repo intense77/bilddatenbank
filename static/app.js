@@ -635,11 +635,12 @@ function applyClusterFilters() {
     card.className = 'group bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-xl overflow-hidden p-4 shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col items-center text-center';
 
     const displayName = c.label || `Person ${c.cluster_id.replace('cluster_', '#')}`;
-    const avatarSrc = c.preview_image || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="%231e293b"><circle cx="50" cy="50" r="40" fill="%23334155"/></svg>';
+    const avatarSrc = c.preview_image || (`/faces/clusters/${encodeURIComponent(c.cluster_id)}/preview`);
+    const defaultPlaceholder = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="%231e293b"><circle cx="50" cy="50" r="40" fill="%23334155"/></svg>';
 
     card.innerHTML = `
       <div class="w-20 h-20 rounded-full overflow-hidden bg-slate-950 border-2 border-slate-700 group-hover:border-amber-400 transition-colors shadow-inner flex items-center justify-center mb-3">
-        <img src="${avatarSrc}" alt="Avatar" class="w-full h-full object-cover">
+        <img src="${avatarSrc}" alt="Avatar" class="w-full h-full object-cover" loading="lazy" onerror="this.onerror=null;this.src='${defaultPlaceholder}'">
       </div>
       <h4 class="text-sm font-semibold text-slate-100 group-hover:text-amber-400 transition truncate w-full" title="${escapeHtml(displayName)}">
         ${escapeHtml(displayName)}
@@ -693,7 +694,7 @@ async function loadClusters() {
   }
 }
 
-function openClusterDetail(cluster) {
+async function openClusterDetail(cluster) {
   activeCluster = cluster;
   const container = document.getElementById('clusters-container');
   const detailView = document.getElementById('cluster-detail-view');
@@ -710,7 +711,37 @@ function openClusterDetail(cluster) {
   stats.textContent = `${cluster.face_count} Vorkommen in historischen Scans (Cluster ID: ${cluster.cluster_id})`;
   input.value = cluster.label || '';
 
+  imagesGrid.innerHTML = `
+    <div class="col-span-full py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
+      <div class="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+      <span class="text-sm font-medium text-slate-300">Lade Archivfotos für ${escapeHtml(displayName)}...</span>
+    </div>
+  `;
+
+  if (!cluster.faces || cluster.faces.length === 0) {
+    try {
+      const res = await fetch(`/faces/clusters/${encodeURIComponent(cluster.cluster_id)}`);
+      if (res.ok) {
+        const details = await res.json();
+        cluster.faces = details.faces || [];
+        if (details.label) cluster.label = details.label;
+      }
+    } catch (err) {
+      console.error('Fehler beim Laden der Cluster-Details:', err);
+      showToast(`Fehler beim Laden der Bilder: ${err.message}`, true);
+    }
+  }
+
   imagesGrid.innerHTML = '';
+
+  if (!cluster.faces || cluster.faces.length === 0) {
+    imagesGrid.innerHTML = `
+      <div class="col-span-full py-12 text-center text-slate-500">
+        Keine Archivbilder für dieses Cluster gefunden.
+      </div>
+    `;
+    return;
+  }
 
   // Rendere jedes Archivbild dieses Clusters mit hervorgehobener Bounding Box
   cluster.faces.forEach((face, idx) => {

@@ -1,4 +1,5 @@
 import io
+import time
 import base64
 import logging
 from pathlib import Path
@@ -52,8 +53,15 @@ class ClusteringService:
 
     def __init__(self, qdrant_service: Optional[QdrantService] = None):
         self.qdrant = qdrant_service or QdrantService()
+        self._clusters_cache: Optional[List[Dict[str, Any]]] = None
+        self._cache_timestamp: float = 0.0
 
-    def fetch_all_faces(self, batch_size: int = 500, with_vectors: bool = True) -> List[Dict[str, Any]]:
+    def invalidate_clusters_cache(self):
+        """Invalidiert den Zwischenspeicher der Cluster-Listen."""
+        self._clusters_cache = None
+        self._cache_timestamp = 0.0
+
+    def fetch_all_faces(self, batch_size: int = 2000, with_vectors: bool = True) -> List[Dict[str, Any]]:
         """Lädt Punkte aus der Collection archive_faces, optional ohne Vektoren zur Speicherschonung."""
         faces = []
         offset = None
@@ -150,6 +158,7 @@ class ClusteringService:
                 points=noise_points,
             )
 
+        self.invalidate_clusters_cache()
         return {
             "total_faces": total_faces,
             "clusters_found": len(points_by_cluster),
@@ -158,15 +167,21 @@ class ClusteringService:
             "clusters": cluster_counts,
         }
 
-    def get_clusters(self, include_preview: bool = True) -> List[Dict[str, Any]]:
+    def get_clusters(self, include_preview: bool = True, include_faces: bool = False) -> List[Dict[str, Any]]:
         """
         Gibt alle gefundenen Personen-Cluster zurück, aggregiert aus Qdrant.
-        Enthält Anzahl, Label sowie Vorschaubilder via Bounding-Box-Crop.
+        - include_preview: Wenn True, wird eine performante URL /faces/clusters/{cluster_id}/preview
+          übergeben, sodass Avatare asynchron und ressourcenschonend lazy geladen werden.
+        - include_faces: Wenn True, werden alle Gesichts-Details eingebettet. Für die Übersicht
+          bleibt dies standardmäßig False (spart 50MB Payload und lädt in ~2s statt 180s!).
+        Nutzt einen In-Memory-Cache von 60s für sofortige Wiederholungsaufrufe.
         """
-        faces = self.fetch_all_faces(with_vectors=False)
-        clusters_map: Dict[str, Dict[str, Any]] = {}
+        now = time.time()
+        if self._clusters_cache is not None and (now - self._cache_timestamp) < 60:
+            return self._clusters_cache
 
-        dimensions_cache: Dict[str, Tuple[int, int]] = {}
+        faces = self.fetch_all_faces(batch_size=2000, with_vectors=False)
+        clusters_map: Dict[str, Dict[str, Any]] = {}
 
         for face in faces:
             payload = face["payload"]
@@ -185,16 +200,77 @@ class ClusteringService:
                     "label": label,
                     "face_count": 0,
                     "faces": [],
-                    "preview_image": None,
+                    "preview_image": f"/faces/clusters/{cluster_id}/preview" if include_preview else None,
                 }
 
             # Wenn ein Punkt ein Label hat, für den Cluster übernehmen
             if label and not clusters_map[cluster_id]["label"]:
                 clusters_map[cluster_id]["label"] = label
 
-            orig_w = payload.get("orig_width")
-            orig_h = payload.get("orig_height")
-            bbox_pct = payload.get("bbox_percent")
+            if include_faces:
+                orig_w = payload.get("orig_width")
+                orig_h = payload.get("orig_height")
+                bbox_pct = payload.get("bbox_percent")
+                if not bbox_pct and orig_w and orig_h and bbox and len(bbox) == 4:
+                    x1, y1, x2, y2 = bbox
+                    bbox_pct = {
+                        "left": round((x1 / orig_w) * 100, 4),
+                        "top": round((y1 / orig_h) * 100, 4),
+                        "width": round(((x2 - x1) / orig_w) * 100, 4),
+                        "height": round(((y2 - y1) / orig_h) * 100, 4),
+                    }
+
+                face_entry = {
+                    "face_id": str(face["id"]),
+                    "file_path": file_path,
+                    "bbox": bbox,
+                    "bbox_percent": bbox_pct,
+                    "orig_width": orig_w,
+                    "orig_height": orig_h,
+                    "det_score": det_score,
+                }
+                clusters_map[cluster_id]["faces"].append(face_entry)
+
+            clusters_map[cluster_id]["face_count"] += 1
+
+        # Sortiere nach Häufigkeit (größte Cluster zuerst)
+        sorted_clusters = sorted(clusters_map.values(), key=lambda c: c["face_count"], reverse=True)
+        self._clusters_cache = sorted_clusters
+        self._cache_timestamp = now
+        return sorted_clusters
+
+    def get_cluster_details(self, cluster_id: str) -> Optional[Dict[str, Any]]:
+        """Lädt alle Gesichter und Metadaten für ein einzelnes Personen-Cluster effizient on demand."""
+        records, _ = self.qdrant.client.scroll(
+            collection_name=settings.COLLECTION_FACES,
+            scroll_filter=rest_models.Filter(
+                must=[
+                    rest_models.FieldCondition(
+                        key="cluster_id",
+                        match=rest_models.MatchValue(value=cluster_id),
+                    )
+                ]
+            ),
+            limit=500,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not records:
+            return None
+
+        faces = []
+        label = None
+
+        for r in records:
+            p = r.payload or {}
+            if not label and p.get("label"):
+                label = p.get("label")
+            file_path = p.get("file_path") or p.get("image_path")
+            bbox = p.get("bbox")
+
+            orig_w = p.get("orig_width")
+            orig_h = p.get("orig_height")
+            bbox_pct = p.get("bbox_percent")
             if not bbox_pct and orig_w and orig_h and bbox and len(bbox) == 4:
                 x1, y1, x2, y2 = bbox
                 bbox_pct = {
@@ -204,28 +280,56 @@ class ClusteringService:
                     "height": round(((y2 - y1) / orig_h) * 100, 4),
                 }
 
-            face_entry = {
-                "face_id": str(face["id"]),
+            faces.append({
+                "face_id": str(r.id),
                 "file_path": file_path,
                 "bbox": bbox,
                 "bbox_percent": bbox_pct,
                 "orig_width": orig_w,
                 "orig_height": orig_h,
-                "det_score": det_score,
-            }
+                "det_score": p.get("det_score", 1.0),
+            })
 
-            clusters_map[cluster_id]["faces"].append(face_entry)
-            clusters_map[cluster_id]["face_count"] += 1
+        return {
+            "cluster_id": cluster_id,
+            "label": label,
+            "face_count": len(faces),
+            "preview_image": f"/faces/clusters/{cluster_id}/preview",
+            "faces": faces,
+        }
 
-            # Erstes valides Vorschaubild als Repräsentant für den Cluster setzen
-            if include_preview and clusters_map[cluster_id]["preview_image"] is None and file_path and bbox:
-                preview = generate_face_crop_base64(file_path, bbox)
-                if preview:
-                    clusters_map[cluster_id]["preview_image"] = preview
+    def get_cluster_preview_bytes(self, cluster_id: str) -> Optional[bytes]:
+        """Liefert die JPEG-Bytes des Vorschaubildes eines Clusters über den schnellen Thumbnail-Cache."""
+        from app.services.thumbnail_service import thumbnail_service
+        records, _ = self.qdrant.client.scroll(
+            collection_name=settings.COLLECTION_FACES,
+            scroll_filter=rest_models.Filter(
+                must=[
+                    rest_models.FieldCondition(
+                        key="cluster_id",
+                        match=rest_models.MatchValue(value=cluster_id),
+                    )
+                ]
+            ),
+            limit=1,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not records:
+            return None
 
-        # Sortiere nach Häufigkeit (größte Cluster zuerst)
-        sorted_clusters = sorted(clusters_map.values(), key=lambda c: c["face_count"], reverse=True)
-        return sorted_clusters
+        p = records[0].payload or {}
+        file_path = p.get("file_path") or p.get("image_path")
+        bbox = p.get("bbox")
+        if not file_path or not bbox:
+            return None
+
+        path = Path(file_path)
+        if not path.is_file():
+            return None
+
+        return thumbnail_service.get_or_create_face_crop(path, bbox=bbox, target_size=160)
+
 
     def label_cluster(self, cluster_id: str, label: str) -> int:
         """
@@ -276,6 +380,7 @@ class ClusteringService:
             len(point_ids),
             len(parent_img_ids),
         )
+        self.invalidate_clusters_cache()
         return len(point_ids)
 
     def _sync_parent_images_persons(self, parent_img_ids: Set[str]) -> None:
@@ -342,6 +447,7 @@ class ClusteringService:
             self._sync_parent_images_persons({parent_img_id})
 
         logger.info("Gesicht %s aus Cluster '%s' entfernt.", face_id, old_cluster)
+        self.invalidate_clusters_cache()
         return True
 
     def merge_clusters(
@@ -441,6 +547,7 @@ class ClusteringService:
             final_label,
             len(affected_parent_ids),
         )
+        self.invalidate_clusters_cache()
 
         return {
             "status": "success",

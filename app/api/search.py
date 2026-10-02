@@ -385,17 +385,63 @@ async def search_faces_by_image(
 
 @router.get("/faces/clusters", response_model=List[ClusterResponse])
 def get_clusters(
-    include_preview: bool = Query(default=True, description="Vorschaubild als Base64 erzeugen"),
+    include_preview: bool = Query(default=True, description="Vorschaubild-Pfad erzeugen"),
+    include_faces: bool = Query(default=False, description="Vollständige Gesichterliste pro Cluster beilegen (Standard: False für ultraschnelles Laden)"),
     clustering_service: ClusteringService = Depends(get_clustering_service),
 ):
     """
-    Gibt alle gefundenen Personen-Cluster zurück (inkl. Vorschaubildern via Bounding-Box-Crop).
-    Gibt eine leere Liste zurück, wenn die biometrische Gesichtserkennung deaktiviert ist.
+    Gibt alle gefundenen Personen-Cluster zurück (inkl. Vorschaubild-URLs).
+    Standardmäßig wird include_faces=False genutzt, damit auch bei 10.000+ Gesichtern
+    die Übersicht in Bruchteilen einer Sekunde lädt.
     """
     if not settings.ENABLE_FACE_RECOGNITION:
         return []
-    clusters = clustering_service.get_clusters(include_preview=include_preview)
+    clusters = clustering_service.get_clusters(include_preview=include_preview, include_faces=include_faces)
     return clusters
+
+
+@router.get("/faces/clusters/{cluster_id}/preview")
+def get_cluster_preview(
+    cluster_id: str,
+    clustering_service: ClusteringService = Depends(get_clustering_service),
+):
+    """
+    Liefert das gecropte Vorschaubild (JPEG) des Personen-Clusters mit Caching-Headern.
+    Ermöglicht dem Browser asynchrones, schnelles Nachladen der Gesichter.
+    """
+    if not settings.ENABLE_FACE_RECOGNITION:
+        raise HTTPException(status_code=403, detail="Biometrische Gesichtserkennung ist deaktiviert.")
+    
+    image_bytes = clustering_service.get_cluster_preview_bytes(cluster_id)
+    if not image_bytes:
+        raise HTTPException(status_code=404, detail=f"Kein Vorschaubild für Cluster '{cluster_id}' gefunden.")
+    
+    return Response(
+        content=image_bytes,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "public, max-age=86400, immutable",
+        },
+    )
+
+
+@router.get("/faces/clusters/{cluster_id}", response_model=ClusterResponse)
+def get_cluster_details(
+    cluster_id: str,
+    clustering_service: ClusteringService = Depends(get_clustering_service),
+):
+    """
+    Liefert die Detailinformationen inklusive aller zugeordneten Gesichter und Bildpfade
+    für ein einzelnes Personen-Cluster on-demand.
+    """
+    if not settings.ENABLE_FACE_RECOGNITION:
+        raise HTTPException(status_code=403, detail="Biometrische Gesichtserkennung ist deaktiviert.")
+    
+    cluster = clustering_service.get_cluster_details(cluster_id)
+    if not cluster:
+        raise HTTPException(status_code=404, detail=f"Cluster '{cluster_id}' nicht gefunden.")
+    return cluster
+
 
 
 @router.post("/faces/clusters/{cluster_id}/label")
