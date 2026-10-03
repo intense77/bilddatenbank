@@ -106,3 +106,32 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   - [ ] Inferenz-Geschwindigkeit (Sekunden pro 100 Scans) auf CPU und GPU messen.
   - [ ] Visuelle Begutachtung der Bounding-Box-Positionierung und Ähnlichkeitstreffer im Web-Frontend.
   - [ ] Dokumentation optimaler Batch-Größen für Standard-Bürorechner ohne dedizierte GPU.
+
+---
+
+## 9. Optimierung der Freitext- & Personensuche (Treffer-Vollständigkeit, Relevanz & Paginierung)
+* **Ziel:** 100 % verlässliche Auffindbarkeit aller Bilder namentlich bekannter Personen, Beseitigung unpassender CLIP-Zufallstreffer bei Namenssuche und flexible Durchsicht großer Bestände.
+
+### Priorität 1: Kritisch / Hohe Notwendigkeit (Vollständigkeit & Korrektheit)
+- [ ] **Beseitigung des 5.000er-Scroll-Flaschenhalses bei der Namenssuche (`app/api/search.py`):**
+  * *Ist-Zustand:* Bei der Suche nach Namen scrollt das Backend ungefiltert maximal 5.000 Gesichter aus `archive_faces` (bei aktuell > 80.000 Gesichtern werden ~94 % ignoriert). Bei Personen mit z. B. 28 gelabelten Gesichtern werden rein zufällig nur die 2 gefunden, die unter den ersten 5.000 IDs liegen.
+  * *Soll-Zustand:* Gezielte Qdrant-Filterabfrage mit `must_not=[IsEmptyCondition("label")]` und Match auf den Namen oder direktes Nachschlagen über die lokale SQLite-Metadatenbank.
+  * *Nutzen:* Es werden ausnahmslos **alle vorhandenen Bilder einer gesuchten Person** sofort gefunden.
+- [ ] **Saubere Trennung von Personen-Matches und CLIP-Zufallstreffern:**
+  * *Ist-Zustand:* Bei Eingabe eines Namens (z. B. *„Sabine“*) findet die Suche die Person, füllt aber die restlichen Plätze der Trefferliste mit visuellen CLIP-Vektortreffern auf (z. B. zufällige historische Bilder mit Score 26–29 %).
+  * *Soll-Zustand:* Wenn der Suchbegriff einem vergebenen Personennamen entspricht, werden primär exklusive Personen-Treffer angezeigt bzw. semantische Bild-Treffer optisch klar als „Ähnliche Motive (CLIP)“ abgegrenzt.
+
+### Priorität 2: Mittlere Notwendigkeit (Ergonomie & Trefferanzahl)
+- [ ] **Paginierung & „Mehr Ergebnisse laden“ (Infinite Scroll / Pagination):**
+  * *Ist-Zustand:* Die Trefferanzahl ist fest auf 20 (bzw. im Dropdown maximal 80) begrenzt. Ein Nachladen weiterer Treffer ist nicht möglich.
+  * *Soll-Zustand:* Einführung von `offset`/`page` im Backend-Endpunkt `/search/semantic` und eines „Mehr Ergebnisse laden“-Buttons (bzw. optionalem Infinite Scroll) im Suchgitter.
+- [ ] **Dynamischer Relevanz-Schwellenwert (Threshold-Tuning):**
+  * *Ist-Zustand:* Der Standard-Schwellenwert von `0.23` (23 %) schneidet bei CLIP oft viele valide Treffer mit Scores zwischen 0.20 und 0.22 hart ab, sodass scheinbar nur 1–2 Treffer existieren.
+  * *Soll-Zustand:* Bei Personentreffern (Score 1.0) Schwellenwert-Logik komplett umgehen; bei Motivsuchen Standard-Schwellenwert auf 0.20 optimieren oder dynamisch anhand der Score-Verteilung staffeln.
+
+### Priorität 3: Komfort- & Erweiterungsfunktionen (Zukunft)
+- [ ] **Volltextsuche in archivischen Metadatenfeldern (Hybrid Search):**
+  * Suchbegriff nicht nur in Gesichts-Labels und per CLIP suchen, sondern parallel in `title`, `signature`, `description` und `keywords` (in SQLite / Qdrant-Payload).
+- [ ] **Konfigurierbares Standard-Trefferlimit:**
+  * Voreinstellung im Suchformular auf Wunsch auf 40 oder 60 Treffer anpassen.
+
