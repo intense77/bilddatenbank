@@ -190,15 +190,19 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 
 ---
 
-## 14. Vorder- & Rückseiten-Kopplung (Recto / Verso)
-* **Ziel:** Zusammenführung von Vorderseite (Bildmotiv) und Rückseite (Fotografenstempel, handschriftliche Datierung, Widmungen, Signaturen) zu einem logischen Objekt.
+## 14. Kontextuelle Verknüpfung von Vorder- und Rückseite (Zweiblatt-Logik: Recto / Verso)
+* **Ziel:** Das Vorderseiten-Foto ist das visuelle Hauptobjekt; die beschriftete Rückseite (Fotografenstempel, Datierungen, handschriftliche Widmungen) fungiert als verknüpfter Text- und Belegträger.
+* **Archivischer Mehrwert gegenüber Standard-Software:**
+  * Kommerzielle Tools behandeln Scans von Vorder- und Rückseite als zwei isolierte, zusammenhanglose Dateien.
+  * Hier erkennt das System anhand von Dateinamenskonventionen (`_r`/`_v`, `_recto`/`_verso`, `_a`/`_b`, `_01`/`_02`) automatisch, dass zwei Scans physisch zusammengehören.
 * **Aufgaben:**
-  - [ ] **Automatische Paar-Erkennung:**
-    * Heuristische Erkennung von Dateipaaren nach archivischen Naming-Conventions (`_r`/`_v`, `_recto`/`_verso`, `_a`/`_b`, `_01`/`_02`).
+  - [ ] **Automatische Paar-Erkennung (Zweiblatt-Logik):**
+    * Zusammenführen von `_r`/`_v`-Dateipaaren zu einem gemeinsamen archivischen Datensatz.
+  - [ ] **Rückseiten-Notiz als Primär-Metadatum des Vorderseiten-Fotos:**
+    * Der per OCR/VLM auf der Rückseite entzifferte handschriftliche Text (z. B. *„Fronleichnam 1928, Pfarrer Huber mit Kirchenchor“*) wird als Primär-Metadatum direkt mit dem Vorderseiten-Foto verknüpft und semantisch indexiert.
+    * Bei der Freitextsuche nach Begriffen auf der Rückseite wird direkt das Vorderseiten-Foto als Suchtreffer ausgegeben.
   - [ ] **Interaktiver 3D-Karten-Flip im Bild-Modal:**
-    * Button „Rückseite ansehen / Umdrehen“ mit animiertem Wechsel zwischen Recto und Verso.
-  - [ ] **Metadaten- & OCR-Aggregation:**
-    * Volltextsuche und Metadaten-Payload verknüpfen den rückseitigen OCR-Text direkt mit dem vorderseitigen Hauptbild in Qdrant und SQLite.
+    * Button „Rückseite ansehen / Umdrehen“ mit animiertem Karten-Wechsel zwischen Vorder- und Rückseite.
 
 ---
 
@@ -232,11 +236,19 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 
 ---
 
-## 18. Georeferenzierung & Historische Karten-Verortung
-* **Ziel:** Räumliche Erschließung und Umkreissuche für Sakralbauten, Denkmäler, Bildstöcke und Prozessionswege.
+## 18. Visuelle Georeferenzierung & Pfarr-Topographie
+* **Ziel:** Räumliche Erschließung und territoriale Verknüpfung historischer Aufnahmen ohne Abhängigkeit von modernen GPS-EXIF-Daten.
+* **Archivischer Mehrwert gegenüber Standard-Software:**
+  * Kommerzielle Tools verlassen sich stur auf GPS-Metadaten, die historische Glasplatten und analoge Fotoabzüge naturgemäß nicht besitzen.
+  * Historische kirchliche Bestände sind stattdessen streng territorial gegliedert (*Bistum → Dekanat → Pfarrei → Filialkirche*).
 * **Aufgaben:**
+  - [ ] **Pfarreien-Kataster & territoriale Hierarchie:**
+    * Verknüpfung der semantischen Suche mit einem Pfarreien- und Ortskataster.
+    * Wer nach Kirchtürmen, Altären oder Prozessionsaufnahmen sucht, kann die Suche flexibel auf bestimmte Pfarreien, Dekanate oder Bistumsregionen eingrenzen.
+  - [ ] **Gebäude- & Architektur-Ähnlichkeitssuche:**
+    * Wiedererkennung desselben Kirchturms, Hochaltars, Portals oder derselben Kirchenfassade aus verschiedenen Blickwinkeln und über historische Epochen hinweg (z. B. Vorher/Nachher-Vergleich vor und nach Kriegszerstörung, Barockisierung oder Restaurierung).
   - [ ] **Interaktive Koordinatenzuweisung:**
-    * OpenStreetMap / Leaflet-Kartenmodul zur schnellen Verortung per Mausklick.
+    * OpenStreetMap / Leaflet-Kartenmodul zur schnellen manuellen Verortung per Mausklick.
   - [ ] **Geografische Umkreissuche:**
     * Qdrant-Geo-Distanzfilter für Recherchen im Umkreis (z. B. *„Alle historischen Fotos im Umkreis von 2 km um Kloster Beuron“*).
 
@@ -276,5 +288,17 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 - [ ] **Iconclass-Notationen im XMP-Sidecar:**
   * Optionale Einbettung von Iconclass-Codes (z. B. `11Q714` für Messfeier/Liturgie) in die standardisierten `.xmp`-Metadaten.
 
+---
 
-
+## 21. Archivische Findbuch-Synchronisation (Echtes Read-Only-Sync über bestehenden Fileservern)
+* **Ziel:** Das System fungiert als intelligenter Indexierungs- und Recherche-Layer über unveränderten Fileservern und bindet bestehende analoge oder digitale Findbücher nahtlos ein.
+* **Archivischer Mehrwert gegenüber Standard-Software:**
+  * Kommerzielle Tools erzwingen häufig den Import in proprietäre Datenbankstrukturen oder das Umbenennen/Verschieben von Ordnern; Metadaten müssen mühsam doppelt gepflegt werden.
+  * Dieses System belässt den Fileserver 100 % unberührt (read-only) und synchronisiert externe Findbücher deklarativ.
+* **Aufgaben:**
+  - [ ] **Ingest externer Findbücher (CSV, Excel, XML/EAD):**
+    * Einlesen bestehender Tabellen und Findbücher über eine intuitive Schnittstelle im Import-Tab.
+  - [ ] **Automatischer Signatur- & Bestandsabgleich:**
+    * Automatischer Match zwischen Findbuch-Datensätzen und Bilddateien anhand von Archivsignatur, Dateinamen oder Ordnerstrukturen.
+  - [ ] **Gemeinsame Verschmelzung in der Recherche:**
+    * Findbuch-Metadaten (Provenienz, Aktentitel, Altsignatur, Sperrfrist, Enthält-Vermerke) und KI-Erkennungen (CLIP-Motive, Gesichter, OCR) verschmelzen in einer einheitlichen Detailansicht, ohne dass das originale Archivverzeichnis verändert werden muss.
