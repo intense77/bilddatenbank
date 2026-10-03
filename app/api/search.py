@@ -474,12 +474,35 @@ def label_cluster(
     if updated_count == 0:
         raise HTTPException(status_code=404, detail=f"Kein Gesicht mit cluster_id '{cluster_id}' gefunden.")
 
+    # In SQLite-Cluster-Tabelle spiegeln
+    try:
+        from app.services.metadata_db import metadata_db
+        metadata_db.upsert_cluster(
+            cluster_id=cluster_id,
+            name=final_label.strip(),
+            preview_image=f"/faces/clusters/{cluster_id}/preview",
+        )
+    except Exception as e:
+        logger.warning("Konnte Cluster nicht in SQLite speichern: %s", e)
+
     return {
         "status": "success",
         "cluster_id": cluster_id,
         "label": final_label.strip(),
         "updated_faces": updated_count,
     }
+
+
+class ClusterNotesRequest(BaseModel):
+    notes: str
+
+
+@router.post("/faces/clusters/{cluster_id}/notes")
+def update_cluster_notes(cluster_id: str, request: ClusterNotesRequest):
+    """Speichert archivalische Notizen zu einem Personen-Cluster in der SQLite-Datenbank."""
+    from app.services.metadata_db import metadata_db
+    res = metadata_db.upsert_cluster(cluster_id=cluster_id, notes=request.notes)
+    return {"status": "success", "cluster": res}
 
 
 @router.post("/faces/clusters/merge")
@@ -675,34 +698,51 @@ def get_image_details(
             "label": p.get("label"),
         })
 
-    # Metadaten aus Qdrant abrufen oder direkt aus Bild/Sidecar extrahieren
+    # Metadaten: Zuerst in relationaler SQLite-Datenbank nachschlagen
     metadata: Dict[str, Any] = {}
     try:
-        img_records, _ = qdrant.client.scroll(
-            collection_name=settings.COLLECTION_IMAGES,
-            scroll_filter=rest_models.Filter(
-                should=[
-                    rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_path_str)),
-                    rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_path_str)),
-                ]
-            ),
-            limit=1,
-            with_payload=True,
-            with_vectors=False,
-        )
-        if img_records and img_records[0].payload:
-            payload = img_records[0].payload
-            metadata = payload.get("metadata") or {
-                "title": payload.get("title"),
-                "creator": payload.get("creator"),
-                "date": payload.get("date"),
-                "description": payload.get("description"),
-                "signature": payload.get("signature"),
-                "copyright": payload.get("copyright"),
-                "keywords": payload.get("keywords", []),
+        from app.services.metadata_db import metadata_db
+        db_meta = metadata_db.get_metadata(abs_path_str)
+        if db_meta:
+            metadata = {
+                "title": db_meta.get("title"),
+                "signature": db_meta.get("signature"),
+                "date": db_meta.get("date"),
+                "creator": db_meta.get("creator"),
+                "description": db_meta.get("description"),
+                "source": "sqlite",
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("SQLite Metadaten-Abfrage fehlgeschlagen: %s", e)
+
+    # Falls nicht in SQLite vorhanden: Aus Qdrant abrufen
+    if not metadata or not any(metadata.values()):
+        try:
+            img_records, _ = qdrant.client.scroll(
+                collection_name=settings.COLLECTION_IMAGES,
+                scroll_filter=rest_models.Filter(
+                    should=[
+                        rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_path_str)),
+                        rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_path_str)),
+                    ]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+            if img_records and img_records[0].payload:
+                payload = img_records[0].payload
+                metadata = payload.get("metadata") or {
+                    "title": payload.get("title"),
+                    "creator": payload.get("creator"),
+                    "date": payload.get("date"),
+                    "description": payload.get("description"),
+                    "signature": payload.get("signature"),
+                    "copyright": payload.get("copyright"),
+                    "keywords": payload.get("keywords", []),
+                }
+        except Exception:
+            pass
 
     # Fallback: Direkt aus Datei und eventuellen Sidecars extrahieren
     if not metadata or not any(metadata.values()):
@@ -716,6 +756,93 @@ def get_image_details(
         "faces": faces,
         "metadata": metadata,
     }
+
+
+class ImageMetadataUpdateRequest(BaseModel):
+    path: str
+    title: Optional[str] = None
+    signature: Optional[str] = None
+    date: Optional[str] = None
+    creator: Optional[str] = None
+    description: Optional[str] = None
+
+
+@router.post("/images/metadata")
+def update_image_metadata(
+    data: ImageMetadataUpdateRequest,
+    qdrant: QdrantService = Depends(get_qdrant_service),
+):
+    """
+    Speichert archivische Metadaten (Signatur, Titel, Datum, Urheber, Notizen)
+    transaktionssicher in SQLite, synchronisiert den Qdrant-Vektorpayload
+    und aktualisiert das Adobe XMP-Sidecar.
+    """
+    file_path = validate_safe_image_path(data.path)
+    abs_path_str = str(file_path.resolve())
+
+    # 1. In SQLite transaktionssicher speichern
+    from app.services.metadata_db import metadata_db
+    saved = metadata_db.upsert_metadata(
+        file_path=abs_path_str,
+        file_name=file_path.name,
+        signature=data.signature,
+        title=data.title,
+        date=data.date,
+        creator=data.creator,
+        description=data.description,
+    )
+
+    # 2. In Qdrant synchronisieren (Volltext- / Semantiksuche)
+    records = []
+    try:
+        records, _ = qdrant.client.scroll(
+            collection_name=settings.COLLECTION_IMAGES,
+            scroll_filter=rest_models.Filter(
+                should=[
+                    rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_path_str)),
+                    rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_path_str)),
+                ]
+            ),
+            limit=1,
+            with_payload=True
+        )
+        if records:
+            point_id = records[0].id
+            payload_updates = {
+                "title": data.title,
+                "signature": data.signature,
+                "date": data.date,
+                "creator": data.creator,
+                "description": data.description,
+            }
+            qdrant.client.set_payload(
+                collection_name=settings.COLLECTION_IMAGES,
+                payload=payload_updates,
+                points=[point_id],
+            )
+    except Exception as e:
+        logger.warning("Konnte Qdrant-Payload nicht synchronisieren: %s", e)
+
+    # 3. XMP-Sidecar aktualisieren (Never touch the master!)
+    try:
+        from app.services.xmp_service import xmp_service
+        persons = []
+        if records and records[0].payload:
+            persons = records[0].payload.get("persons") or []
+        xmp_service.write_sidecar(
+            image_path=file_path,
+            title=data.title,
+            description=data.description,
+            creator=data.creator,
+            date=data.date,
+            signature=data.signature,
+            persons=persons,
+        )
+    except Exception as e:
+        logger.warning("Konnte XMP-Sidecar nicht aktualisieren: %s", e)
+
+    return {"status": "success", "metadata": saved}
+
 
 
 @router.get("/search/similar", response_model=List[SemanticSearchResult])

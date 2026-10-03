@@ -867,6 +867,16 @@
             <span class="text-amber-400">📚</span>
             <span>Varianten (<span id="modal-variants-count">0</span>)</span>
           </button>
+          <!-- Visuelle Bildoptimierung (Non-destruktiv) Toggle -->
+          <button id="modal-adjust-btn" type="button" onclick="toggleImageAdjustmentPanel()"
+            class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs sm:text-sm font-medium transition flex items-center gap-1.5"
+            title="Non-destruktive Bildverbesserung (Helligkeit, Kontrast, Glasplatten-Invertierung, Schwarz-Weiß)">
+            <svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            <span id="modal-adjust-btn-text">Optimieren</span>
+          </button>
           <!-- Leuchttisch Button im Modal -->
           <button id="modal-lightbox-btn" type="button" onclick="toggleCurrentModalLightbox()"
             class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
@@ -905,7 +915,47 @@
 
       <!-- Modal Body (Image Container + Archival Metadata Sidebar) -->
       <div class="flex-1 overflow-auto p-4 flex flex-col md:flex-row gap-4 bg-slate-950/60 relative">
-        <div class="flex-1 flex flex-col items-center justify-center min-h-[280px]">
+        <div class="flex-1 flex flex-col items-center justify-center min-h-[280px] relative">
+          <!-- Non-Destructive Visual Adjustment Panel (collapsible) -->
+          <div id="modal-adjust-panel" class="hidden absolute top-2 left-2 sm:w-72 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl p-3 shadow-2xl z-40 space-y-2.5">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
+              <span class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                <span class="text-amber-400">🎛️</span> Bild-Optimierung
+              </span>
+              <button type="button" onclick="resetImageAdjustments()" class="text-[10px] text-amber-400 hover:text-amber-300 font-mono transition">
+                ↺ Reset
+              </button>
+            </div>
+            <!-- Brightness Slider -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-[11px] text-slate-300">
+                <span>Helligkeit</span>
+                <span id="val-brightness" class="font-mono text-slate-400">100%</span>
+              </div>
+              <input type="range" id="adjust-brightness" min="40" max="220" value="100" class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="applyImageAdjustments()">
+            </div>
+            <!-- Contrast Slider -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-[11px] text-slate-300">
+                <span>Kontrast</span>
+                <span id="val-contrast" class="font-mono text-slate-400">100%</span>
+              </div>
+              <input type="range" id="adjust-contrast" min="40" max="220" value="100" class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg" oninput="applyImageAdjustments()">
+            </div>
+            <!-- Toggles: Invert (Negativ), Grayscale (Schwarz-Weiß) -->
+            <div class="grid grid-cols-2 gap-1.5 pt-1">
+              <button type="button" id="btn-toggle-invert" onclick="toggleInvertAdjustment()" class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5">
+                <span>🔄</span> <span>Negativ</span>
+              </button>
+              <button type="button" id="btn-toggle-grayscale" onclick="toggleGrayscaleAdjustment()" class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5">
+                <span>🔘</span> <span>S/W</span>
+              </button>
+            </div>
+            <p class="text-[9px] text-slate-500 italic text-center pt-1 border-t border-slate-800">
+              Rein visuell. Das Master-Original bleibt 100% unberührt.
+            </p>
+          </div>
+
           <div id="modal-bbox-wrapper" class="bbox-container relative select-none">
             <img id="modal-img" src="" alt="Archivbild"
               class="rounded-lg shadow-md max-h-[58vh] object-contain pointer-events-auto">
@@ -981,17 +1031,65 @@
         <!-- Archivalische Metadaten Seitenleiste -->
         <div id="modal-metadata-panel"
           class="w-full md:w-80 bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 text-xs overflow-y-auto max-h-[60vh] flex-shrink-0">
-          <h5 class="font-semibold text-slate-200 text-sm border-b border-slate-800 pb-2 flex items-center gap-1.5">
-            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
-              </path>
-            </svg>
-            <span>Archiv-Metadaten</span>
-          </h5>
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+            <h5 class="font-semibold text-slate-200 text-sm flex items-center gap-1.5">
+              <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                </path>
+              </svg>
+              <span>Archiv-Metadaten</span>
+            </h5>
+            <button id="modal-edit-meta-toggle-btn" type="button" onclick="toggleMetadataEditMode()"
+              class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 text-[11px] font-medium transition flex items-center gap-1 shadow-sm"
+              title="Metadaten in SQLite bearbeiten & XMP aktualisieren">
+              <span>✏️</span> <span id="modal-edit-meta-btn-text">Bearbeiten</span>
+            </button>
+          </div>
+
+          <!-- Lesemodus (Standard) -->
           <div id="modal-metadata-content" class="space-y-3">
             <!-- Dynamisch via JavaScript befüllt -->
           </div>
+
+          <!-- Bearbeitungsmodus Formular (Versteckt bis Klick auf Bearbeiten) -->
+          <form id="modal-metadata-edit-form" class="hidden space-y-3" onsubmit="saveMetadataEdit(event)">
+            <div>
+              <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block mb-1">Archivsignatur</label>
+              <input type="text" id="edit-meta-signature" placeholder="z. B. DiArch-Abt1-1968-042"
+                class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block mb-1">Titel / Bestandsbezeichnung</label>
+              <input type="text" id="edit-meta-title" placeholder="z. B. Bischofsweihe St. Viktor"
+                class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block mb-1">Datierung / Entstehungszeit</label>
+              <input type="text" id="edit-meta-date" placeholder="z. B. 1968-05-12 oder ca. 1965"
+                class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block mb-1">Urheber / Fotograf</label>
+              <input type="text" id="edit-meta-creator" placeholder="z. B. Fotoatelier Meyer"
+                class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block mb-1">Beschreibung / Notizen</label>
+              <textarea id="edit-meta-description" rows="3" placeholder="Archivnotizen, Provenienz, Besonderheiten..."
+                class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"></textarea>
+            </div>
+            <div class="pt-2 border-t border-slate-800 flex items-center justify-end gap-2">
+              <button type="button" onclick="toggleMetadataEditMode(false)"
+                class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition">
+                Abbrechen
+              </button>
+              <button type="submit" id="edit-meta-save-btn"
+                class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition flex items-center gap-1.5 shadow-md">
+                <span>💾</span> <span>Speichern</span>
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 
@@ -1356,7 +1454,7 @@
     </div>
   </div>
 
-  <script src="/app.js?v=3.5"></script>
+  <script src="/app.js?v=3.6"></script>
 </body>
 
 </html>

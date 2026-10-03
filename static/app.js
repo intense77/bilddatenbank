@@ -1301,9 +1301,16 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
       date: data.metadata?.date || null,
       creator: data.metadata?.creator || null,
       signature: data.metadata?.signature || null,
+      description: data.metadata?.description || null,
+      width: data.width,
+      height: data.height,
+      keywords: data.metadata?.keywords || [],
+      copyright: data.metadata?.copyright || null,
       persons: (data.faces || []).map(f => f.label).filter(Boolean)
     };
     updateModalLightboxButtonState(filePath);
+    resetImageAdjustments();
+    toggleMetadataEditMode(false);
 
     // Archivalische Metadaten Seitenleiste befüllen
     if (metaContainer) {
@@ -1475,6 +1482,9 @@ function closeImageModal() {
   modal.classList.add('hidden');
   toggleCropMode(false);
   closeModalXmpMenu();
+  resetImageAdjustments();
+  toggleMetadataEditMode(false);
+  document.getElementById('modal-adjust-panel')?.classList.add('hidden');
   currentModalImageDetails = null;
 }
 
@@ -3224,6 +3234,311 @@ async function exportLightboxXmpZip() {
     }
   }
 }
+
+// ================= VISUELLE NON-DESTRUKTIVE BILDOPTIMIERUNG =================
+
+let imageAdjustments = {
+  brightness: 100,
+  contrast: 100,
+  invert: false,
+  grayscale: false
+};
+
+function toggleImageAdjustmentPanel() {
+  const panel = document.getElementById('modal-adjust-panel');
+  const btn = document.getElementById('modal-adjust-btn');
+  if (!panel) return;
+  const isHidden = panel.classList.toggle('hidden');
+  if (btn) {
+    if (!isHidden) {
+      btn.classList.add('bg-amber-500/20', 'text-amber-400', 'border-amber-500/40');
+    } else {
+      btn.classList.remove('bg-amber-500/20', 'text-amber-400', 'border-amber-500/40');
+    }
+  }
+}
+
+function applyImageAdjustments() {
+  const img = document.getElementById('modal-img');
+  if (!img) return;
+
+  const bInput = document.getElementById('adjust-brightness');
+  const cInput = document.getElementById('adjust-contrast');
+  const bVal = bInput ? parseInt(bInput.value, 10) : 100;
+  const cVal = cInput ? parseInt(cInput.value, 10) : 100;
+
+  imageAdjustments.brightness = bVal;
+  imageAdjustments.contrast = cVal;
+
+  const valB = document.getElementById('val-brightness');
+  const valC = document.getElementById('val-contrast');
+  if (valB) valB.textContent = `${bVal}%`;
+  if (valC) valC.textContent = `${cVal}%`;
+
+  const filters = [];
+  if (bVal !== 100) filters.push(`brightness(${bVal}%)`);
+  if (cVal !== 100) filters.push(`contrast(${cVal}%)`);
+  if (imageAdjustments.invert) filters.push('invert(1)');
+  if (imageAdjustments.grayscale) filters.push('grayscale(1)');
+
+  img.style.filter = filters.length > 0 ? filters.join(' ') : 'none';
+}
+
+function toggleInvertAdjustment() {
+  imageAdjustments.invert = !imageAdjustments.invert;
+  const btn = document.getElementById('btn-toggle-invert');
+  if (btn) {
+    if (imageAdjustments.invert) {
+      btn.classList.add('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    } else {
+      btn.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    }
+  }
+  applyImageAdjustments();
+}
+
+function toggleGrayscaleAdjustment() {
+  imageAdjustments.grayscale = !imageAdjustments.grayscale;
+  const btn = document.getElementById('btn-toggle-grayscale');
+  if (btn) {
+    if (imageAdjustments.grayscale) {
+      btn.classList.add('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    } else {
+      btn.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    }
+  }
+  applyImageAdjustments();
+}
+
+function resetImageAdjustments() {
+  imageAdjustments = { brightness: 100, contrast: 100, invert: false, grayscale: false };
+
+  const bInput = document.getElementById('adjust-brightness');
+  const cInput = document.getElementById('adjust-contrast');
+  if (bInput) bInput.value = 100;
+  if (cInput) cInput.value = 100;
+
+  const valB = document.getElementById('val-brightness');
+  const valC = document.getElementById('val-contrast');
+  if (valB) valB.textContent = '100%';
+  if (valC) valC.textContent = '100%';
+
+  const btnInv = document.getElementById('btn-toggle-invert');
+  const btnGray = document.getElementById('btn-toggle-grayscale');
+  if (btnInv) btnInv.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+  if (btnGray) btnGray.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+
+  const img = document.getElementById('modal-img');
+  if (img) img.style.filter = 'none';
+}
+
+// ================= SQLITE METADATEN-BEARBEITUNG =================
+
+function toggleMetadataEditMode(forceState = null) {
+  const content = document.getElementById('modal-metadata-content');
+  const form = document.getElementById('modal-metadata-edit-form');
+  const btnText = document.getElementById('modal-edit-meta-btn-text');
+  if (!content || !form) return;
+
+  const isEditing = forceState !== null ? !forceState : !form.classList.contains('hidden');
+
+  if (isEditing) {
+    // Wechsel zu Lesemodus
+    form.classList.add('hidden');
+    content.classList.remove('hidden');
+    if (btnText) btnText.textContent = 'Bearbeiten';
+  } else {
+    // Wechsel zu Bearbeitungsmodus
+    if (!currentModalImageDetails) return;
+    document.getElementById('edit-meta-signature').value = currentModalImageDetails.signature || '';
+    document.getElementById('edit-meta-title').value = currentModalImageDetails.title || '';
+    document.getElementById('edit-meta-date').value = currentModalImageDetails.date || '';
+    document.getElementById('edit-meta-creator').value = currentModalImageDetails.creator || '';
+    document.getElementById('edit-meta-description').value = currentModalImageDetails.description || '';
+
+    content.classList.add('hidden');
+    form.classList.remove('hidden');
+    if (btnText) btnText.textContent = 'Ansicht';
+  }
+}
+
+async function saveMetadataEdit(event) {
+  if (event) event.preventDefault();
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
+    showToast('Kein aktives Bild ausgewählt.', true);
+    return;
+  }
+
+  const saveBtn = document.getElementById('edit-meta-save-btn');
+  const originalHtml = saveBtn ? saveBtn.innerHTML : '';
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Speichere in SQLite...</span>';
+  }
+
+  const newSig = document.getElementById('edit-meta-signature')?.value.trim() || null;
+  const newTitle = document.getElementById('edit-meta-title')?.value.trim() || null;
+  const newDate = document.getElementById('edit-meta-date')?.value.trim() || null;
+  const newCreator = document.getElementById('edit-meta-creator')?.value.trim() || null;
+  const newDesc = document.getElementById('edit-meta-description')?.value.trim() || null;
+
+  try {
+    const payload = {
+      path: currentModalImageDetails.filePath,
+      signature: newSig,
+      title: newTitle,
+      date: newDate,
+      creator: newCreator,
+      description: newDesc
+    };
+
+    const res = await fetch('/images/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error(`Server-Fehler (${res.status})`);
+    const data = await res.json();
+
+    // Zustand aktualisieren
+    currentModalImageDetails.signature = newSig;
+    currentModalImageDetails.title = newTitle;
+    currentModalImageDetails.date = newDate;
+    currentModalImageDetails.creator = newCreator;
+    currentModalImageDetails.description = newDesc;
+
+    // Header Titel aktualisieren
+    const titleElem = document.getElementById('modal-filename');
+    if (titleElem) {
+      titleElem.textContent = newTitle || currentModalImageDetails.fileName;
+    }
+
+    // Re-render Lesemodus
+    renderModalMetadataReadView();
+    toggleMetadataEditMode(false);
+
+    showToast('Metadaten erfolgreich in SQLite & XMP gesichert!', false);
+  } catch (err) {
+    console.error('Fehler beim Speichern der Metadaten:', err);
+    showToast(`Speichern fehlgeschlagen: ${err.message}`, true);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = originalHtml;
+    }
+  }
+}
+
+function renderModalMetadataReadView() {
+  const metaContainer = document.getElementById('modal-metadata-content');
+  if (!metaContainer || !currentModalImageDetails) return;
+
+  const meta = {
+    title: currentModalImageDetails.title,
+    date: currentModalImageDetails.date,
+    creator: currentModalImageDetails.creator,
+    signature: currentModalImageDetails.signature,
+    description: currentModalImageDetails.description,
+    keywords: currentModalImageDetails.keywords || [],
+    copyright: currentModalImageDetails.copyright || null
+  };
+
+  let metaHtml = '';
+
+  if (meta.title) {
+    metaHtml += `
+      <div>
+        <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Titel / Bezeichnung</span>
+        <span class="text-slate-200 font-medium text-xs">${escapeHtml(meta.title)}</span>
+      </div>`;
+  }
+  if (meta.date) {
+    metaHtml += `
+      <div>
+        <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Datierung</span>
+        <span class="text-amber-400 font-mono text-xs">${escapeHtml(meta.date)}</span>
+      </div>`;
+  }
+  if (meta.creator) {
+    metaHtml += `
+      <div>
+        <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Urheber / Fotograf</span>
+        <span class="text-slate-200 text-xs">${escapeHtml(meta.creator)}</span>
+      </div>`;
+  }
+  if (meta.signature) {
+    metaHtml += `
+      <div>
+        <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Archivsignatur</span>
+        <span class="text-slate-300 font-mono text-xs bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60 inline-block">${escapeHtml(meta.signature)}</span>
+      </div>`;
+  }
+  if (currentModalImageDetails.width && currentModalImageDetails.height) {
+    metaHtml += `
+      <div>
+        <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Auflösung</span>
+        <span class="text-slate-400 font-mono text-xs">${currentModalImageDetails.width} &times; ${currentModalImageDetails.height} px</span>
+      </div>`;
+  }
+  if (meta.description) {
+    metaHtml += `
+      <div>
+        <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Beschreibung</span>
+        <p class="text-slate-300 leading-relaxed text-[11px] bg-slate-950/40 p-2 rounded-lg border border-slate-800/80 max-h-28 overflow-y-auto">${escapeHtml(meta.description)}</p>
+      </div>`;
+  }
+  if (meta.keywords && meta.keywords.length > 0) {
+    const chips = meta.keywords.map(kw => `
+      <button onclick="setQueryAndSearch('${escapeHtml(kw)}'); closeImageModal();" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-amber-500/20 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 text-slate-300 font-mono text-[10px] transition" title="Nach '#${escapeHtml(kw)}' suchen">
+        #${escapeHtml(kw)}
+      </button>
+    `).join('');
+    metaHtml += `
+      <div>
+        <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block mb-1">Schlagwörter</span>
+        <div class="flex flex-wrap gap-1">${chips}</div>
+      </div>`;
+  }
+  if (meta.copyright) {
+    metaHtml += `
+      <div class="pt-2 border-t border-slate-800/80">
+        <span class="text-slate-500 text-[10px] uppercase tracking-wider block">Rechte / Lizenz</span>
+        <span class="text-slate-400 text-[10px] leading-tight block">${escapeHtml(meta.copyright)}</span>
+      </div>`;
+  }
+
+  metaHtml += `
+    <div class="pt-3 border-t border-slate-800 space-y-2">
+      <div class="flex items-center justify-between">
+        <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">XMP-Sidecar (Dublin Core)</span>
+        <span class="text-[10px] text-emerald-400 font-mono">Adobe / IPTC</span>
+      </div>
+      <div class="grid grid-cols-2 gap-1.5">
+        <button type="button" onclick="downloadCurrentModalXmp()" class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-emerald-400 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm" title="Lädt die XMP-Metadaten als XML-Datei herunter">
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+          <span>Download</span>
+        </button>
+        <button type="button" onclick="writeCurrentModalXmp()" class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-blue-400 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm" title="Speichert die .xmp Datei direkt neben das Master-Original auf Festplatte/NAS">
+          <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+          <span>Speichern</span>
+        </button>
+      </div>
+    </div>`;
+
+  if (!metaHtml) {
+    metaHtml = `
+      <div class="text-center py-6 text-slate-500 space-y-1">
+        <p class="text-[11px]">Keine Metadaten hinterlegt.</p>
+        <button type="button" onclick="toggleMetadataEditMode(true)" class="text-[11px] text-amber-400 hover:underline">
+          Jetzt Metadaten erfassen
+        </button>
+      </div>`;
+  }
+
+  metaContainer.innerHTML = metaHtml;
+}
+
 
 
 
