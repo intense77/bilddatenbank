@@ -320,3 +320,21 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
     * Intelligenter Prüf-Vorschlag im Cluster-Detail: *„Könnte dieser Alumnus von 1935 derselbe Domkapitular auf dem Foto von 1968 sein?“*
     * Ermöglicht Archivaren das Zusammenführen von „Jung-“ und „Alt-Clustern“ mit einem Klick (Merge) unter Erhalt der biometrischen Altersspanne.
 
+---
+
+## 23. Personen-Netzwerke & Co-Occurrence-Navigation (Graph-Erkundung & Beziehungsanalyse)
+* **Ziel:** Aufdecken verborgener historischer Beziehungen, Cliquen und Netzwerke durch gemeinsame Bildauftritte (Co-Occurrences) und nahtlose Navigation von Person zu Person („Wikipedia-Prinzip“).
+* **Archivischer Mehrwert:**
+  * **Historische Deduktion:** Unbenannte Personen im Umfeld prominenter Persönlichkeiten (z. B. *„Wer ist der unbekannte Geistliche, der auf 6 verschiedenen Fotos neben Bischof Müller steht?“*) können über Co-Occurrence-Muster und Aktenabgleich in Minuten identifiziert werden.
+  * **Serendipity & freies Erkunden:** Archivare und Historiker können sich von Foto zu Foto durch das soziale Geflecht einer Stadt oder Pfarrei hangeln, ohne die Recherche abbrechen zu müssen.
+* **Aufgaben:**
+  - [ ] **Direktsprung zum Cluster jeder abgebildeten Person (Cross-Cluster-Navigation):**
+    * Im Bild-Detailmodal und in den Gesichts-Tags: Klick auf eine Person B auf dem Foto von Person A führt mit einem Klick direkt zu allen Bildern von Person B.
+  - [ ] **Schnittmengen-Filter (Gemeinsame Aufnahmen zweier Personen):**
+    * Schnellfilter-Aktion: *„Zeige alle Fotos, auf denen Person A und Person B gemeinsam abgebildet sind“* (Qdrant-Schnittmenge der Elternbilder zweier Cluster).
+  - [ ] **Häufigkeits-Rangliste der Begleitpersonen (Co-Occurrence Ranking):**
+    * Statistische Auswertung im Personen-Profil: *„Wurde am häufigsten fotografiert mit: Pfarrer Huber (12-mal), Schwester Theresia (8-mal), Bürgermeister Schmidt (5-mal)“*.
+  - [ ] **Interaktiver Beziehungs-Graph (Netzwerk-Visualisierung):**
+    * Visuelle Graph-Darstellung (Knoten = Personen, Kanten = gemeinsame Fotos; Kantendicke = Häufigkeit), die historische Seilschaften, Freundschaften, Amtskreise und Familienverbände auf einen Blick greifbar macht.
+
+
