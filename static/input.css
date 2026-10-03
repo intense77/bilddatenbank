@@ -76,6 +76,76 @@ body {
   max-height: 100%;
   line-height: 0;
   user-select: none;
+  transform-origin: center center;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bbox-container.is-panning {
+  transition: none !important;
+  cursor: grabbing !important;
+}
+
+.bbox-container.can-pan {
+  cursor: grab;
+}
+
+/* Split-Screen Vorher/Nachher Slider */
+#modal-split-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 24;
+  overflow: hidden;
+  border-radius: 0.5rem;
+}
+
+#modal-split-clip-wrapper {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#modal-split-clip-wrapper img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  pointer-events: none !important;
+  box-shadow: none !important;
+  border-radius: 0.5rem;
+}
+
+.split-divider-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #f59e0b;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.8), 0 0 20px rgba(0, 0, 0, 0.8);
+  cursor: ew-resize;
+  z-index: 25;
+  pointer-events: auto;
+}
+
+.split-divider-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 28px;
+  background-color: #0f172a;
+  border: 2px solid #f59e0b;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  color: #fbbf24;
+  font-size: 11px;
+  user-select: none;
 }
 
 .bbox-container img {

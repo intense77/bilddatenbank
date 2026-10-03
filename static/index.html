@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Historisches Bildarchiv — Semantische Suche & Personen-Cluster</title>
   <!-- Lokales Stylesheet (100% offline & datenschutzkonform, kein CDN) -->
-  <link rel="stylesheet" href="/style.css?v=4.1">
+  <link rel="stylesheet" href="/style.css?v=4.2">
   <link rel="stylesheet" href="/cropper.min.css">
 </head>
 
@@ -965,6 +965,17 @@
               <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
               <span>Rahmen um das gewünschte Motivdetail ziehen</span>
             </div>
+            <!-- Split-Screen Vorher/Nachher Vergleich Container -->
+            <div id="modal-split-container" class="hidden">
+              <div id="modal-split-clip-wrapper" style="clip-path: inset(0 calc(100% - 50%) 0 0);">
+                <img id="modal-split-original-img" src="" alt="Originalbild">
+                <span class="absolute top-3 left-3 px-2 py-0.5 rounded bg-slate-950/85 border border-slate-700/80 text-[10px] font-semibold text-amber-300 pointer-events-none shadow-md backdrop-blur-sm">Original</span>
+              </div>
+              <span class="absolute top-3 right-3 px-2 py-0.5 rounded bg-slate-950/85 border border-slate-700/80 text-[10px] font-semibold text-emerald-400 pointer-events-none shadow-md backdrop-blur-sm">Optimiert</span>
+              <div id="modal-split-divider" class="split-divider-line" style="left: 50%;">
+                <div class="split-divider-handle">↔</div>
+              </div>
+            </div>
           </div>
 
           <!-- Gesichtsrahmen Toggle Button direkt im Viewport -->
@@ -974,6 +985,19 @@
             <span id="icon-toggle-face-boxes">👤</span>
             <span id="label-toggle-face-boxes">Gesichter aus</span>
           </button>
+
+          <!-- Zoom & Lupe Pill Toolbar -->
+          <div id="modal-zoom-controls" class="absolute bottom-3 left-3 z-30 flex items-center bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-xl p-0.5 shadow-xl text-xs select-none">
+            <button type="button" onclick="adjustModalZoom(-0.25)" class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-amber-400 hover:bg-slate-800 transition text-sm font-bold" title="Verkleinern (Mausrad abwärts)">−</button>
+            <button type="button" id="modal-zoom-reset-btn" onclick="resetModalZoom()" class="px-2 h-7 flex items-center justify-center font-mono font-medium text-slate-300 hover:text-amber-400 transition" title="Klicken: Auf 100% zurücksetzen">
+              <span id="modal-zoom-level-badge">100%</span>
+            </button>
+            <button type="button" onclick="adjustModalZoom(0.25)" class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-amber-400 hover:bg-slate-800 transition text-sm font-bold" title="Vergrößern (Mausrad aufwärts)">+</button>
+            <div class="w-[1px] h-4 bg-slate-700 mx-1"></div>
+            <button type="button" id="btn-toggle-lupe" onclick="toggleModalLupe()" class="px-2.5 h-7 flex items-center gap-1.5 rounded-lg text-slate-300 hover:text-amber-400 hover:bg-slate-800 transition font-medium text-[11px]" title="Archiv-Lupe umschalten (250% Detailansicht)">
+              <span id="icon-toggle-lupe">🔍</span> <span id="label-toggle-lupe">Lupe</span>
+            </button>
+          </div>
         </div>
 
         <!-- Seitenleiste mit Tabs: Metadaten & Bildbearbeitung -->
@@ -1074,6 +1098,12 @@
                   title="Gedrückt halten für Vorher/Nachher-Originalvergleich">
                   <span>👁️</span> <span>Original</span>
                 </button>
+                <!-- Interaktiver Vorher/Nachher Split-Slider Button -->
+                <button type="button" id="btn-toggle-split" onclick="toggleSplitSlider()"
+                  class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 text-[11px] font-medium transition flex items-center gap-1 shadow-sm select-none"
+                  title="Interaktiven Vorher/Nachher Split-Schieberegler ein-/ausblenden">
+                  <span>↔</span> <span id="label-toggle-split-btn">Split</span>
+                </button>
                 <!-- Großansicht / Werkbank Toggle Button -->
                 <button type="button" id="btn-toggle-wide-mode" onclick="toggleWideEditMode()"
                   class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 text-[11px] font-medium transition flex items-center gap-1 shadow-sm"
@@ -1112,6 +1142,36 @@
                   title="Alle Regler auf neutralen Urzustand zurücksetzen">
                   <span>↺</span> <span>Neutral</span>
                 </button>
+              </div>
+            </div>
+
+            <!-- Live Tonwert-Histogramm -->
+            <div class="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5 shadow-sm">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="font-semibold text-slate-300 flex items-center gap-1.5">
+                  <span class="text-amber-400">📊</span> <span>Tonwert-Histogramm</span>
+                </span>
+                <div class="flex items-center gap-1 text-[10px] font-mono">
+                  <button type="button" id="hist-mode-lum" onclick="setHistogramMode('lum')"
+                    class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold transition">Luminanz</button>
+                  <button type="button" id="hist-mode-rgb" onclick="setHistogramMode('rgb')"
+                    class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 transition">RGB</button>
+                </div>
+              </div>
+              <div class="relative">
+                <canvas id="edit-histogram-canvas" width="256" height="60"
+                  class="w-full h-14 rounded-lg bg-slate-950 border border-slate-800 shadow-inner block"></canvas>
+              </div>
+              <div class="flex justify-between items-center text-[9px] text-slate-500 font-mono px-0.5">
+                <span id="hist-shadows-indicator" class="flex items-center gap-1 transition" title="Tiefen / Schatten (Tonwertbeschnitt)">
+                  <span id="hist-shadow-dot" class="w-1.5 h-1.5 rounded-full bg-slate-600 inline-block"></span>
+                  <span>Tiefen (0)</span>
+                </span>
+                <span class="text-slate-600">Mitten (128)</span>
+                <span id="hist-highlights-indicator" class="flex items-center gap-1 transition" title="Lichter / Highlights (Ausbrennen)">
+                  <span>Lichter (255)</span>
+                  <span id="hist-highlight-dot" class="w-1.5 h-1.5 rounded-full bg-slate-600 inline-block"></span>
+                </span>
               </div>
             </div>
 
@@ -1651,7 +1711,7 @@
   </div>
 
   <script src="/cropper.min.js"></script>
-  <script src="/app.js?v=4.1"></script>
+  <script src="/app.js?v=4.2"></script>
 </body>
 
 </html>

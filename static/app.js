@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
   checkIndexingProgress();
   setupCropInteraction();
   loadLightboxState();
+  initModalZoomAndPan();
+  initSplitSliderDrag();
   // Vorbelegung Suche falls gewünscht
   const urlParams = new URLSearchParams(window.location.search);
   const q = urlParams.get('q');
@@ -1253,6 +1255,8 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
 
   currentModalImageDetails = { filePath, fileName };
   toggleCropMode(false);
+  toggleSplitSlider(false);
+  resetModalZoom();
 
   title.textContent = fileName || filePath.split('/').pop();
   pathElem.textContent = filePath;
@@ -1270,6 +1274,13 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
   };
 
   // Bildquelle setzen
+  img.onload = () => {
+    scheduleHistogramRender();
+    if (isSplitSliderActive) {
+      const origImg = document.getElementById('modal-split-original-img');
+      if (origImg) origImg.src = img.dataset.uncroppedSrc || img.src;
+    }
+  };
   img.src = `/images/serve?path=${encodeURIComponent(filePath)}&max_dim=1200${cbParam}`;
 
   // Duplikats- & Variantenprüfung im Hintergrund
@@ -1342,8 +1353,13 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
       if (meta.signature) {
         metaHtml += `
           <div>
-            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Archivsignatur</span>
-            <span class="text-slate-300 font-mono text-xs bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60 inline-block">${escapeHtml(meta.signature)}</span>
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">Archivsignatur</span>
+              <button type="button" onclick="copyArchivalSignature('${escapeHtml(meta.signature)}')" class="text-[10px] text-amber-400 hover:text-amber-300 transition flex items-center gap-1 font-medium" title="Archivsignatur in Zwischenablage kopieren">
+                <span>📋</span> <span>Signatur kopieren</span>
+              </button>
+            </div>
+            <span class="text-slate-200 font-mono text-xs bg-slate-950/80 px-2 py-1 rounded border border-slate-700/80 inline-block font-semibold select-all">${escapeHtml(meta.signature)}</span>
           </div>`;
       }
       if (data.width && data.height) {
@@ -1379,6 +1395,14 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
             <span class="text-slate-400 text-[10px] leading-tight block">${escapeHtml(meta.copyright)}</span>
           </div>`;
       }
+
+      // Wissenschaftlicher Zitiervorschlag Button
+      metaHtml += `
+        <div class="pt-2 border-t border-slate-800/80">
+          <button type="button" onclick="copyArchivalCitation()" class="w-full py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1.5 shadow-sm" title="Zitierfähige Quellenangabe mit Signatur, Titel, Datum und Urheber kopieren">
+            <span>📝</span> <span>Zitiervorschlag kopieren</span>
+          </button>
+        </div>`;
 
       metaHtml += `
         <div class="pt-3 border-t border-slate-800 space-y-2">
@@ -1482,6 +1506,8 @@ function closeImageModal() {
   const modal = document.getElementById('image-modal');
   modal.classList.add('hidden');
   toggleCropMode(false);
+  toggleSplitSlider(false);
+  resetModalZoom();
   closeModalXmpMenu();
   if (cropperInstance) {
     cropperInstance.destroy();
@@ -3322,6 +3348,9 @@ function switchModalSidebarTab(tabName) {
 
     // Gesichtsrahmen im Bearbeiten/Workbench-Modus automatisch ausblenden, um das Bild ungestört zu optimieren
     setFaceBoundingBoxesVisible(false);
+
+    // Live-Histogramm berechnen
+    setTimeout(scheduleHistogramRender, 50);
   } else {
     if (editTab) editTab.classList.add('hidden');
     if (metaTab) metaTab.classList.remove('hidden');
@@ -3569,6 +3598,18 @@ function applyLiveImageTransformations(isComparingOriginal = false) {
   img.style.transform = transformParts.length > 0 ? transformParts.join(' ') : 'none';
   img.style.transformOrigin = 'center center';
   img.style.transition = 'filter 0.05s ease, transform 0.15s ease';
+
+  // Split-Screen Originalbild-Transformation synchronisieren
+  if (isSplitSliderActive) {
+    const origImg = document.getElementById('modal-split-original-img');
+    if (origImg) {
+      origImg.style.transform = img.style.transform;
+      origImg.style.transformOrigin = img.style.transformOrigin;
+    }
+  }
+
+  // Live-Histogramm berechnen & zeichnen
+  scheduleHistogramRender();
 }
 
 function startCompareOriginal() {
@@ -3696,6 +3737,10 @@ function resetAllImageAdjustments() {
     crop: null
   };
   loadModalEditSettings(currentEditSettings);
+  if (isSplitSliderActive && img) {
+    const origImg = document.getElementById('modal-split-original-img');
+    if (origImg) origImg.src = img.src;
+  }
   showToast('Alle Bildparameter auf neutralen Zustand zurückgesetzt.', false);
 }
 
@@ -4004,6 +4049,449 @@ function exportProcessedImage(format = 'jpg') {
 }
 
 
+// ================= ARCHIV-SIGNATUR & ZITIERVORSCHLAG =================
+
+function copyArchivalSignature(signature) {
+  if (!signature) return;
+  navigator.clipboard.writeText(signature).then(() => {
+    showToast(`✓ Signatur „${signature}“ in Zwischenablage kopiert.`, false);
+  }).catch(() => {
+    prompt('Archivsignatur kopieren:', signature);
+  });
+}
+
+function copyArchivalCitation() {
+  if (!currentModalImageDetails) return;
+  const d = currentModalImageDetails;
+  const parts = [];
+  if (d.signature) {
+    parts.push(`Signatur: ${d.signature}`);
+  }
+  if (d.title) {
+    parts.push(`„${d.title}“`);
+  } else if (d.fileName) {
+    parts.push(`Datei: ${d.fileName}`);
+  }
+  if (d.date) {
+    parts.push(`Datierung: ${d.date}`);
+  }
+  if (d.creator) {
+    parts.push(`Urheber/Fotograf: ${d.creator}`);
+  }
+  parts.push('Quelle: Bilddatenbank & Archivbestand');
+
+  const citationText = parts.join('; ');
+  navigator.clipboard.writeText(citationText).then(() => {
+    showToast('✓ Zitiervorschlag in Zwischenablage kopiert!', false);
+  }).catch(() => {
+    prompt('Zitiervorschlag kopieren:', citationText);
+  });
+}
+
+// ================= MODAL ZOOM, PAN & LUPE =================
+
+let modalZoomScale = 1.0;
+let modalPanX = 0;
+let modalPanY = 0;
+let isModalPanning = false;
+let modalPanStartX = 0;
+let modalPanStartY = 0;
+
+function applyModalZoomPan() {
+  const wrapper = document.getElementById('modal-bbox-wrapper');
+  const badge = document.getElementById('modal-zoom-level-badge');
+  const lupeBtn = document.getElementById('btn-toggle-lupe');
+  if (!wrapper) return;
+
+  if (modalZoomScale <= 1.0) {
+    modalZoomScale = 1.0;
+    modalPanX = 0;
+    modalPanY = 0;
+    wrapper.style.transform = '';
+    wrapper.classList.remove('can-pan', 'is-panning');
+    if (lupeBtn) {
+      lupeBtn.classList.remove('bg-amber-500/20', 'text-amber-300', 'border-amber-500/40');
+    }
+  } else {
+    wrapper.style.transform = `translate(${modalPanX}px, ${modalPanY}px) scale(${modalZoomScale})`;
+    wrapper.classList.add('can-pan');
+    if (lupeBtn && modalZoomScale >= 2.0) {
+      lupeBtn.classList.add('bg-amber-500/20', 'text-amber-300', 'border-amber-500/40');
+    } else if (lupeBtn) {
+      lupeBtn.classList.remove('bg-amber-500/20', 'text-amber-300', 'border-amber-500/40');
+    }
+  }
+
+  if (badge) {
+    badge.textContent = `${Math.round(modalZoomScale * 100)}%`;
+  }
+}
+
+function adjustModalZoom(delta) {
+  if (cropperInstance) return; // Nicht während Zuschnitt zoomen
+  modalZoomScale = Math.min(5.0, Math.max(1.0, Math.round((modalZoomScale + delta) * 100) / 100));
+  if (modalZoomScale === 1.0) {
+    modalPanX = 0;
+    modalPanY = 0;
+  }
+  applyModalZoomPan();
+}
+
+function resetModalZoom() {
+  modalZoomScale = 1.0;
+  modalPanX = 0;
+  modalPanY = 0;
+  applyModalZoomPan();
+}
+
+function toggleModalLupe() {
+  if (modalZoomScale > 1.0) {
+    resetModalZoom();
+  } else {
+    modalZoomScale = 2.5; // 250% Archival Lupe
+    applyModalZoomPan();
+  }
+}
+
+function initModalZoomAndPan() {
+  const stage = document.querySelector('.modal-viewport-stage');
+  const wrapper = document.getElementById('modal-bbox-wrapper');
+  if (!stage || !wrapper) return;
+
+  // Stufenloser Mausrad-Zoom
+  stage.addEventListener('wheel', (e) => {
+    const modal = document.getElementById('image-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    if (cropperInstance) return; // Nicht während des Zuschnitts
+
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.25 : -0.25;
+    adjustModalZoom(delta);
+  }, { passive: false });
+
+  // Drag-to-Pan bei Zoom > 100%
+  wrapper.addEventListener('mousedown', (e) => {
+    if (modalZoomScale <= 1.0) return;
+    if (cropperInstance) return;
+    if (e.target.closest('#modal-split-divider') || e.target.closest('.face-bbox-tag') || e.target.closest('button')) return;
+
+    isModalPanning = true;
+    modalPanStartX = e.clientX - modalPanX;
+    modalPanStartY = e.clientY - modalPanY;
+    wrapper.classList.add('is-panning');
+    e.preventDefault();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isModalPanning) return;
+    modalPanX = e.clientX - modalPanStartX;
+    modalPanY = e.clientY - modalPanStartY;
+    applyModalZoomPan();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isModalPanning) {
+      isModalPanning = false;
+      const w = document.getElementById('modal-bbox-wrapper');
+      if (w) w.classList.remove('is-panning');
+    }
+  });
+}
+
+// ================= INTERAKTIVER VORHER/NACHHER SPLIT-SLIDER =================
+
+let isSplitSliderActive = false;
+let splitSliderPercent = 50;
+let isDraggingSplitDivider = false;
+
+function toggleSplitSlider(forceState = null) {
+  const container = document.getElementById('modal-split-container');
+  const btn = document.getElementById('btn-toggle-split');
+  const origImg = document.getElementById('modal-split-original-img');
+  const baseImg = document.getElementById('modal-img');
+  if (!container || !btn || !baseImg) return;
+
+  isSplitSliderActive = forceState !== null ? forceState : !isSplitSliderActive;
+
+  if (isSplitSliderActive) {
+    origImg.src = baseImg.dataset.uncroppedSrc || baseImg.src;
+    origImg.style.transform = baseImg.style.transform;
+    origImg.style.transformOrigin = baseImg.style.transformOrigin;
+
+    container.classList.remove('hidden');
+    btn.classList.add('bg-amber-500', 'text-slate-950', 'font-bold');
+    btn.classList.remove('bg-slate-800', 'text-slate-300');
+    setSplitDividerPosition(splitSliderPercent);
+  } else {
+    container.classList.add('hidden');
+    btn.classList.remove('bg-amber-500', 'text-slate-950', 'font-bold');
+    btn.classList.add('bg-slate-800', 'text-slate-300');
+    isDraggingSplitDivider = false;
+  }
+}
+
+function setSplitDividerPosition(percent) {
+  splitSliderPercent = Math.max(0, Math.min(100, percent));
+  const clipWrapper = document.getElementById('modal-split-clip-wrapper');
+  const divider = document.getElementById('modal-split-divider');
+
+  if (clipWrapper) {
+    clipWrapper.style.clipPath = `inset(0 calc(100% - ${splitSliderPercent}%) 0 0)`;
+  }
+  if (divider) {
+    divider.style.left = `${splitSliderPercent}%`;
+  }
+}
+
+function initSplitSliderDrag() {
+  const container = document.getElementById('modal-split-container');
+  const divider = document.getElementById('modal-split-divider');
+  if (!container || !divider) return;
+
+  function onPointerDown(e) {
+    if (!isSplitSliderActive) return;
+    isDraggingSplitDivider = true;
+    e.preventDefault();
+  }
+
+  function onPointerMove(e) {
+    if (!isDraggingSplitDivider || !isSplitSliderActive) return;
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const x = clientX - rect.left;
+    const pct = (x / rect.width) * 100;
+    setSplitDividerPosition(pct);
+  }
+
+  function onPointerUp() {
+    isDraggingSplitDivider = false;
+  }
+
+  divider.addEventListener('mousedown', onPointerDown);
+  divider.addEventListener('touchstart', onPointerDown, { passive: false });
+
+  window.addEventListener('mousemove', onPointerMove);
+  window.addEventListener('touchmove', onPointerMove, { passive: true });
+
+  window.addEventListener('mouseup', onPointerUp);
+  window.addEventListener('touchend', onPointerUp);
+}
+
+// ================= LIVE TONWERT-HISTOGRAMM =================
+
+let histogramMode = 'lum'; // 'lum' oder 'rgb'
+let histCanvasOffscreen = null;
+let histCtxOffscreen = null;
+let histRenderRaf = null;
+
+function setHistogramMode(mode) {
+  histogramMode = mode;
+  const lumBtn = document.getElementById('hist-mode-lum');
+  const rgbBtn = document.getElementById('hist-mode-rgb');
+  if (lumBtn && rgbBtn) {
+    if (mode === 'lum') {
+      lumBtn.className = 'px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold transition';
+      rgbBtn.className = 'px-2 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 transition';
+    } else {
+      rgbBtn.className = 'px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold transition';
+      lumBtn.className = 'px-2 py-0.5 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 transition';
+    }
+  }
+  scheduleHistogramRender();
+}
+
+function scheduleHistogramRender() {
+  if (histRenderRaf) cancelAnimationFrame(histRenderRaf);
+  histRenderRaf = requestAnimationFrame(renderLiveHistogram);
+}
+
+function renderLiveHistogram() {
+  const canvas = document.getElementById('edit-histogram-canvas');
+  const baseImg = document.getElementById('modal-img');
+  const editTab = document.getElementById('modal-tab-content-edit');
+  if (!canvas || !baseImg || !baseImg.complete || !baseImg.naturalWidth) return;
+  if (!editTab || editTab.classList.contains('hidden')) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  if (!histCanvasOffscreen) {
+    histCanvasOffscreen = document.createElement('canvas');
+    histCanvasOffscreen.width = 120;
+    histCanvasOffscreen.height = 120;
+    histCtxOffscreen = histCanvasOffscreen.getContext('2d', { willReadFrequently: true });
+  }
+
+  try {
+    histCtxOffscreen.clearRect(0, 0, 120, 120);
+    histCtxOffscreen.drawImage(baseImg, 0, 0, 120, 120);
+    const imgData = histCtxOffscreen.getImageData(0, 0, 120, 120);
+    const data = imgData.data;
+
+    const rBins = new Uint32Array(256);
+    const gBins = new Uint32Array(256);
+    const bBins = new Uint32Array(256);
+    const lumBins = new Uint32Array(256);
+
+    const b = currentEditSettings.brightness || 0;
+    const c = currentEditSettings.contrast || 0;
+    const gamma = Math.max(0.1, currentEditSettings.gamma || 1.0);
+    const inv = currentEditSettings.invert;
+    const sat = (currentEditSettings.saturation ?? 100) / 100;
+
+    const contrastFactor = (259 * (c + 255)) / (255 * (259 - c));
+    const invGamma = 1.0 / gamma;
+    const totalPixels = data.length / 4;
+
+    for (let i = 0; i < data.length; i += 4) {
+      let r = data[i];
+      let g = data[i + 1];
+      let bl = data[i + 2];
+
+      if (b !== 0) {
+        const bOffset = (b / 100) * 255;
+        r += bOffset;
+        g += bOffset;
+        bl += bOffset;
+      }
+
+      if (c !== 0) {
+        r = contrastFactor * (r - 128) + 128;
+        g = contrastFactor * (g - 128) + 128;
+        bl = contrastFactor * (bl - 128) + 128;
+      }
+
+      if (sat !== 1.0) {
+        const gray = 0.299 * r + 0.587 * g + 0.114 * bl;
+        r = gray + (r - gray) * sat;
+        g = gray + (g - gray) * sat;
+        bl = gray + (bl - gray) * sat;
+      }
+
+      if (inv) {
+        r = 255 - r;
+        g = 255 - g;
+        bl = 255 - bl;
+      }
+
+      if (Math.abs(gamma - 1.0) > 0.01) {
+        r = Math.min(255, Math.max(0, r));
+        g = Math.min(255, Math.max(0, g));
+        bl = Math.min(255, Math.max(0, bl));
+        r = 255 * Math.pow(r / 255, invGamma);
+        g = 255 * Math.pow(g / 255, invGamma);
+        bl = 255 * Math.pow(bl / 255, invGamma);
+      }
+
+      const rClamped = Math.min(255, Math.max(0, Math.round(r)));
+      const gClamped = Math.min(255, Math.max(0, Math.round(g)));
+      const bClamped = Math.min(255, Math.max(0, Math.round(bl)));
+      const lum = Math.min(255, Math.max(0, Math.round(0.299 * rClamped + 0.587 * gClamped + 0.114 * bClamped)));
+
+      rBins[rClamped]++;
+      gBins[gClamped]++;
+      bBins[bClamped]++;
+      lumBins[lum]++;
+    }
+
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    let maxVal = 1;
+    if (histogramMode === 'lum') {
+      for (let i = 1; i < 255; i++) {
+        if (lumBins[i] > maxVal) maxVal = lumBins[i];
+      }
+    } else {
+      for (let i = 1; i < 255; i++) {
+        if (rBins[i] > maxVal) maxVal = rBins[i];
+        if (gBins[i] > maxVal) maxVal = gBins[i];
+        if (bBins[i] > maxVal) maxVal = bBins[i];
+      }
+    }
+
+    if (histogramMode === 'lum') {
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, 'rgba(245, 158, 11, 0.6)');
+      grad.addColorStop(1, 'rgba(245, 158, 11, 0.05)');
+
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      for (let x = 0; x < 256; x++) {
+        const val = Math.min(maxVal * 1.5, lumBins[x]);
+        const y = h - (val / (maxVal * 1.1)) * (h - 4);
+        ctx.lineTo(x, Math.max(2, y));
+      }
+      ctx.lineTo(255, h);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      ctx.beginPath();
+      for (let x = 0; x < 256; x++) {
+        const val = Math.min(maxVal * 1.5, lumBins[x]);
+        const y = h - (val / (maxVal * 1.1)) * (h - 4);
+        if (x === 0) ctx.moveTo(x, Math.max(2, y));
+        else ctx.lineTo(x, Math.max(2, y));
+      }
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    } else {
+      const channels = [
+        { bins: rBins, stroke: '#ef4444' },
+        { bins: gBins, stroke: '#22c55e' },
+        { bins: bBins, stroke: '#38bdf8' }
+      ];
+
+      channels.forEach(ch => {
+        ctx.beginPath();
+        for (let x = 0; x < 256; x++) {
+          const val = Math.min(maxVal * 1.5, ch.bins[x]);
+          const y = h - (val / (maxVal * 1.1)) * (h - 4);
+          if (x === 0) ctx.moveTo(x, Math.max(2, y));
+          else ctx.lineTo(x, Math.max(2, y));
+        }
+        ctx.strokeStyle = ch.stroke;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
+    }
+
+    const shadowDot = document.getElementById('hist-shadow-dot');
+    const shadowLabel = document.getElementById('hist-shadows-indicator');
+    const highlightDot = document.getElementById('hist-highlight-dot');
+    const highlightLabel = document.getElementById('hist-highlights-indicator');
+
+    const shadowClipping = (lumBins[0] / totalPixels) > 0.05;
+    const highlightClipping = (lumBins[255] / totalPixels) > 0.05;
+
+    if (shadowDot && shadowLabel) {
+      if (shadowClipping) {
+        shadowDot.className = 'w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse inline-block';
+        shadowLabel.className = 'flex items-center gap-1 transition text-rose-400 font-semibold';
+      } else {
+        shadowDot.className = 'w-1.5 h-1.5 rounded-full bg-slate-600 inline-block';
+        shadowLabel.className = 'flex items-center gap-1 transition text-slate-500';
+      }
+    }
+
+    if (highlightDot && highlightLabel) {
+      if (highlightClipping) {
+        highlightDot.className = 'w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse inline-block';
+        highlightLabel.className = 'flex items-center gap-1 transition text-amber-400 font-semibold';
+      } else {
+        highlightDot.className = 'w-1.5 h-1.5 rounded-full bg-slate-600 inline-block';
+        highlightLabel.className = 'flex items-center gap-1 transition text-slate-500';
+      }
+    }
+  } catch (err) {
+    // Graceful error ignore
+  }
+}
+
 // ================= SQLITE METADATEN-BEARBEITUNG =================
 
 function toggleMetadataEditMode(forceState = null) {
@@ -4142,8 +4630,13 @@ function renderModalMetadataReadView() {
   if (meta.signature) {
     metaHtml += `
       <div>
-        <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Archivsignatur</span>
-        <span class="text-slate-300 font-mono text-xs bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60 inline-block">${escapeHtml(meta.signature)}</span>
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">Archivsignatur</span>
+          <button type="button" onclick="copyArchivalSignature('${escapeHtml(meta.signature)}')" class="text-[10px] text-amber-400 hover:text-amber-300 transition flex items-center gap-1 font-medium" title="Archivsignatur in Zwischenablage kopieren">
+            <span>📋</span> <span>Signatur kopieren</span>
+          </button>
+        </div>
+        <span class="text-slate-200 font-mono text-xs bg-slate-950/80 px-2 py-1 rounded border border-slate-700/80 inline-block font-semibold select-all">${escapeHtml(meta.signature)}</span>
       </div>`;
   }
   if (currentModalImageDetails.width && currentModalImageDetails.height) {
@@ -4179,6 +4672,14 @@ function renderModalMetadataReadView() {
         <span class="text-slate-400 text-[10px] leading-tight block">${escapeHtml(meta.copyright)}</span>
       </div>`;
   }
+
+  // Wissenschaftlicher Zitiervorschlag Button
+  metaHtml += `
+    <div class="pt-2 border-t border-slate-800/80">
+      <button type="button" onclick="copyArchivalCitation()" class="w-full py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1.5 shadow-sm" title="Zitierfähige Quellenangabe mit Signatur, Titel, Datum und Urheber kopieren">
+        <span>📝</span> <span>Zitiervorschlag kopieren</span>
+      </button>
+    </div>`;
 
   metaHtml += `
     <div class="pt-3 border-t border-slate-800 space-y-2">
