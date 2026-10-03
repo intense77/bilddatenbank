@@ -302,3 +302,21 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
     * Automatischer Match zwischen Findbuch-Datensätzen und Bilddateien anhand von Archivsignatur, Dateinamen oder Ordnerstrukturen.
   - [ ] **Gemeinsame Verschmelzung in der Recherche:**
     * Findbuch-Metadaten (Provenienz, Aktentitel, Altsignatur, Sperrfrist, Enthält-Vermerke) und KI-Erkennungen (CLIP-Motive, Gesichter, OCR) verschmelzen in einer einheitlichen Detailansicht, ohne dass das originale Archivverzeichnis verändert werden muss.
+
+---
+
+## 22. Alters- & Zeitstrahl-Mapping für Personen (Age-Invariant Face Tracking über Jahrzehnte)
+* **Ziel:** Zuverlässige Identifikation und Zusammenführung derselben historischen Persönlichkeit über eine Lebensspanne von 30 bis 60 Jahren hinweg.
+* **Archivischer Mehrwert gegenüber Standard-Software:**
+  * Kommerzielle Consumer-Tools (Apple Photos, Google Photos, Standard-ArcFace) erkennen dieselbe Person oft nicht mehr wieder, wenn zwischen den Aufnahmen 30 oder 50 Jahre liegen (z. B. der Neupriester mit 25 Jahren vs. derselbe Mann als Weihbischof mit 70 Jahren).
+  * Durch Altersmerkmale (Falten, graue Haare/Kahlheit, Brillen, veränderte Gesichtsform) sinkt die biometrische Vektordistanz unter den üblichen Schwellenwert.
+* **Aufgaben:**
+  - [ ] **Biografische Lebensdaten-Verknüpfung:**
+    * Hinterlegung von Lebensdaten (Geburtsjahr, Weihe-/Amtsantrittsjahr, Sterbejahr) direkt am Personen-Cluster.
+    * Automatische chronologische Sortierung der Cluster-Fotos entlang eines visuellen Lebens-Zeitstrahls.
+  - [ ] **Adaptive Ähnlichkeits-Schwellenwerte für Altersübergänge:**
+    * Dynamische Anpassung des mathematischen Schwellenwerts: Liegen zwei Aufnahmen zeitlich weit auseinander (z. B. 1935 vs. 1970), nutzt das System adaptive Toleranzen und fokussiert unveränderliche skelettäre Gesichtsmerkmale (Augenabstand, Nasenwurzel, Ohr- und Kinnproportionen).
+  - [ ] **Vorschlagssystem für „Mögliche Identitäten über Jahrzehnte“:**
+    * Intelligenter Prüf-Vorschlag im Cluster-Detail: *„Könnte dieser Alumnus von 1935 derselbe Domkapitular auf dem Foto von 1968 sein?“*
+    * Ermöglicht Archivaren das Zusammenführen von „Jung-“ und „Alt-Clustern“ mit einem Klick (Merge) unter Erhalt der biometrischen Altersspanne.
+
