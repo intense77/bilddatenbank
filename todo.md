@@ -88,14 +88,19 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 
 ---
 
-## 7. Provenienz & Revisionssicherheit bei Personen-Labels
-* **Ziel:** Wissenschaftliche Nachvollziehbarkeit und Schutz vor unabsichtlichem Überschreiben bei der Zuweisung von Klarnamen.
+## 7. Nachvollziehbarkeit, Human-in-the-Loop & Provenienz bei Personen-Labels
+* **Ziel:** Wissenschaftliche Nachvollziehbarkeit, ethische Kennzeichnung von KI-Zuweisungen und Schutz vor Fehlklassifikationen.
 * **Aufgaben:**
-  - [ ] Speichern von Revisionsdaten im Qdrant-Payload bei Labelvergabe:
-    * `labeled_at`: ISO-Zeitstempel der Benennung.
-    * `labeled_by`: Benutzer-/Archivarskennung (z. B. aus Request-Header oder Konfiguration).
-    * `previous_labels`: Historie bisheriger Zuweisungen.
-  - [ ] Anzeige der Benennungs-Historie und des Bearbeiters in der Personen-Detailansicht des Web-Frontends.
+  - [ ] **Status-Flags für Personen-Metadaten:**
+    * Jede Personenzuweisung im Payload erhält einen definierten Herkunftsstatus:
+      * `KI_AUTO`: Vom Algorithmus vorgeschlagen (z. B. 82 % Ähnlichkeit mit *Bischof Müller*).
+      * `VERIFIED`: Von einer Archivkraft im Prüf-Modus begutachtet und verbindlich bestätigt.
+      * `REJECTED`: Falsch-positiver Treffer (sorgt dauerhaft dafür, dass dieses Gesicht bei Neuberechnungen nicht wieder in dieses Cluster wandert).
+  - [ ] **Konfigurierbarer Konfidenz-Schwellenwert im UI:**
+    * Schieberegler in der Cluster- und Gesichts-Ansicht („Nur Gesichter mit Konfidenz > X % anzeigen“), um Rauschen und Fehl-Detektionen bei kontrastarmen oder beschädigten historischen Schwarz-Weiß-Aufnahmen auszublenden.
+  - [ ] **Revisionsdaten & Historie:**
+    * Speichern von `labeled_at` (Zeitstempel), `labeled_by` (Bearbeiter) und `previous_labels` im Qdrant-Payload.
+    * Anzeige des Prüfstatus und der Benennungs-Historie in der Detailansicht.
 
 ---
 
@@ -134,4 +139,53 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   * Suchbegriff nicht nur in Gesichts-Labels und per CLIP suchen, sondern parallel in `title`, `signature`, `description` und `keywords` (in SQLite / Qdrant-Payload).
 - [ ] **Konfigurierbares Standard-Trefferlimit:**
   * Voreinstellung im Suchformular auf Wunsch auf 40 oder 60 Treffer anpassen.
+
+---
+
+## 10. Robustheit im Datei-Handling (Historische Scans & Sonderformate)
+* **Ziel:** Absturzsichere Ingest-Pipeline für unberechenbare historische Digitalisate (Glasplatten, Großformate, Altdaten).
+* **Aufgaben:**
+  - [ ] **Farbprofile & Farbraum-Konvertierung (CMYK, 16-Bit Grayscale):**
+    * Sicheres Abfangen von CMYK-TIFFs, 16-Bit-Graustufen und unkomprimierten Repro-TIFFs via Pillow statt nacktem `cv2.imread`.
+    * Automatische, farbgetreue Normalisierung zu 8-Bit-sRGB vor der Weitergabe an Inferenz-Pipelines.
+  - [ ] **Decompression-Bomb-Schutz konfigurieren:**
+    * Anheben bzw. Absichern von `Image.MAX_IMAGE_PIXELS` in Pillow, damit Großscans (z. B. 12.000 × 9.000 Pixel / 108 Megapixel) nicht mit `DecompressionBombError` abgebrochen werden.
+  - [ ] **Skalierung vor KI-Inferenz (VRAM- & RAM-Schonung):**
+    * Vor der Übergabe an CLIP und InsightFace hochauflösende Scans im Speicher auf max. 2.000 Pixel lange Kante herunterskalieren.
+    * Verhindert Out-of-Memory-Crashes (OOM), spart bis zu 90 % Inferenzzeit und bewahrt die volle Erkennungsgenauigkeit.
+
+---
+
+## 11. Effizientes Caching & Thumbnail-Management (Proaktive Pipeline)
+* **Ziel:** Blitzschneller Seitenaufbau ohne Netzwerklast beim Durchsuchen zehntausender Bestände.
+* **Aufgaben:**
+  - [ ] **Proaktive Thumbnail-Generierung beim Erst-Indexieren:**
+    * Direkt beim Indexieren Ablage eines standardisierten Web-Thumbnails (WebP, max. 800 px) sowie quadratischer 160 px-Gesichtscrops im Cache-Verzeichnis (`./data/thumbnails`).
+    * Beseitigt Verzögerungen durch On-the-fly-Konvertierung bei großen Trefferlisten.
+  - [ ] **Konsequenter Verzicht auf Originale im Galerie-Betrieb:**
+    * Galerien, Suchlisten und Leuchttisch laden ausschließlich die leichten WebP-Derivate; das hochauflösende Master-Original wird erst beim Hineinzoomen (> 100 %) oder im Download/Export geladen.
+
+---
+
+## 12. Logging, Fehler-Reporting & Reject-Management (Batch-Robustheit)
+* **Ziel:** Unterbrechungsfreie Massenverarbeitung und volle Transparenz für die Archivleitung.
+* **Aufgaben:**
+  - [ ] **Strukturiertes Fehlerprotokoll (`failed_files.jsonl`):**
+    * Treten bei beschädigten Dateien, Dateisystemfehlern oder Rechten Problemen Ausnahmen auf, bricht der Indexer nicht ab, sondern führt die Datei mit Zeitstempel, Pfad und Fehlerursache in einer JSONL-Logdatei.
+  - [ ] **Status-Dashboard & Reject-Übersicht:**
+    * Übersichtsanzeige im Admin-/Import-Tab mit Kennzahlen:
+      * Anzahl indexierter Master-Bilder
+      * Anzahl detektierter Gesichter & Cluster
+      * Fehlgeschlagene / korrupte Dateien mit Detailansicht zur manuellen Nachprüfung.
+
+---
+
+## 13. Archivische Schutzfristen & Zugriffstrennung (KDG / DSGVO)
+* **Ziel:** Rechtssicherer Betrieb in Lesesaal und Verwaltung unter Einhaltung gesetzlicher und kirchlicher Sperrfristen.
+* **Aufgaben:**
+  - [ ] **Bestandsfilterung per Ordner-Mapping:**
+    * Kennzeichnung ganzer Teilverzeichnisse mit Schutzfristen-Tags (z. B. `sperrfrist_aktiv`, `intern_leitung`).
+  - [ ] **Mandanten- / Rollen-Filterung in der Suche:**
+    * Gesperrte Bestände werden standardmäßig in Lesesaal-Recherchen ausgeblendet und erfordern eine explizite Berechtigungsfreigabe.
+
 
