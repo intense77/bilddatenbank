@@ -2478,6 +2478,27 @@ document.addEventListener('keydown', (e) => {
       closeClusterDetail();
     }
   }
+
+  // Pfeiltasten Navigation im Bild-Modal (Vorheriges / Nächstes Bild)
+  const imgModal = document.getElementById('image-modal');
+  if (imgModal && !imgModal.classList.contains('hidden') && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+    if (cropperInstance) return; // Nicht während der Rahmenwahl blättern
+
+    if (currentSearchResults && currentSearchResults.length > 1 && currentModalImageDetails) {
+      const curIdx = currentSearchResults.findIndex(it => it.file_path === currentModalImageDetails.filePath);
+      if (curIdx !== -1) {
+        e.preventDefault();
+        const nextIdx = e.key === 'ArrowRight'
+          ? (curIdx + 1) % currentSearchResults.length
+          : (curIdx - 1 + currentSearchResults.length) % currentSearchResults.length;
+        const nextItem = currentSearchResults[nextIdx];
+        if (nextItem) {
+          openImageModal(nextItem.file_path, nextItem.file_name);
+        }
+      }
+    }
+  }
 });
 
 // --- 5. Duplikate & Bildstapel (Tab 4 & Modal Inspection) ---
@@ -3243,6 +3264,39 @@ async function exportLightboxXmpZip() {
 
 // ================= NON-DESTRUKTIVE BILDBEARBEITUNG (CROPPER, SLIDERS & PILLOW EXPORT) =================
 
+let areFaceBoxesVisible = true;
+
+function setFaceBoundingBoxesVisible(visible) {
+  const wrapper = document.getElementById('modal-bbox-wrapper');
+  const label = document.getElementById('label-toggle-face-boxes');
+  const icon = document.getElementById('icon-toggle-face-boxes');
+  const btn = document.getElementById('btn-toggle-face-boxes');
+  if (!wrapper) return;
+
+  areFaceBoxesVisible = visible;
+  if (visible) {
+    wrapper.classList.remove('hide-face-boxes');
+    if (label) label.textContent = 'Gesichter aus';
+    if (icon) icon.textContent = '👤';
+    if (btn) {
+      btn.classList.remove('text-amber-400', 'border-amber-500/50', 'bg-amber-500/20');
+      btn.classList.add('text-slate-300', 'bg-slate-900/80');
+    }
+  } else {
+    wrapper.classList.add('hide-face-boxes');
+    if (label) label.textContent = 'Gesichter an';
+    if (icon) icon.textContent = '👁️';
+    if (btn) {
+      btn.classList.add('text-amber-400', 'border-amber-500/50', 'bg-amber-500/20');
+      btn.classList.remove('text-slate-300', 'bg-slate-900/80');
+    }
+  }
+}
+
+function toggleFaceBoxesVisibility() {
+  setFaceBoundingBoxesVisible(!areFaceBoxesVisible);
+}
+
 function switchModalSidebarTab(tabName) {
   const metaTab = document.getElementById('modal-tab-content-meta');
   const editTab = document.getElementById('modal-tab-content-edit');
@@ -3265,6 +3319,9 @@ function switchModalSidebarTab(tabName) {
     if (adjustHeaderBtn) {
       adjustHeaderBtn.classList.add('bg-amber-500/20', 'text-amber-400', 'border-amber-500/40');
     }
+
+    // Gesichtsrahmen im Bearbeiten/Workbench-Modus automatisch ausblenden, um das Bild ungestört zu optimieren
+    setFaceBoundingBoxesVisible(false);
   } else {
     if (editTab) editTab.classList.add('hidden');
     if (metaTab) metaTab.classList.remove('hidden');
@@ -3280,6 +3337,9 @@ function switchModalSidebarTab(tabName) {
     if (adjustHeaderBtn) {
       adjustHeaderBtn.classList.remove('bg-amber-500/20', 'text-amber-400', 'border-amber-500/40');
     }
+
+    // Gesichtsrahmen im Metadaten-Modus standardmäßig einblenden
+    setFaceBoundingBoxesVisible(true);
   }
 }
 
@@ -3370,22 +3430,42 @@ function loadModalEditSettings(settings) {
 
   const cropBadge = document.getElementById('cropper-status-badge');
   const clearCropBtn = document.getElementById('btn-clear-crop');
+  const cancelCropBtn = document.getElementById('btn-cancel-crop');
   const cropperBtnLabel = document.getElementById('btn-cropper-label');
+  const cropperBtnIcon = document.getElementById('btn-cropper-icon');
+  const toggleBtn = document.getElementById('btn-toggle-cropper');
 
   if (currentEditSettings.crop) {
     if (cropBadge) {
-      cropBadge.textContent = `${Math.round(currentEditSettings.crop.width)}×${Math.round(currentEditSettings.crop.height)} px`;
+      cropBadge.textContent = `Aktiv (${Math.round(currentEditSettings.crop.width)}×${Math.round(currentEditSettings.crop.height)} px)`;
       cropBadge.className = 'text-[10px] text-emerald-400 font-mono font-semibold';
     }
     if (clearCropBtn) clearCropBtn.classList.remove('hidden');
-    if (cropperBtnLabel) cropperBtnLabel.textContent = 'Ausschnitt ändern';
+    if (cancelCropBtn) cancelCropBtn.classList.add('hidden');
+    if (cropperBtnLabel) cropperBtnLabel.textContent = 'Zuschnitt ändern';
+    if (cropperBtnIcon) cropperBtnIcon.textContent = '✂️';
+    if (toggleBtn) toggleBtn.className = 'flex-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm';
+
+    const img = document.getElementById('modal-img');
+    if (img) {
+      if (img.complete && img.naturalWidth > 0) {
+        applyClientCropPreview(img, currentEditSettings.crop);
+      } else {
+        img.addEventListener('load', () => {
+          applyClientCropPreview(img, currentEditSettings.crop);
+        }, { once: true });
+      }
+    }
   } else {
     if (cropBadge) {
       cropBadge.textContent = 'inaktiv';
       cropBadge.className = 'text-[10px] text-slate-500 font-mono';
     }
     if (clearCropBtn) clearCropBtn.classList.add('hidden');
-    if (cropperBtnLabel) cropperBtnLabel.textContent = 'Ausschnitt wählen';
+    if (cancelCropBtn) cancelCropBtn.classList.add('hidden');
+    if (cropperBtnLabel) cropperBtnLabel.textContent = 'Rahmen aufziehen';
+    if (cropperBtnIcon) cropperBtnIcon.textContent = '✂️';
+    if (toggleBtn) toggleBtn.className = 'flex-1 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm';
   }
 
   applyLiveImageTransformations();
@@ -3598,6 +3678,11 @@ function resetAllImageAdjustments() {
     cropperInstance.destroy();
     cropperInstance = null;
   }
+  const img = document.getElementById('modal-img');
+  if (img && img.dataset.uncroppedSrc) {
+    img.src = img.dataset.uncroppedSrc;
+    delete img.dataset.uncroppedSrc;
+  }
   currentEditSettings = {
     brightness: 0,
     contrast: 0,
@@ -3645,10 +3730,13 @@ function toggleCropperMode() {
   const img = document.getElementById('modal-img');
   const badge = document.getElementById('cropper-status-badge');
   const btnLabel = document.getElementById('btn-cropper-label');
+  const btnIcon = document.getElementById('btn-cropper-icon');
+  const toggleBtn = document.getElementById('btn-toggle-cropper');
+  const cancelBtn = document.getElementById('btn-cancel-crop');
   const clearBtn = document.getElementById('btn-clear-crop');
 
   if (cropperInstance) {
-    // Auswahl übernehmen
+    // 1. ZUSCHNITT ANWENDEN
     const data = cropperInstance.getData(true);
     currentEditSettings.crop = {
       x: Math.round(data.x),
@@ -3657,61 +3745,179 @@ function toggleCropperMode() {
       height: Math.round(data.height),
       is_percent: false
     };
+
+    const croppedCanvas = cropperInstance.getCroppedCanvas();
     cropperInstance.destroy();
     cropperInstance = null;
 
+    if (croppedCanvas) {
+      if (!img.dataset.uncroppedSrc) {
+        img.dataset.uncroppedSrc = img.src;
+      }
+      img.src = croppedCanvas.toDataURL('image/jpeg', 0.95);
+    }
+
     if (badge) {
-      badge.textContent = `${currentEditSettings.crop.width}×${currentEditSettings.crop.height} px`;
+      badge.textContent = `Aktiv (${currentEditSettings.crop.width}×${currentEditSettings.crop.height} px)`;
       badge.className = 'text-[10px] text-emerald-400 font-mono font-semibold';
     }
-    if (btnLabel) btnLabel.textContent = 'Ausschnitt ändern';
+    if (btnLabel) btnLabel.textContent = 'Zuschnitt ändern';
+    if (btnIcon) btnIcon.textContent = '✂️';
+    if (toggleBtn) toggleBtn.className = 'flex-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm';
+    if (cancelBtn) cancelBtn.classList.add('hidden');
     if (clearBtn) clearBtn.classList.remove('hidden');
-    showToast(`Ausschnitt (${currentEditSettings.crop.width}×${currentEditSettings.crop.height} px) non-destruktiv übernommen.`, false);
+
+    showToast(`Bildausschnitt (${currentEditSettings.crop.width}×${currentEditSettings.crop.height} px) übernommen. Original bleibt 100% unberührt.`, false);
   } else {
+    // 2. RAHMEN AUFZIEHEN
     if (typeof Cropper === 'undefined') {
       showToast('Cropper-Bibliothek wird initialisiert...', true);
       return;
     }
-    cropperInstance = new Cropper(img, {
-      aspectRatio: currentCropperRatio,
-      viewMode: 1,
-      autoCropArea: 0.85,
-      movable: false,
-      zoomable: false,
-      rotatable: false,
-      scalable: false,
-      ready() {
-        if (currentEditSettings.crop) {
-          cropperInstance.setData(currentEditSettings.crop);
-        }
-      }
-    });
-    if (badge) {
-      badge.textContent = 'Wähle Rahmen...';
-      badge.className = 'text-[10px] text-amber-400 font-mono animate-pulse';
+
+    if (img.dataset.uncroppedSrc) {
+      const savedCrop = currentEditSettings.crop;
+      const prevUncropped = img.dataset.uncroppedSrc;
+      img.src = prevUncropped;
+
+      img.onload = () => {
+        img.onload = null;
+        initCropperWithData(img, savedCrop);
+      };
+      return;
     }
-    if (btnLabel) btnLabel.textContent = 'Ausschnitt fixieren ✓';
-    if (clearBtn) clearBtn.classList.remove('hidden');
+
+    initCropperWithData(img, currentEditSettings.crop);
   }
 }
 
+function initCropperWithData(img, cropData) {
+  const badge = document.getElementById('cropper-status-badge');
+  const btnLabel = document.getElementById('btn-cropper-label');
+  const btnIcon = document.getElementById('btn-cropper-icon');
+  const toggleBtn = document.getElementById('btn-toggle-cropper');
+  const cancelBtn = document.getElementById('btn-cancel-crop');
+  const clearBtn = document.getElementById('btn-clear-crop');
+
+  cropperInstance = new Cropper(img, {
+    aspectRatio: currentCropperRatio,
+    viewMode: 1,
+    autoCropArea: 0.85,
+    movable: false,
+    zoomable: false,
+    rotatable: false,
+    scalable: false,
+    ready() {
+      if (cropData) {
+        cropperInstance.setData(cropData);
+      }
+    }
+  });
+
+  if (badge) {
+    badge.textContent = 'Rahmen ziehen...';
+    badge.className = 'text-[10px] text-amber-400 font-mono animate-pulse';
+  }
+  if (btnLabel) btnLabel.textContent = 'Zuschnitt anwenden ✓';
+  if (btnIcon) btnIcon.textContent = '✓';
+  if (toggleBtn) toggleBtn.className = 'flex-1 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20';
+  if (cancelBtn) cancelBtn.classList.remove('hidden');
+  if (clearBtn) clearBtn.classList.add('hidden');
+}
+
+function cancelCropping() {
+  const img = document.getElementById('modal-img');
+  const badge = document.getElementById('cropper-status-badge');
+  const btnLabel = document.getElementById('btn-cropper-label');
+  const btnIcon = document.getElementById('btn-cropper-icon');
+  const toggleBtn = document.getElementById('btn-toggle-cropper');
+  const cancelBtn = document.getElementById('btn-cancel-crop');
+  const clearBtn = document.getElementById('btn-clear-crop');
+
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
+  }
+
+  if (currentEditSettings.crop) {
+    if (img && img.dataset.uncroppedSrc) {
+      applyClientCropPreview(img, currentEditSettings.crop);
+    }
+    if (badge) {
+      badge.textContent = `Aktiv (${currentEditSettings.crop.width}×${currentEditSettings.crop.height} px)`;
+      badge.className = 'text-[10px] text-emerald-400 font-mono font-semibold';
+    }
+    if (btnLabel) btnLabel.textContent = 'Zuschnitt ändern';
+    if (clearBtn) clearBtn.classList.remove('hidden');
+  } else {
+    if (badge) {
+      badge.textContent = 'inaktiv';
+      badge.className = 'text-[10px] text-slate-500 font-mono';
+    }
+    if (btnLabel) btnLabel.textContent = 'Rahmen aufziehen';
+    if (clearBtn) clearBtn.classList.add('hidden');
+  }
+
+  if (btnIcon) btnIcon.textContent = '✂️';
+  if (toggleBtn) toggleBtn.className = 'flex-1 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm';
+  if (cancelBtn) cancelBtn.classList.add('hidden');
+}
+
 function clearActiveCrop() {
+  const img = document.getElementById('modal-img');
   if (cropperInstance) {
     cropperInstance.destroy();
     cropperInstance = null;
   }
   currentEditSettings.crop = null;
+
+  if (img && img.dataset.uncroppedSrc) {
+    img.src = img.dataset.uncroppedSrc;
+    delete img.dataset.uncroppedSrc;
+  }
+
   const badge = document.getElementById('cropper-status-badge');
   const btnLabel = document.getElementById('btn-cropper-label');
+  const btnIcon = document.getElementById('btn-cropper-icon');
+  const toggleBtn = document.getElementById('btn-toggle-cropper');
+  const cancelBtn = document.getElementById('btn-cancel-crop');
   const clearBtn = document.getElementById('btn-clear-crop');
 
   if (badge) {
     badge.textContent = 'inaktiv';
     badge.className = 'text-[10px] text-slate-500 font-mono';
   }
-  if (btnLabel) btnLabel.textContent = 'Ausschnitt wählen';
+  if (btnLabel) btnLabel.textContent = 'Rahmen aufziehen';
+  if (btnIcon) btnIcon.textContent = '✂️';
+  if (toggleBtn) toggleBtn.className = 'flex-1 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm';
+  if (cancelBtn) cancelBtn.classList.add('hidden');
   if (clearBtn) clearBtn.classList.add('hidden');
-  showToast('Ausschnitt aufgehoben.', false);
+
+  showToast('Zuschnitt aufgehoben (Vollbild wiederhergestellt).', false);
+}
+
+function applyClientCropPreview(img, crop) {
+  if (!img || !crop || !crop.width || !crop.height) return;
+  const originalSrc = img.dataset.uncroppedSrc || img.src;
+  if (!img.dataset.uncroppedSrc) {
+    img.dataset.uncroppedSrc = originalSrc;
+  }
+
+  const tempImg = new Image();
+  tempImg.crossOrigin = 'anonymous';
+  tempImg.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = crop.width;
+    canvas.height = crop.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(
+      tempImg,
+      crop.x, crop.y, crop.width, crop.height,
+      0, 0, crop.width, crop.height
+    );
+    img.src = canvas.toDataURL('image/jpeg', 0.95);
+  };
+  tempImg.src = originalSrc;
 }
 
 async function saveEditSettingsToBackend() {

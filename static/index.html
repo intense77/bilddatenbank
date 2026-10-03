@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Historisches Bildarchiv — Semantische Suche & Personen-Cluster</title>
   <!-- Lokales Stylesheet (100% offline & datenschutzkonform, kein CDN) -->
-  <link rel="stylesheet" href="/style.css?v=4.0">
+  <link rel="stylesheet" href="/style.css?v=4.1">
   <link rel="stylesheet" href="/cropper.min.css">
 </head>
 
@@ -966,6 +966,14 @@
               <span>Rahmen um das gewünschte Motivdetail ziehen</span>
             </div>
           </div>
+
+          <!-- Gesichtsrahmen Toggle Button direkt im Viewport -->
+          <button type="button" id="btn-toggle-face-boxes" onclick="toggleFaceBoxesVisibility()"
+            class="absolute top-3 right-3 z-30 px-2.5 py-1 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-amber-400 border border-slate-700/80 text-[11px] font-medium backdrop-blur-md transition flex items-center gap-1.5 shadow-lg select-none"
+            title="Gesichtsrahmen und Namen ein- oder ausblenden">
+            <span id="icon-toggle-face-boxes">👤</span>
+            <span id="label-toggle-face-boxes">Gesichter aus</span>
+          </button>
         </div>
 
         <!-- Seitenleiste mit Tabs: Metadaten & Bildbearbeitung -->
@@ -1214,31 +1222,38 @@
             </div>
 
             <!-- Cropper.js Ausschnittswahl mit Seitenverhältnis-Presets -->
+            <!-- Cropper.js Zuschnitt & Ausschnitt -->
             <div class="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <span>✂️</span> <span>Ausschnitt (Cropper.js)</span>
+                  <span>✂️</span> <span>Zuschnitt (Bildausschnitt)</span>
                 </span>
                 <span id="cropper-status-badge" class="text-[10px] text-slate-500 font-mono">inaktiv</span>
               </div>
 
-              <!-- Aspect Ratio Presets -->
+              <!-- Seitenverhältnis-Presets -->
               <div class="flex items-center gap-1 text-[10px] font-mono">
-                <button type="button" onclick="setCropperRatio(NaN, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">Frei</button>
-                <button type="button" onclick="setCropperRatio('original', this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700">Original</button>
-                <button type="button" onclick="setCropperRatio(1, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700">1:1</button>
-                <button type="button" onclick="setCropperRatio(4/3, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700">4:3</button>
-                <button type="button" onclick="setCropperRatio(1/1.4142, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700">DIN A4</button>
+                <button type="button" onclick="setCropperRatio(NaN, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-center">Frei</button>
+                <button type="button" onclick="setCropperRatio('original', this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 text-center">Original</button>
+                <button type="button" onclick="setCropperRatio(1, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 text-center">1:1</button>
+                <button type="button" onclick="setCropperRatio(4/3, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 text-center">4:3</button>
+                <button type="button" onclick="setCropperRatio(1/1.4142, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 text-center">DIN A4</button>
               </div>
 
+              <!-- Aktionsbuttons für Zuschnitt -->
               <div class="flex items-center gap-2">
                 <button type="button" id="btn-toggle-cropper" onclick="toggleCropperMode()"
-                  class="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition flex items-center justify-center gap-1 shadow-sm">
-                  <span>✂️</span> <span id="btn-cropper-label">Ausschnitt wählen</span>
+                  class="flex-1 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm">
+                  <span id="btn-cropper-icon">✂️</span> <span id="btn-cropper-label">Rahmen aufziehen</span>
+                </button>
+                <button type="button" id="btn-cancel-crop" onclick="cancelCropping()"
+                  class="hidden px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition"
+                  title="Ausschnittwahl abbrechen">
+                  Abbrechen
                 </button>
                 <button type="button" id="btn-clear-crop" onclick="clearActiveCrop()"
                   class="hidden px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-medium transition"
-                  title="Ausgewählten Ausschnitt aufheben">
+                  title="Zuschnitt verwerfen und Vollbild wiederherstellen">
                   ✕ Aufheben
                 </button>
               </div>
@@ -1636,7 +1651,7 @@
   </div>
 
   <script src="/cropper.min.js"></script>
-  <script src="/app.js?v=4.0"></script>
+  <script src="/app.js?v=4.1"></script>
 </body>
 
 </html>

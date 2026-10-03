@@ -134,6 +134,10 @@ body {
   box-sizing: border-box;
 }
 
+#modal-bbox-wrapper.hide-face-boxes .face-bbox {
+  display: none !important;
+}
+
 .face-bbox:hover,
 .face-bbox.active {
   border-color: #f59e0b;
