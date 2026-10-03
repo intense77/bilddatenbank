@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Historisches Bildarchiv — Semantische Suche & Personen-Cluster</title>
   <!-- Lokales Stylesheet (100% offline & datenschutzkonform, kein CDN) -->
-  <link rel="stylesheet" href="/style.css?v=4.2">
+  <link rel="stylesheet" href="/style.css?v=4.3">
   <link rel="stylesheet" href="/cropper.min.css">
 </head>
 
@@ -978,6 +978,27 @@
             </div>
           </div>
 
+          <!-- Cluster Personen-Kontrollleiste (Nur sichtbar bei Klick aus einem Cluster) -->
+          <div id="modal-cluster-verify-banner" class="hidden absolute top-3 left-3 right-36 z-30 flex items-center justify-between gap-2 bg-slate-900/90 border border-amber-500/50 rounded-xl px-3 py-1.5 shadow-2xl backdrop-blur-md select-none">
+            <div class="flex items-center gap-2 truncate">
+              <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0"></span>
+              <span class="text-xs font-semibold text-amber-300 shrink-0">Personen-Kontrolle:</span>
+              <span id="modal-cluster-verify-person" class="text-xs font-bold text-slate-100 truncate">Person</span>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" id="btn-focus-target-face" onclick="focusTargetFaceInModal()"
+                class="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-semibold transition flex items-center gap-1 shadow-sm"
+                title="Direkt auf das Gesicht dieser Person zoomen und zentrieren">
+                <span>🎯</span> <span>Fokussieren</span>
+              </button>
+              <button type="button" id="btn-remove-target-face-modal" onclick="removeTargetFaceFromClusterInModal()"
+                class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-medium transition flex items-center gap-1 shadow-sm"
+                title="Gesicht aus diesem Cluster entfernen (Falsche Zuordnung korrigieren)">
+                <span>✕</span> <span class="hidden md:inline">Nicht diese Person</span>
+              </button>
+            </div>
+          </div>
+
           <!-- Gesichtsrahmen Toggle Button direkt im Viewport -->
           <button type="button" id="btn-toggle-face-boxes" onclick="toggleFaceBoxesVisibility()"
             class="absolute top-3 right-3 z-30 px-2.5 py-1 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-amber-400 border border-slate-700/80 text-[11px] font-medium backdrop-blur-md transition flex items-center gap-1.5 shadow-lg select-none"
@@ -1711,7 +1732,7 @@
   </div>
 
   <script src="/cropper.min.js"></script>
-  <script src="/app.js?v=4.2"></script>
+  <script src="/app.js?v=4.3"></script>
 </body>
 
 </html>

@@ -216,6 +216,48 @@ body {
   z-index: 10;
 }
 
+/* Hervorhebung der untersuchten Person im Cluster-Prüfmodus */
+.face-bbox.highlight-target {
+  border: 3px solid #f59e0b !important;
+  background-color: rgba(245, 158, 11, 0.3) !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.5), 0 0 25px rgba(245, 158, 11, 0.8), 0 8px 24px rgba(0, 0, 0, 0.8) !important;
+  z-index: 30 !important;
+  animation: pulseTargetFaceBox 2.5s infinite ease-in-out;
+}
+
+@keyframes pulseTargetFaceBox {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.5), 0 0 20px rgba(245, 158, 11, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.8), 0 0 32px rgba(245, 158, 11, 1);
+  }
+}
+
+.face-bbox.highlight-target .face-bbox-tag {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  color: #020617 !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.7) !important;
+  font-size: 11px !important;
+  transform: translateY(-2px);
+  z-index: 35 !important;
+}
+
+.face-bbox.other-face {
+  border: 1.5px dashed rgba(56, 189, 248, 0.5) !important;
+  background-color: rgba(56, 189, 248, 0.08) !important;
+  opacity: 0.65;
+  transition: opacity 0.2s ease, border 0.2s ease;
+}
+
+.face-bbox.other-face:hover {
+  opacity: 1 !important;
+  border-style: solid !important;
+  border-color: #38bdf8 !important;
+}
+
 .face-bbox-tag {
   position: absolute;
   bottom: calc(100% + 4px);

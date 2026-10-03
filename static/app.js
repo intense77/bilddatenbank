@@ -833,7 +833,8 @@ async function openClusterDetail(cluster) {
             </button>
           </div>
           <button
-            onclick="openImageModal('${escapeHtml(face.file_path)}', '${escapeHtml(fileName)}')"
+            type="button"
+            id="btn-cluster-inspect-${idx}"
             class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition"
           >
             Großansicht
@@ -917,8 +918,11 @@ async function openClusterDetail(cluster) {
       imgElem.addEventListener('load', renderBox, { once: true });
     }
 
-    // Klick auf das Bild öffnet das große Modal
-    wrapElem.addEventListener('click', () => openImageModal(face.file_path, fileName));
+    // Klick auf das Bild oder Großansicht öffnet das Modal mit hervorgehobener Zielperson
+    const inspectBtn = card.querySelector(`#btn-cluster-inspect-${idx}`);
+    const openThisModal = () => openClusterFaceModal(face.file_path, fileName, face.face_id, cluster.cluster_id, cluster.label);
+    if (inspectBtn) inspectBtn.addEventListener('click', openThisModal);
+    wrapElem.addEventListener('click', openThisModal);
   });
 
   // Komfortable Navigations-Karte am Ende der Bildergalerie
@@ -1243,7 +1247,20 @@ async function triggerClustering() {
 
 // --- 3. Bild-Detailansicht (Modal) mit Bounding-Boxen ---
 
-async function openImageModal(filePath, fileName, cacheBuster = null) {
+let currentModalTargetFaceContext = null;
+let targetFaceBoxCoords = null;
+
+function openClusterFaceModal(filePath, fileName, faceId, clusterId, clusterLabel) {
+  const personName = clusterLabel || (clusterId ? `Person ${clusterId.replace('cluster_', '#')}` : 'Diese Person');
+  openImageModal(filePath, fileName, null, {
+    faceId: faceId || null,
+    clusterId: clusterId || null,
+    clusterLabel: clusterLabel || '',
+    personName
+  });
+}
+
+async function openImageModal(filePath, fileName, cacheBuster = null, targetFaceContext = null) {
   const modal = document.getElementById('image-modal');
   const img = document.getElementById('modal-img');
   const title = document.getElementById('modal-filename');
@@ -1254,9 +1271,28 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
   const facesList = document.getElementById('modal-faces-list');
 
   currentModalImageDetails = { filePath, fileName };
+  currentModalTargetFaceContext = targetFaceContext || null;
+  targetFaceBoxCoords = null;
+
   toggleCropMode(false);
   toggleSplitSlider(false);
   resetModalZoom();
+
+  // Cluster-Personen-Kontrollleiste im Modal steuern
+  const verifyBanner = document.getElementById('modal-cluster-verify-banner');
+  const verifyPerson = document.getElementById('modal-cluster-verify-person');
+  if (verifyBanner) {
+    if (currentModalTargetFaceContext) {
+      verifyBanner.classList.remove('hidden');
+      if (verifyPerson) {
+        verifyPerson.textContent = currentModalTargetFaceContext.personName;
+      }
+      // Gesichtsrahmen automatisch aktivieren
+      setFaceBoundingBoxesVisible(true);
+    } else {
+      verifyBanner.classList.add('hidden');
+    }
+  }
 
   title.textContent = fileName || filePath.split('/').pop();
   pathElem.textContent = filePath;
@@ -1438,11 +1474,31 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
       facesList.innerHTML = '<span class="text-slate-500">Keine Gesichter detektiert</span>';
     } else {
       data.faces.forEach((f, idx) => {
-        const tag = document.createElement('span');
-        tag.className = 'px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[11px]';
-        const name = f.label || (f.cluster_id ? `Person ${f.cluster_id.replace('cluster_', '#')}` : `Gesicht #${idx + 1}`);
-        tag.textContent = `${name} (${(f.det_score * 100).toFixed(0)}%)`;
-        facesList.appendChild(tag);
+        let isTargetFace = false;
+        if (currentModalTargetFaceContext) {
+          if (currentModalTargetFaceContext.faceId && String(f.face_id) === String(currentModalTargetFaceContext.faceId)) {
+            isTargetFace = true;
+          } else if (!currentModalTargetFaceContext.faceId && currentModalTargetFaceContext.clusterId && f.cluster_id === currentModalTargetFaceContext.clusterId) {
+            isTargetFace = true;
+          }
+        }
+
+        const tagBtn = document.createElement('button');
+        tagBtn.type = 'button';
+        tagBtn.title = 'Klicken, um auf dieses Gesicht im Bild zu zoomen';
+        tagBtn.onclick = () => focusFaceByIndex(idx);
+
+        if (isTargetFace) {
+          tagBtn.className = 'px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold border border-amber-400 text-xs shadow-md shadow-amber-500/30 flex items-center gap-1.5 cursor-pointer ring-2 ring-amber-400/50 hover:bg-amber-400 transition';
+          const pName = currentModalTargetFaceContext.personName || f.label || 'Diese Person';
+          tagBtn.innerHTML = `<span>⭐ Diese Person: ${escapeHtml(pName)}</span> <span class="font-mono text-[10px]">(${(f.det_score * 100).toFixed(0)}%)</span>`;
+          facesList.prepend(tagBtn);
+        } else {
+          tagBtn.className = 'px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-mono text-[11px] transition';
+          const name = f.label || (f.cluster_id ? `Person ${f.cluster_id.replace('cluster_', '#')}` : `Gesicht #${idx + 1}`);
+          tagBtn.textContent = `${name} (${(f.det_score * 100).toFixed(0)}%)`;
+          facesList.appendChild(tagBtn);
+        }
       });
     }
 
@@ -1450,6 +1506,8 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
     function drawModalBoxes() {
       wrapper.querySelectorAll('.face-bbox').forEach(e => e.remove());
       if (!data.faces || data.faces.length === 0) return;
+
+      targetFaceBoxCoords = null;
 
       data.faces.forEach((f, idx) => {
         let left, top, width, height;
@@ -1472,22 +1530,38 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
           return;
         }
 
+        let isTargetFace = false;
+        if (currentModalTargetFaceContext) {
+          if (currentModalTargetFaceContext.faceId && String(f.face_id) === String(currentModalTargetFaceContext.faceId)) {
+            isTargetFace = true;
+          } else if (!currentModalTargetFaceContext.faceId && currentModalTargetFaceContext.clusterId && f.cluster_id === currentModalTargetFaceContext.clusterId) {
+            isTargetFace = true;
+          }
+        }
+
         const box = document.createElement('div');
-        box.className = 'face-bbox';
+        box.id = `modal-face-box-${idx}`;
         box.style.position = 'absolute';
-        box.style.border = '2px solid #38bdf8';
-        box.style.zIndex = '15';
-        box.style.pointerEvents = 'none';
         box.style.left = `${left}%`;
         box.style.top = `${top}%`;
         box.style.width = `${width}%`;
         box.style.height = `${height}%`;
 
         const tag = document.createElement('div');
-        tag.className = 'face-bbox-tag';
-        tag.textContent = f.label || (f.cluster_id ? `Person ${f.cluster_id.replace('cluster_', '#')}` : `Gesicht #${idx + 1}`);
-        box.appendChild(tag);
 
+        if (isTargetFace) {
+          box.className = 'face-bbox highlight-target';
+          const pName = currentModalTargetFaceContext.personName || f.label || 'Diese Person';
+          targetFaceBoxCoords = { left, top, width, height, name: pName, idx };
+          tag.className = 'face-bbox-tag highlight-target-tag';
+          tag.innerHTML = `⭐ <b>${escapeHtml(pName)}</b> <span class="font-mono text-[10px] opacity-90">(${(f.det_score * 100).toFixed(0)}%)</span>`;
+        } else {
+          box.className = currentModalTargetFaceContext ? 'face-bbox other-face' : 'face-bbox';
+          tag.className = 'face-bbox-tag';
+          tag.textContent = f.label || (f.cluster_id ? `Person ${f.cluster_id.replace('cluster_', '#')}` : `Gesicht #${idx + 1}`);
+        }
+
+        box.appendChild(tag);
         wrapper.appendChild(box);
       });
     }
@@ -1509,6 +1583,9 @@ function closeImageModal() {
   toggleSplitSlider(false);
   resetModalZoom();
   closeModalXmpMenu();
+  currentModalTargetFaceContext = null;
+  targetFaceBoxCoords = null;
+  document.getElementById('modal-cluster-verify-banner')?.classList.add('hidden');
   if (cropperInstance) {
     cropperInstance.destroy();
     cropperInstance = null;
@@ -2511,6 +2588,24 @@ document.addEventListener('keydown', (e) => {
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
     if (cropperInstance) return; // Nicht während der Rahmenwahl blättern
 
+    // 1. Navigation innerhalb eines Personen-Clusters (falls aus Cluster geöffnet)
+    if (currentModalTargetFaceContext && activeCluster && activeCluster.faces && activeCluster.faces.length > 1) {
+      const curFaceIdx = activeCluster.faces.findIndex(f => f.face_id === currentModalTargetFaceContext.faceId);
+      if (curFaceIdx !== -1) {
+        e.preventDefault();
+        const nextFaceIdx = e.key === 'ArrowRight'
+          ? (curFaceIdx + 1) % activeCluster.faces.length
+          : (curFaceIdx - 1 + activeCluster.faces.length) % activeCluster.faces.length;
+        const nextFace = activeCluster.faces[nextFaceIdx];
+        if (nextFace && nextFace.file_path) {
+          const fn = nextFace.file_path.split('/').pop();
+          openClusterFaceModal(nextFace.file_path, fn, nextFace.face_id, activeCluster.cluster_id, activeCluster.label);
+          return;
+        }
+      }
+    }
+
+    // 2. Navigation durch allgemeine Suchergebnisse
     if (currentSearchResults && currentSearchResults.length > 1 && currentModalImageDetails) {
       const curIdx = currentSearchResults.findIndex(it => it.file_path === currentModalImageDetails.filePath);
       if (curIdx !== -1) {
@@ -4048,6 +4143,109 @@ function exportProcessedImage(format = 'jpg') {
   a.remove();
 }
 
+
+// ================= CLUSTER-PERSONEN KONTROLLE & FOKUSSIERUNG =================
+
+function focusTargetFaceInModal() {
+  const img = document.getElementById('modal-img');
+  if (!targetFaceBoxCoords || !img) return;
+
+  const centerX = targetFaceBoxCoords.left + targetFaceBoxCoords.width / 2;
+  const centerY = targetFaceBoxCoords.top + targetFaceBoxCoords.height / 2;
+
+  modalZoomScale = 2.2;
+  const w = img.offsetWidth || 800;
+  const h = img.offsetHeight || 600;
+  modalPanX = ((50 - centerX) / 100) * w * modalZoomScale;
+  modalPanY = ((50 - centerY) / 100) * h * modalZoomScale;
+
+  applyModalZoomPan();
+  showToast(`🎯 Auf ${targetFaceBoxCoords.name || 'Person'} fokussiert (220% Lupe)`, false);
+}
+
+function focusFaceByIndex(idx) {
+  const box = document.getElementById(`modal-face-box-${idx}`);
+  const img = document.getElementById('modal-img');
+  if (!box || !img) return;
+
+  const left = parseFloat(box.style.left);
+  const top = parseFloat(box.style.top);
+  const width = parseFloat(box.style.width);
+  const height = parseFloat(box.style.height);
+
+  const centerX = left + width / 2;
+  const centerY = top + height / 2;
+
+  modalZoomScale = 2.2;
+  const w = img.offsetWidth || 800;
+  const h = img.offsetHeight || 600;
+  modalPanX = ((50 - centerX) / 100) * w * modalZoomScale;
+  modalPanY = ((50 - centerY) / 100) * h * modalZoomScale;
+
+  applyModalZoomPan();
+
+  // Temporäres aktives Pulsieren
+  box.classList.add('active');
+  setTimeout(() => {
+    if (!box.classList.contains('highlight-target')) {
+      box.classList.remove('active');
+    }
+  }, 2200);
+}
+
+async function removeTargetFaceFromClusterInModal() {
+  if (!currentModalTargetFaceContext || !currentModalTargetFaceContext.faceId) {
+    showToast('Keine Gesichts-ID für diese Person gefunden.', true);
+    return;
+  }
+
+  const faceId = currentModalTargetFaceContext.faceId;
+  const pName = currentModalTargetFaceContext.personName || 'diese Person';
+
+  if (!confirm(`Möchten Sie dieses Gesicht wirklich aus dem Personen-Cluster „${pName}“ entfernen ("Nicht diese Person")?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/faces/${encodeURIComponent(faceId)}/remove-from-cluster`, {
+      method: 'POST'
+    });
+    if (!res.ok) throw new Error(`Fehler (${res.status})`);
+
+    // Aktualisiere das aktive Cluster im Speicher
+    if (activeCluster) {
+      activeCluster.faces = (activeCluster.faces || []).filter(f => f.face_id !== faceId);
+      activeCluster.face_count = activeCluster.faces.length;
+      const statsElem = document.getElementById('cd-stats');
+      if (statsElem) statsElem.textContent = `${activeCluster.face_count} Vorkommen in historischen Scans (Cluster ID: ${activeCluster.cluster_id})`;
+
+      const target = allLoadedClusters.find(c => c.cluster_id === activeCluster.cluster_id);
+      if (target) {
+        target.faces = activeCluster.faces;
+        target.face_count = activeCluster.face_count;
+      }
+      updateClusterCounts();
+    }
+
+    closeImageModal();
+    showToast(`✓ Gesicht erfolgreich aus Cluster „${pName}“ entfernt.`, false);
+
+    // Entferne die Karte in der Cluster-Galerie falls offen
+    const cards = document.querySelectorAll('#cluster-images-grid .bg-slate-900');
+    cards.forEach(card => {
+      const btn = card.querySelector(`button[onclick*="${faceId}"]`);
+      if (btn) {
+        card.style.transition = 'all 0.3s ease';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(0.92)';
+        setTimeout(() => card.remove(), 300);
+      }
+    });
+
+  } catch (err) {
+    showToast(`Fehler beim Entfernen: ${err.message}`, true);
+  }
+}
 
 // ================= ARCHIV-SIGNATUR & ZITIERVORSCHLAG =================
 
