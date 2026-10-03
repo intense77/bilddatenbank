@@ -188,4 +188,93 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   - [ ] **Mandanten- / Rollen-Filterung in der Suche:**
     * Gesperrte Bestände werden standardmäßig in Lesesaal-Recherchen ausgeblendet und erfordern eine explizite Berechtigungsfreigabe.
 
+---
+
+## 14. Vorder- & Rückseiten-Kopplung (Recto / Verso)
+* **Ziel:** Zusammenführung von Vorderseite (Bildmotiv) und Rückseite (Fotografenstempel, handschriftliche Datierung, Widmungen, Signaturen) zu einem logischen Objekt.
+* **Aufgaben:**
+  - [ ] **Automatische Paar-Erkennung:**
+    * Heuristische Erkennung von Dateipaaren nach archivischen Naming-Conventions (`_r`/`_v`, `_recto`/`_verso`, `_a`/`_b`, `_01`/`_02`).
+  - [ ] **Interaktiver 3D-Karten-Flip im Bild-Modal:**
+    * Button „Rückseite ansehen / Umdrehen“ mit animiertem Wechsel zwischen Recto und Verso.
+  - [ ] **Metadaten- & OCR-Aggregation:**
+    * Volltextsuche und Metadaten-Payload verknüpfen den rückseitigen OCR-Text direkt mit dem vorderseitigen Hauptbild in Qdrant und SQLite.
+
+---
+
+## 15. IIIF Image API 3.0 & Deep Zoom (Pyramidales Kacheln)
+* **Ziel:** Flüssige Betrachtung gigapixel-großer Scans (Glasplatten, Repros > 100 MB) im Webbrowser ohne RAM-Überlastung des Clients.
+* **Aufgaben:**
+  - [ ] **Leichtgewichtiger IIIF-Kacheldienst:**
+    * Implementierung eines lokalen IIIF-Image-API-konformen Endpunkts (`/iiif/{id}/...`) auf Basis dynamischer Kachelung (Pillow / libvips / pyramidales WebP).
+  - [ ] **Deep-Zoom-Integration (OpenSeadragon / Mirador):**
+    * Flüssiges Hineinzoomen bis auf den Seidenfaden historischer Paramente oder Inschriften auf Kirchturm-Glocken.
+
+---
+
+## 16. Serien- & Stapel-Metadatenbearbeitung (Batch Cataloguing)
+* **Ziel:** Effiziente Massenerschließung ganzer Fotonachlässe, Alben oder Ereignisserien ohne redundante Einzeleingaben.
+* **Aufgaben:**
+  - [ ] **Mehrfachauswahl im Frontend:**
+    * Checkboxen- und Gummiband-Auswahl im Suchgitter und Leuchttisch.
+  - [ ] **Batch-Editor Dialog:**
+    * Gleichzeitiges Zuweisen von Datierung, Urheber/Fotograf, Provenienz/Bestand, Ort und Schlagworten auf alle markierten Bilder.
+
+---
+
+## 17. Konservatorische Schadens-Kartierung & Erhaltungszustand
+* **Ziel:** Fachgerechte Zustandsdokumentation für Restaurierung, Konservierung und Versicherung nach ICOM-Standard.
+* **Aufgaben:**
+  - [ ] **Schadens-Annotationslayer im Bild-Modal:**
+    * Grafisches Markieren von Schäden (*Silberspiegelung, Stockflecken/Schimmel, Risse, Fehlstellen, Glasbruch, chemischer Essig-Zerfall*).
+  - [ ] **Klassifikation des Erhaltungszustands:**
+    * Dokumentation von Erhaltungsstufen (Stufe I: Sehr gut bis Stufe IV: Akut gefährdet / restaurierungsbedürftig) im Metadaten-Payload.
+
+---
+
+## 18. Georeferenzierung & Historische Karten-Verortung
+* **Ziel:** Räumliche Erschließung und Umkreissuche für Sakralbauten, Denkmäler, Bildstöcke und Prozessionswege.
+* **Aufgaben:**
+  - [ ] **Interaktive Koordinatenzuweisung:**
+    * OpenStreetMap / Leaflet-Kartenmodul zur schnellen Verortung per Mausklick.
+  - [ ] **Geografische Umkreissuche:**
+    * Qdrant-Geo-Distanzfilter für Recherchen im Umkreis (z. B. *„Alle historischen Fotos im Umkreis von 2 km um Kloster Beuron“*).
+
+---
+
+## 19. Kuratierte Mappen & Publikations-/Druckerei-Paketexport
+* **Ziel:** Projektbezogene Bildzusammenstellungen für Ausstellungen, Heimatbücher und Leihanfragen mit druckfertigem Nachweis.
+* **Aufgaben:**
+  - [ ] **Persistente Kuratoren-Mappen:**
+    * Dauerhaftes Speichern und Verwalten benannter Kollektionen (über den temporären Leuchttisch hinaus).
+  - [ ] **Publikations-Paket (Druckerei-ZIP):**
+    * Automatisierter Download der Master-Originale inklusive druckreifem **Bildnachweis-Verzeichnis (PDF & CSV)** mit korrekten Zitationen, Copyright-Vermerken und Bildunterschriften.
+
+---
+
+## 20. Kirchlicher Thesaurus & Ikonographischer Standard für die Freitextsuche (GND, Iconclass, AAT)
+* **Ziel:** Maximale Treffsicherheit bei der Recherche nach christlicher Kunst, Liturgie, Paramenten und Ordensleben durch semantische Begriffserweiterung und kontrolliertes Fachvokabular.
+
+### Etablierte Fachstandards & Klassifikationen
+* **Iconclass:** Internationaler kunsthistorischer Standard für christliche Ikonographie (z. B. Bibelszenen, Heiligenattribute, liturgische Riten; genutzt im *Bildarchiv Foto Marburg* und *Deutschen Dokumentationszentrum für Kunstgeschichte*).
+* **GND (Gemeinsame Normdatei der DNB):** Normierte Sachbegriffe für kirchliche Ämter, Orden, Festtage und Sakralgegenstände.
+* **Getty AAT (Art & Architecture Thesaurus, dt. Fassung):** Normiertes Vokabular für Sakralarchitektur, Paramente und Vasa sacra.
+
+### Fachspezifische Vokabular-Kategorien
+* **Vasa sacra (Liturgische Geräte):** *Monstranz, Kelch, Ziborium, Patene, Weihrauchfass (Thuribulum), Weihrauchschiffchen, Vortragekreuz, Aspergill (Weihwassersprengel), Messkännchen, Reliquiar, Ciborium, Ostensorium*.
+* **Paramente (Liturgische Gewänder):** *Kasel (Messgewand), Dalmatik, Albe, Stola, Chormantel (Pluviale), Birett, Mitra, Pallium, Schultervelum, Zingulum, Talar*.
+* **Sakrale Architektur & Kirchenausstattung:** *Hochaltar, Zelebrationsaltar, Tabernakel, Kanzel, Taufbecken/Taufstein, Chorgestühl, Beichtstuhl, Sakristei, Marienaltar, Pietà, Kreuzwegstation, Epitaph, Orgelprospekt, Glockenstuhl, Baldachin, Lettner*.
+* **Liturgische Feiern & Riten:** *Fronleichnamsprozession, Primiz, Erstkommunion, Firmung, Priesterweihe, Bischofsweihe, Ewige Anbetung, Bittprozession, Maiandacht, Karfreitagsliturgie, Patrozinium, Pontifikalamt, Vesper*.
+* **Klerus & Ordenswesen:** *Bischof, Weihbischof, Abt/Äbtissin, Pfarrer, Kaplan, Diakon, Ministrant, Ordensschwester/Nonne (Habit), Franziskaner, Benediktiner, Jesuiten, Dominikaner, Zisterzienser*.
+
+### Technische Umsetzungsaufgaben
+- [ ] **Thesaurus-basierte Synonym-Erweiterung (Query Expansion):**
+  * Sucht ein Nutzer nach *„Messgewand“*, expandiert die Such-Engine im Hintergrund automatisch auf *„Kasel“*, *„Parament“*, *„Pluviale“* und *„Dalmatik“*.
+  * Sucht jemand nach *„Monstranz“*, werden auch *„Allerheiligstes“*, *„Ostensorium“* oder *„Aussetzung“* semantisch assoziiert.
+- [ ] **Zero-Shot Prompt-Katalog für kirchliche Motive:**
+  * Vorberechnete OpenCLIP-Embeddings für die ~250 wichtigsten kirchlichen Begriffe (GND/Iconclass), um bei neu indexierten Bildern automatisch passende Schlagwort-Vorschläge zu generieren (ohne zusätzlichen VRAM-Bedarf).
+- [ ] **Iconclass-Notationen im XMP-Sidecar:**
+  * Optionale Einbettung von Iconclass-Codes (z. B. `11Q714` für Messfeier/Liturgie) in die standardisierten `.xmp`-Metadaten.
+
+
 
