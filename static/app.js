@@ -1309,8 +1309,9 @@ async function openImageModal(filePath, fileName, cacheBuster = null) {
       persons: (data.faces || []).map(f => f.label).filter(Boolean)
     };
     updateModalLightboxButtonState(filePath);
-    resetImageAdjustments();
     toggleMetadataEditMode(false);
+    switchModalSidebarTab('meta');
+    loadModalEditSettings(data.edit_settings || null);
 
     // Archivalische Metadaten Seitenleiste befüllen
     if (metaContainer) {
@@ -1482,9 +1483,13 @@ function closeImageModal() {
   modal.classList.add('hidden');
   toggleCropMode(false);
   closeModalXmpMenu();
-  resetImageAdjustments();
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
+  }
+  resetAllImageAdjustments();
   toggleMetadataEditMode(false);
-  document.getElementById('modal-adjust-panel')?.classList.add('hidden');
+  switchModalSidebarTab('meta');
   currentModalImageDetails = null;
 }
 
@@ -3235,102 +3240,366 @@ async function exportLightboxXmpZip() {
   }
 }
 
-// ================= VISUELLE NON-DESTRUKTIVE BILDOPTIMIERUNG =================
+// ================= NON-DESTRUKTIVE BILDBEARBEITUNG (CROPPER, SLIDERS & PILLOW EXPORT) =================
 
-let imageAdjustments = {
-  brightness: 100,
-  contrast: 100,
-  invert: false,
-  grayscale: false
-};
+function switchModalSidebarTab(tabName) {
+  const metaTab = document.getElementById('modal-tab-content-meta');
+  const editTab = document.getElementById('modal-tab-content-edit');
+  const metaBtn = document.getElementById('tab-btn-meta');
+  const editBtn = document.getElementById('tab-btn-edit');
+  const adjustHeaderBtn = document.getElementById('modal-adjust-btn');
 
-function toggleImageAdjustmentPanel() {
-  const panel = document.getElementById('modal-adjust-panel');
-  const btn = document.getElementById('modal-adjust-btn');
-  if (!panel) return;
-  const isHidden = panel.classList.toggle('hidden');
-  if (btn) {
-    if (!isHidden) {
-      btn.classList.add('bg-amber-500/20', 'text-amber-400', 'border-amber-500/40');
-    } else {
-      btn.classList.remove('bg-amber-500/20', 'text-amber-400', 'border-amber-500/40');
+  if (tabName === 'edit') {
+    if (metaTab) metaTab.classList.add('hidden');
+    if (editTab) editTab.classList.remove('hidden');
+
+    if (metaBtn) {
+      metaBtn.classList.remove('text-amber-400', 'bg-slate-800/90', 'font-semibold');
+      metaBtn.classList.add('text-slate-400', 'font-medium');
+    }
+    if (editBtn) {
+      editBtn.classList.add('text-amber-400', 'bg-slate-800/90', 'font-semibold');
+      editBtn.classList.remove('text-slate-400', 'font-medium');
+    }
+    if (adjustHeaderBtn) {
+      adjustHeaderBtn.classList.add('bg-amber-500/20', 'text-amber-400', 'border-amber-500/40');
+    }
+  } else {
+    if (editTab) editTab.classList.add('hidden');
+    if (metaTab) metaTab.classList.remove('hidden');
+
+    if (metaBtn) {
+      metaBtn.classList.add('text-amber-400', 'bg-slate-800/90', 'font-semibold');
+      metaBtn.classList.remove('text-slate-400', 'font-medium');
+    }
+    if (editBtn) {
+      editBtn.classList.remove('text-amber-400', 'bg-slate-800/90', 'font-semibold');
+      editBtn.classList.add('text-slate-400', 'font-medium');
+    }
+    if (adjustHeaderBtn) {
+      adjustHeaderBtn.classList.remove('bg-amber-500/20', 'text-amber-400', 'border-amber-500/40');
     }
   }
 }
 
-function applyImageAdjustments() {
+let currentEditSettings = {
+  brightness: 0,
+  contrast: 0,
+  gamma: 1.0,
+  sharpness: 0,
+  rotation: 0,
+  invert: false,
+  crop: null
+};
+
+let cropperInstance = null;
+
+function loadModalEditSettings(settings) {
+  currentEditSettings = {
+    brightness: 0,
+    contrast: 0,
+    gamma: 1.0,
+    sharpness: 0,
+    rotation: 0,
+    invert: false,
+    crop: null
+  };
+
+  if (settings && typeof settings === 'object') {
+    Object.assign(currentEditSettings, settings);
+  }
+
+  // Update UI Inputs
+  const bSlider = document.getElementById('edit-slider-brightness');
+  const cSlider = document.getElementById('edit-slider-contrast');
+  const gSlider = document.getElementById('edit-slider-gamma');
+  const sSlider = document.getElementById('edit-slider-sharpness');
+
+  if (bSlider) bSlider.value = currentEditSettings.brightness;
+  if (cSlider) cSlider.value = currentEditSettings.contrast;
+  if (gSlider) gSlider.value = currentEditSettings.gamma;
+  if (sSlider) sSlider.value = currentEditSettings.sharpness;
+
+  const bLabel = document.getElementById('label-edit-brightness');
+  const cLabel = document.getElementById('label-edit-contrast');
+  const gLabel = document.getElementById('label-edit-gamma');
+  const sLabel = document.getElementById('label-edit-sharpness');
+
+  if (bLabel) bLabel.textContent = `${currentEditSettings.brightness > 0 ? '+' : ''}${currentEditSettings.brightness}%`;
+  if (cLabel) cLabel.textContent = `${currentEditSettings.contrast > 0 ? '+' : ''}${currentEditSettings.contrast}%`;
+  if (gLabel) gLabel.textContent = Number(currentEditSettings.gamma).toFixed(2);
+  if (sLabel) sLabel.textContent = `${currentEditSettings.sharpness}%`;
+
+  const rotBtnLabel = document.getElementById('label-edit-rotation-btn');
+  if (rotBtnLabel) rotBtnLabel.textContent = `${currentEditSettings.rotation}° drehen`;
+
+  const invBtn = document.getElementById('edit-btn-invert');
+  if (invBtn) {
+    if (currentEditSettings.invert) {
+      invBtn.classList.add('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    } else {
+      invBtn.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    }
+  }
+
+  const cropBadge = document.getElementById('cropper-status-badge');
+  const clearCropBtn = document.getElementById('btn-clear-crop');
+  const cropperBtnLabel = document.getElementById('btn-cropper-label');
+
+  if (currentEditSettings.crop) {
+    if (cropBadge) {
+      cropBadge.textContent = 'aktiv';
+      cropBadge.className = 'text-[10px] text-emerald-400 font-mono font-semibold';
+    }
+    if (clearCropBtn) clearCropBtn.classList.remove('hidden');
+    if (cropperBtnLabel) cropperBtnLabel.textContent = 'Ausschnitt ändern';
+  } else {
+    if (cropBadge) {
+      cropBadge.textContent = 'inaktiv';
+      cropBadge.className = 'text-[10px] text-slate-500 font-mono';
+    }
+    if (clearCropBtn) clearCropBtn.classList.add('hidden');
+    if (cropperBtnLabel) cropperBtnLabel.textContent = 'Ausschnitt wählen';
+  }
+
+  applyLiveImageTransformations();
+}
+
+function onEditSliderChange() {
+  const bSlider = document.getElementById('edit-slider-brightness');
+  const cSlider = document.getElementById('edit-slider-contrast');
+  const gSlider = document.getElementById('edit-slider-gamma');
+  const sSlider = document.getElementById('edit-slider-sharpness');
+
+  currentEditSettings.brightness = bSlider ? parseInt(bSlider.value, 10) : 0;
+  currentEditSettings.contrast = cSlider ? parseInt(cSlider.value, 10) : 0;
+  currentEditSettings.gamma = gSlider ? parseFloat(gSlider.value) : 1.0;
+  currentEditSettings.sharpness = sSlider ? parseInt(sSlider.value, 10) : 0;
+
+  const bLabel = document.getElementById('label-edit-brightness');
+  const cLabel = document.getElementById('label-edit-contrast');
+  const gLabel = document.getElementById('label-edit-gamma');
+  const sLabel = document.getElementById('label-edit-sharpness');
+
+  if (bLabel) bLabel.textContent = `${currentEditSettings.brightness > 0 ? '+' : ''}${currentEditSettings.brightness}%`;
+  if (cLabel) cLabel.textContent = `${currentEditSettings.contrast > 0 ? '+' : ''}${currentEditSettings.contrast}%`;
+  if (gLabel) gLabel.textContent = Number(currentEditSettings.gamma).toFixed(2);
+  if (sLabel) sLabel.textContent = `${currentEditSettings.sharpness}%`;
+
+  applyLiveImageTransformations();
+}
+
+function applyLiveImageTransformations() {
   const img = document.getElementById('modal-img');
   if (!img) return;
 
-  const bInput = document.getElementById('adjust-brightness');
-  const cInput = document.getElementById('adjust-contrast');
-  const bVal = bInput ? parseInt(bInput.value, 10) : 100;
-  const cVal = cInput ? parseInt(cInput.value, 10) : 100;
-
-  imageAdjustments.brightness = bVal;
-  imageAdjustments.contrast = cVal;
-
-  const valB = document.getElementById('val-brightness');
-  const valC = document.getElementById('val-contrast');
-  if (valB) valB.textContent = `${bVal}%`;
-  if (valC) valC.textContent = `${cVal}%`;
+  const b = currentEditSettings.brightness;
+  const c = currentEditSettings.contrast;
+  const g = currentEditSettings.gamma;
+  const inv = currentEditSettings.invert;
+  const rot = currentEditSettings.rotation;
 
   const filters = [];
-  if (bVal !== 100) filters.push(`brightness(${bVal}%)`);
-  if (cVal !== 100) filters.push(`contrast(${cVal}%)`);
-  if (imageAdjustments.invert) filters.push('invert(1)');
-  if (imageAdjustments.grayscale) filters.push('grayscale(1)');
+  const brightPct = Math.round(100 + b);
+  if (brightPct !== 100) filters.push(`brightness(${brightPct}%)`);
+
+  const contrastPct = Math.round(100 + c);
+  if (contrastPct !== 100) filters.push(`contrast(${contrastPct}%)`);
+
+  if (inv) filters.push('invert(1)');
 
   img.style.filter = filters.length > 0 ? filters.join(' ') : 'none';
+  img.style.transform = rot !== 0 ? `rotate(${rot}deg)` : 'none';
+  img.style.transition = 'filter 0.05s ease, transform 0.15s ease';
 }
 
-function toggleInvertAdjustment() {
-  imageAdjustments.invert = !imageAdjustments.invert;
-  const btn = document.getElementById('btn-toggle-invert');
-  if (btn) {
-    if (imageAdjustments.invert) {
-      btn.classList.add('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+function rotateEditTransformation(delta = 90) {
+  currentEditSettings.rotation = (currentEditSettings.rotation + delta) % 360;
+  const rotBtnLabel = document.getElementById('label-edit-rotation-btn');
+  if (rotBtnLabel) rotBtnLabel.textContent = `${currentEditSettings.rotation}° drehen`;
+  applyLiveImageTransformations();
+}
+
+function toggleEditInvert() {
+  currentEditSettings.invert = !currentEditSettings.invert;
+  const invBtn = document.getElementById('edit-btn-invert');
+  if (invBtn) {
+    if (currentEditSettings.invert) {
+      invBtn.classList.add('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
     } else {
-      btn.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+      invBtn.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
     }
   }
-  applyImageAdjustments();
+  applyLiveImageTransformations();
 }
 
-function toggleGrayscaleAdjustment() {
-  imageAdjustments.grayscale = !imageAdjustments.grayscale;
-  const btn = document.getElementById('btn-toggle-grayscale');
-  if (btn) {
-    if (imageAdjustments.grayscale) {
-      btn.classList.add('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
-    } else {
-      btn.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
-    }
+function resetAllImageAdjustments() {
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
   }
-  applyImageAdjustments();
+  currentEditSettings = {
+    brightness: 0,
+    contrast: 0,
+    gamma: 1.0,
+    sharpness: 0,
+    rotation: 0,
+    invert: false,
+    crop: null
+  };
+  loadModalEditSettings(currentEditSettings);
+  showToast('Alle Bildparameter auf neutralen Zustand zurückgesetzt.', false);
 }
 
-function resetImageAdjustments() {
-  imageAdjustments = { brightness: 100, contrast: 100, invert: false, grayscale: false };
-
-  const bInput = document.getElementById('adjust-brightness');
-  const cInput = document.getElementById('adjust-contrast');
-  if (bInput) bInput.value = 100;
-  if (cInput) cInput.value = 100;
-
-  const valB = document.getElementById('val-brightness');
-  const valC = document.getElementById('val-contrast');
-  if (valB) valB.textContent = '100%';
-  if (valC) valC.textContent = '100%';
-
-  const btnInv = document.getElementById('btn-toggle-invert');
-  const btnGray = document.getElementById('btn-toggle-grayscale');
-  if (btnInv) btnInv.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
-  if (btnGray) btnGray.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
-
+function toggleCropperMode() {
   const img = document.getElementById('modal-img');
-  if (img) img.style.filter = 'none';
+  const badge = document.getElementById('cropper-status-badge');
+  const btnLabel = document.getElementById('btn-cropper-label');
+  const clearBtn = document.getElementById('btn-clear-crop');
+
+  if (cropperInstance) {
+    // Auswahl übernehmen
+    const data = cropperInstance.getData(true);
+    currentEditSettings.crop = {
+      x: data.x,
+      y: data.y,
+      width: data.width,
+      height: data.height,
+      is_percent: false
+    };
+    cropperInstance.destroy();
+    cropperInstance = null;
+
+    if (badge) {
+      badge.textContent = `${Math.round(data.width)}×${Math.round(data.height)} px`;
+      badge.className = 'text-[10px] text-emerald-400 font-mono font-semibold';
+    }
+    if (btnLabel) btnLabel.textContent = 'Ausschnitt ändern';
+    if (clearBtn) clearBtn.classList.remove('hidden');
+    showToast('Ausschnitt non-destruktiv übernommen.', false);
+  } else {
+    if (typeof Cropper === 'undefined') {
+      showToast('Cropper-Bibliothek wird initialisiert...', true);
+      return;
+    }
+    cropperInstance = new Cropper(img, {
+      viewMode: 1,
+      autoCropArea: 0.85,
+      movable: false,
+      zoomable: false,
+      rotatable: false,
+      scalable: false,
+      ready() {
+        if (currentEditSettings.crop) {
+          cropperInstance.setData(currentEditSettings.crop);
+        }
+      }
+    });
+    if (badge) {
+      badge.textContent = 'Wähle Rahmen...';
+      badge.className = 'text-[10px] text-amber-400 font-mono animate-pulse';
+    }
+    if (btnLabel) btnLabel.textContent = 'Ausschnitt fixieren ✓';
+    if (clearBtn) clearBtn.classList.remove('hidden');
+  }
 }
+
+function clearActiveCrop() {
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
+  }
+  currentEditSettings.crop = null;
+  const badge = document.getElementById('cropper-status-badge');
+  const btnLabel = document.getElementById('btn-cropper-label');
+  const clearBtn = document.getElementById('btn-clear-crop');
+
+  if (badge) {
+    badge.textContent = 'inaktiv';
+    badge.className = 'text-[10px] text-slate-500 font-mono';
+  }
+  if (btnLabel) btnLabel.textContent = 'Ausschnitt wählen';
+  if (clearBtn) clearBtn.classList.add('hidden');
+  showToast('Ausschnitt aufgehoben.', false);
+}
+
+async function saveEditSettingsToBackend() {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
+    showToast('Kein aktives Bild im Detailfenster geöffnet.', true);
+    return;
+  }
+
+  const saveBtn = document.getElementById('btn-save-edit-settings');
+  const originalHtml = saveBtn ? saveBtn.innerHTML : '';
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Speichere Parameter...</span>';
+  }
+
+  try {
+    const payload = {
+      path: currentModalImageDetails.filePath,
+      brightness: currentEditSettings.brightness,
+      contrast: currentEditSettings.contrast,
+      gamma: currentEditSettings.gamma,
+      sharpness: currentEditSettings.sharpness,
+      rotation: currentEditSettings.rotation,
+      invert: currentEditSettings.invert,
+      crop: currentEditSettings.crop
+    };
+
+    const res = await fetch('/images/edit-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    showToast('Transformations-Parameter erfolgreich in SQLite & Qdrant gesichert!', false);
+  } catch (err) {
+    console.error('Fehler beim Speichern der edit_settings:', err);
+    showToast(`Speichern fehlgeschlagen: ${err.message}`, true);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = originalHtml;
+    }
+  }
+}
+
+function exportProcessedImage(format = 'jpg') {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
+    showToast('Kein aktives Bild ausgewählt.', true);
+    return;
+  }
+
+  showToast(`Rendere hochauflösendes ${format.toUpperCase()} via Pillow...`, false);
+
+  const params = new URLSearchParams({
+    path: currentModalImageDetails.filePath,
+    format: format,
+    brightness: currentEditSettings.brightness,
+    contrast: currentEditSettings.contrast,
+    gamma: currentEditSettings.gamma,
+    sharpness: currentEditSettings.sharpness,
+    rotation: currentEditSettings.rotation,
+    invert: currentEditSettings.invert
+  });
+
+  if (currentEditSettings.crop) {
+    params.set('crop', JSON.stringify(currentEditSettings.crop));
+  }
+
+  const exportUrl = `/images/export?${params.toString()}`;
+  const a = document.createElement('a');
+  a.href = exportUrl;
+  const baseName = (currentModalImageDetails.fileName || 'archivbild').split('.')[0];
+  a.download = `${baseName}_bearbeitet.${format === 'tiff' ? 'tif' : 'jpg'}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 
 // ================= SQLITE METADATEN-BEARBEITUNG =================
 

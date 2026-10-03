@@ -40,9 +40,16 @@ class MetadataDatabase:
                         date TEXT,
                         creator TEXT,
                         description TEXT,
+                        edit_settings TEXT,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
+                # Migration: Falls edit_settings noch fehlt
+                try:
+                    conn.execute("ALTER TABLE metadata ADD COLUMN edit_settings TEXT;")
+                except Exception:
+                    pass
+
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS clusters (
                         id TEXT PRIMARY KEY,
@@ -69,10 +76,47 @@ class MetadataDatabase:
                 )
                 row = cursor.fetchone()
                 if row:
-                    return dict(row)
+                    res = dict(row)
+                    if res.get("edit_settings") and isinstance(res["edit_settings"], str):
+                        import json
+                        try:
+                            res["edit_settings"] = json.loads(res["edit_settings"])
+                        except Exception:
+                            pass
+                    return res
         except Exception as e:
             logger.error("Fehler beim Abrufen der Metadaten aus SQLite für %s: %s", file_path, e)
         return None
+
+    def get_edit_settings(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """Liest die gespeicherten Transformations-Parameter für ein Bild."""
+        meta = self.get_metadata(file_path)
+        if meta and meta.get("edit_settings"):
+            return meta["edit_settings"]
+        return None
+
+    def save_edit_settings(self, file_path: str, edit_settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Speichert non-destruktive Transformations-Parameter in SQLite."""
+        import json
+        now = datetime.now().isoformat()
+        clean_path = str(file_path)
+        clean_name = Path(clean_path).name
+        settings_json = json.dumps(edit_settings)
+
+        try:
+            with self._get_connection() as conn:
+                conn.execute("""
+                    INSERT INTO metadata (file_path, file_name, edit_settings, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(file_path) DO UPDATE SET
+                        edit_settings = excluded.edit_settings,
+                        updated_at = excluded.updated_at
+                """, (clean_path, clean_name, settings_json, now))
+                conn.commit()
+            return {"file_path": clean_path, "edit_settings": edit_settings, "updated_at": now}
+        except Exception as e:
+            logger.error("Fehler beim Speichern der edit_settings in SQLite: %s", e)
+            raise e
 
     def upsert_metadata(
         self,

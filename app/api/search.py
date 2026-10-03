@@ -748,6 +748,12 @@ def get_image_details(
     if not metadata or not any(metadata.values()):
         metadata = metadata_service.extract_metadata(file_path)
 
+    edit_settings = None
+    if db_meta and db_meta.get("edit_settings"):
+        edit_settings = db_meta.get("edit_settings")
+    elif img_records and img_records[0].payload:
+        edit_settings = img_records[0].payload.get("edit_settings")
+
     return {
         "file_path": abs_path_str,
         "file_name": file_path.name,
@@ -755,6 +761,7 @@ def get_image_details(
         "height": height,
         "faces": faces,
         "metadata": metadata,
+        "edit_settings": edit_settings or {},
     }
 
 
@@ -842,6 +849,131 @@ def update_image_metadata(
         logger.warning("Konnte XMP-Sidecar nicht aktualisieren: %s", e)
 
     return {"status": "success", "metadata": saved}
+
+
+class ImageEditSettingsRequest(BaseModel):
+    path: str
+    brightness: float = Field(0.0, description="Helligkeit von -50 bis +50")
+    contrast: float = Field(0.0, description="Kontrast von -50 bis +50")
+    gamma: float = Field(1.0, description="Gamma von 0.5 bis 2.0")
+    sharpness: float = Field(0.0, description="Schärfung von 0 bis 100")
+    rotation: int = Field(0, description="Drehung in Grad (0, 90, 180, 270)")
+    invert: bool = Field(False, description="Negativ-Invertierung")
+    crop: Optional[Dict[str, Any]] = Field(None, description="Ausschnitt-Koordinaten")
+
+
+@router.post("/images/edit-settings")
+def save_image_edit_settings(
+    data: ImageEditSettingsRequest,
+    qdrant: QdrantService = Depends(get_qdrant_service),
+):
+    """
+    Speichert non-destruktive Transformations-Parameter in SQLite
+    und synchronisiert sie im Qdrant-Payload.
+    Das Originalbild bleibt 100% unberührt.
+    """
+    file_path = validate_safe_image_path(data.path)
+    abs_path_str = str(file_path.resolve())
+
+    settings_dict = {
+        "brightness": data.brightness,
+        "contrast": data.contrast,
+        "gamma": data.gamma,
+        "sharpness": data.sharpness,
+        "rotation": data.rotation,
+        "invert": data.invert,
+        "crop": data.crop,
+    }
+
+    # 1. In SQLite speichern
+    from app.services.metadata_db import metadata_db
+    metadata_db.save_edit_settings(abs_path_str, settings_dict)
+
+    # 2. In Qdrant synchronisieren
+    try:
+        records, _ = qdrant.client.scroll(
+            collection_name=settings.COLLECTION_IMAGES,
+            scroll_filter=rest_models.Filter(
+                should=[
+                    rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_path_str)),
+                    rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_path_str)),
+                ]
+            ),
+            limit=1,
+            with_payload=True
+        )
+        if records:
+            qdrant.client.set_payload(
+                collection_name=settings.COLLECTION_IMAGES,
+                payload={"edit_settings": settings_dict},
+                points=[records[0].id],
+            )
+    except Exception as e:
+        logger.warning("Konnte edit_settings nicht in Qdrant spiegeln: %s", e)
+
+    return {"status": "success", "edit_settings": settings_dict}
+
+
+@router.get("/images/export")
+def export_processed_image_endpoint(
+    path: str = Query(..., description="Dateipfad des Originalbildes"),
+    format: str = Query("jpg", description="Ausgabeformat: jpg oder tiff"),
+    brightness: Optional[float] = Query(None, description="Helligkeit (-50 bis 50)"),
+    contrast: Optional[float] = Query(None, description="Kontrast (-50 bis 50)"),
+    gamma: Optional[float] = Query(None, description="Gamma (0.5 bis 2.0)"),
+    sharpness: Optional[float] = Query(None, description="Schärfung (0 bis 100)"),
+    rotation: Optional[int] = Query(None, description="Rotation (0, 90, 180, 270)"),
+    invert: Optional[bool] = Query(None, description="Negativ-Invertierung"),
+    crop: Optional[str] = Query(None, description="Crop als JSON-String"),
+    qdrant: QdrantService = Depends(get_qdrant_service),
+):
+    """
+    Wendet non-destruktive Transformations-Parameter via Pillow serverseitig
+    auf das Originalbild an und streamt das bearbeitete Bild als Download (JPEG oder TIFF).
+    Das Originalbild auf der Festplatte bleibt stets 100% unverändert.
+    """
+    import json
+    file_path = validate_safe_image_path(path)
+    abs_path_str = str(file_path.resolve())
+
+    # Lade gespeicherte Settings aus SQLite als Basis
+    from app.services.metadata_db import metadata_db
+    saved_settings = metadata_db.get_edit_settings(abs_path_str) or {}
+
+    effective_settings = {
+        "brightness": brightness if brightness is not None else float(saved_settings.get("brightness", 0.0)),
+        "contrast": contrast if contrast is not None else float(saved_settings.get("contrast", 0.0)),
+        "gamma": gamma if gamma is not None else float(saved_settings.get("gamma", 1.0)),
+        "sharpness": sharpness if sharpness is not None else float(saved_settings.get("sharpness", 0.0)),
+        "rotation": rotation if rotation is not None else int(saved_settings.get("rotation", 0)),
+        "invert": invert if invert is not None else bool(saved_settings.get("invert", False)),
+        "crop": None,
+    }
+
+    if crop:
+        try:
+            effective_settings["crop"] = json.loads(crop)
+        except Exception:
+            pass
+    elif saved_settings.get("crop"):
+        effective_settings["crop"] = saved_settings.get("crop")
+
+    from app.services.image_transform_service import image_transform_service
+    image_bytes, media_type, filename = image_transform_service.export_processed_image(
+        file_path=file_path,
+        settings=effective_settings,
+        output_format=format,
+    )
+
+    return Response(
+        content=image_bytes,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
 
 
 
