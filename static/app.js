@@ -807,7 +807,7 @@ async function openClusterDetail(cluster) {
         </button>
       </div>
       <div class="p-3 border-t border-slate-800 flex items-center justify-between text-xs gap-2">
-        <div class="truncate max-w-[170px]">
+        <div class="min-w-0 flex-1 truncate">
           <span class="font-medium text-slate-200 truncate block">${escapeHtml(fileName)}</span>
           <span class="text-slate-500 font-mono text-[11px]">Konfidenz: ${(face.det_score * 100).toFixed(1)}%</span>
         </div>
@@ -1579,6 +1579,7 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
 function closeImageModal() {
   const modal = document.getElementById('image-modal');
   modal.classList.add('hidden');
+  toggleModalFullscreen(false);
   toggleCropMode(false);
   toggleSplitSlider(false);
   resetModalZoom();
@@ -1603,6 +1604,56 @@ document.getElementById('image-modal')?.addEventListener('click', (e) => {
     closeImageModal();
   }
 });
+
+// ================= VOLLBILD LEINWAND & TASTATUR-HILFE =================
+
+function toggleModalFullscreen(forceState = null) {
+  const modal = document.getElementById('image-modal');
+  const dialog = document.getElementById('image-modal-dialog');
+  const enterIcon = document.getElementById('icon-fullscreen-enter');
+  const exitIcon = document.getElementById('icon-fullscreen-exit');
+  if (!modal || !dialog) return;
+
+  const isFullscreen = forceState !== null ? forceState : !dialog.classList.contains('fullscreen-canvas-mode');
+
+  if (isFullscreen) {
+    modal.classList.add('fullscreen-active');
+    dialog.classList.add('fullscreen-canvas-mode');
+    if (enterIcon) enterIcon.classList.add('hidden');
+    if (exitIcon) exitIcon.classList.remove('hidden');
+    showToast('⛶ Vollbild-Leinwand aktiviert (Taste: F oder Esc)', false);
+  } else {
+    modal.classList.remove('fullscreen-active');
+    dialog.classList.remove('fullscreen-canvas-mode');
+    if (enterIcon) enterIcon.classList.remove('hidden');
+    if (exitIcon) exitIcon.classList.add('hidden');
+  }
+
+  if (typeof isSplitSliderActive !== 'undefined' && isSplitSliderActive) {
+    setSplitDividerPosition(splitSliderPercent);
+  }
+}
+
+function openShortcutsModal() {
+  const modal = document.getElementById('shortcuts-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeShortcutsModal() {
+  const modal = document.getElementById('shortcuts-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function toggleShortcutsModal() {
+  const modal = document.getElementById('shortcuts-modal');
+  if (modal) {
+    if (modal.classList.contains('hidden')) {
+      openShortcutsModal();
+    } else {
+      closeShortcutsModal();
+    }
+  }
+}
 
 // ================= VERLUSTFREIES DREHEN =================
 
@@ -2547,9 +2598,19 @@ function confirmFolderSelection() {
   scanFolderPreview();
 }
 
-// Tastatur-Shortcut (ESC schließt Modal bzw. wechselt zurück zur Cluster-Übersicht)
+// Tastatur-Shortcuts
 document.addEventListener('keydown', (e) => {
+  // 1. Wenn ein Textfeld fokussiert ist, Shortcuts nicht auslösen
+  const isTyping = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+
+  // ESC-Taste Behandlung
   if (e.key === 'Escape') {
+    // 0. Tastaturkürzel Modal schließen
+    const scModal = document.getElementById('shortcuts-modal');
+    if (scModal && !scModal.classList.contains('hidden')) {
+      closeShortcutsModal();
+      return;
+    }
     // 1. Modals mit Priorität schließen
     const fbModal = document.getElementById('folder-browser-modal');
     if (fbModal && !fbModal.classList.contains('hidden')) {
@@ -2573,6 +2634,11 @@ document.addEventListener('keydown', (e) => {
     }
     const imgModal = document.getElementById('image-modal');
     if (imgModal && !imgModal.classList.contains('hidden')) {
+      const dialog = document.getElementById('image-modal-dialog');
+      if (dialog && dialog.classList.contains('fullscreen-canvas-mode')) {
+        toggleModalFullscreen(false);
+        return;
+      }
       closeImageModal();
       return;
     }
@@ -2580,42 +2646,129 @@ document.addEventListener('keydown', (e) => {
     if (activeCluster) {
       closeClusterDetail();
     }
+    return;
   }
 
-  // Pfeiltasten Navigation im Bild-Modal (Vorheriges / Nächstes Bild)
-  const imgModal = document.getElementById('image-modal');
-  if (imgModal && !imgModal.classList.contains('hidden') && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-    if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
-    if (cropperInstance) return; // Nicht während der Rahmenwahl blättern
+  // Globale Shortcuts (sofern nicht im Textfeld getippt wird)
+  if (isTyping) return;
 
-    // 1. Navigation innerhalb eines Personen-Clusters (falls aus Cluster geöffnet)
-    if (currentModalTargetFaceContext && activeCluster && activeCluster.faces && activeCluster.faces.length > 1) {
-      const curFaceIdx = activeCluster.faces.findIndex(f => f.face_id === currentModalTargetFaceContext.faceId);
-      if (curFaceIdx !== -1) {
-        e.preventDefault();
-        const nextFaceIdx = e.key === 'ArrowRight'
-          ? (curFaceIdx + 1) % activeCluster.faces.length
-          : (curFaceIdx - 1 + activeCluster.faces.length) % activeCluster.faces.length;
-        const nextFace = activeCluster.faces[nextFaceIdx];
-        if (nextFace && nextFace.file_path) {
-          const fn = nextFace.file_path.split('/').pop();
-          openClusterFaceModal(nextFace.file_path, fn, nextFace.face_id, activeCluster.cluster_id, activeCluster.label);
-          return;
-        }
-      }
+  // Tastaturkürzel-Hilfe (?)
+  if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+    e.preventDefault();
+    toggleShortcutsModal();
+    return;
+  }
+
+  // Schnelle Freitext-Suche (Taste: /)
+  if (e.key === '/') {
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+      e.preventDefault();
+      switchTab('search');
+      searchInput.focus();
+      searchInput.select();
+    }
+    return;
+  }
+
+  // Shortcuts im Bild-Modal
+  const imgModal = document.getElementById('image-modal');
+  const isImgModalOpen = imgModal && !imgModal.classList.contains('hidden');
+
+  if (isImgModalOpen) {
+    // F: Vollbild-Leinwand ein/aus
+    if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault();
+      toggleModalFullscreen();
+      return;
     }
 
-    // 2. Navigation durch allgemeine Suchergebnisse
-    if (currentSearchResults && currentSearchResults.length > 1 && currentModalImageDetails) {
-      const curIdx = currentSearchResults.findIndex(it => it.file_path === currentModalImageDetails.filePath);
-      if (curIdx !== -1) {
-        e.preventDefault();
-        const nextIdx = e.key === 'ArrowRight'
-          ? (curIdx + 1) % currentSearchResults.length
-          : (curIdx - 1 + currentSearchResults.length) % currentSearchResults.length;
-        const nextItem = currentSearchResults[nextIdx];
-        if (nextItem) {
-          openImageModal(nextItem.file_path, nextItem.file_name);
+    // S: Vorher/Nachher Split-Slider
+    if (e.key === 's' || e.key === 'S') {
+      e.preventDefault();
+      toggleSplitSlider();
+      return;
+    }
+
+    // L: Lupe (250% Vergrößerung)
+    if (e.key === 'l' || e.key === 'L') {
+      e.preventDefault();
+      toggleModalLupe();
+      return;
+    }
+
+    // R: 90° Drehung
+    if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      if (typeof currentActiveRightTab !== 'undefined' && currentActiveRightTab === 'edit') {
+        rotateEditTransformation(90);
+      } else {
+        rotateCurrentModalImage(90);
+      }
+      return;
+    }
+
+    // I: Negativ invertieren
+    if (e.key === 'i' || e.key === 'I') {
+      e.preventDefault();
+      toggleEditInvert();
+      return;
+    }
+
+    // + / =: Zoom hinein
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      adjustModalZoom(0.25);
+      return;
+    }
+
+    // - / _: Zoom heraus
+    if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      adjustModalZoom(-0.25);
+      return;
+    }
+
+    // 0: Zoom zurücksetzen
+    if (e.key === '0') {
+      e.preventDefault();
+      resetModalZoom();
+      return;
+    }
+
+    // Pfeiltasten Navigation im Bild-Modal (Vorheriges / Nächstes Bild)
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (cropperInstance) return; // Nicht während der Rahmenwahl blättern
+
+      // 1. Navigation innerhalb eines Personen-Clusters (falls aus Cluster geöffnet)
+      if (currentModalTargetFaceContext && activeCluster && activeCluster.faces && activeCluster.faces.length > 1) {
+        const curFaceIdx = activeCluster.faces.findIndex(f => f.face_id === currentModalTargetFaceContext.faceId);
+        if (curFaceIdx !== -1) {
+          e.preventDefault();
+          const nextFaceIdx = e.key === 'ArrowRight'
+            ? (curFaceIdx + 1) % activeCluster.faces.length
+            : (curFaceIdx - 1 + activeCluster.faces.length) % activeCluster.faces.length;
+          const nextFace = activeCluster.faces[nextFaceIdx];
+          if (nextFace && nextFace.file_path) {
+            const fn = nextFace.file_path.split('/').pop();
+            openClusterFaceModal(nextFace.file_path, fn, nextFace.face_id, activeCluster.cluster_id, activeCluster.label);
+            return;
+          }
+        }
+      }
+
+      // 2. Navigation durch allgemeine Suchergebnisse
+      if (currentSearchResults && currentSearchResults.length > 1 && currentModalImageDetails) {
+        const curIdx = currentSearchResults.findIndex(it => it.file_path === currentModalImageDetails.filePath);
+        if (curIdx !== -1) {
+          e.preventDefault();
+          const nextIdx = e.key === 'ArrowRight'
+            ? (curIdx + 1) % currentSearchResults.length
+            : (curIdx - 1 + currentSearchResults.length) % currentSearchResults.length;
+          const nextItem = currentSearchResults[nextIdx];
+          if (nextItem) {
+            openImageModal(nextItem.file_path, nextItem.file_name);
+          }
         }
       }
     }

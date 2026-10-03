@@ -166,6 +166,33 @@ body {
   max-height: calc(96vh - 120px) !important;
 }
 
+/* Fullscreen Canvas Mode (Maximale Bildfläche, Sidebar ausgeblendet) */
+#image-modal.fullscreen-active {
+  padding: 0 !important;
+}
+
+#image-modal-dialog.fullscreen-canvas-mode {
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+}
+
+#image-modal-dialog.fullscreen-canvas-mode #modal-side-panel {
+  display: none !important;
+}
+
+#image-modal-dialog.fullscreen-canvas-mode .modal-viewport-stage {
+  height: calc(100vh - 80px) !important;
+  max-height: calc(100vh - 80px) !important;
+}
+
+#image-modal-dialog.fullscreen-canvas-mode .bbox-container img {
+  max-height: calc(100vh - 120px) !important;
+}
+
 /* Right Sidebar Panel */
 #modal-side-panel {
   width: 100%;
