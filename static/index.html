@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Historisches Bildarchiv — Semantische Suche & Personen-Cluster</title>
   <!-- Lokales Stylesheet (100% offline & datenschutzkonform, kein CDN) -->
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=4.0">
   <link rel="stylesheet" href="/cropper.min.css">
 </head>
 
@@ -929,11 +929,10 @@
       </div>
 
       <!-- Modal Body (Image Container + Archival Metadata & Edit Sidebar) -->
-      <div class="flex-1 overflow-auto p-4 flex flex-col md:flex-row gap-4 bg-slate-950/60 relative">
-        <div class="flex-1 flex flex-col items-center justify-center min-h-[280px] relative">
-          <div id="modal-bbox-wrapper" class="bbox-container relative select-none">
-            <img id="modal-img" src="" alt="Archivbild"
-              class="rounded-lg shadow-md max-h-[58vh] object-contain pointer-events-auto">
+      <div class="modal-main-stage">
+        <div class="modal-viewport-stage">
+          <div id="modal-bbox-wrapper" class="bbox-container select-none">
+            <img id="modal-img" src="" alt="Archivbild">
             <!-- Bounding Boxes rendered dynamically -->
 
             <!-- Crop Mode Overlay & Selection Box -->
@@ -966,40 +965,6 @@
               <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
               <span>Rahmen um das gewünschte Motivdetail ziehen</span>
             </div>
-          </div>
-
-          <!-- Prominente Toolbar direkt unter dem Bild -->
-          <div class="mt-3 flex items-center justify-center gap-2 bg-slate-900/90 border border-slate-800 px-3.5 py-1.5 rounded-xl shadow-lg">
-            <span class="text-xs text-slate-400 font-medium mr-1 flex items-center gap-1.5">
-              <span>🔄</span> Bilddrehung (verlustfrei):
-            </span>
-            <button
-              id="modal-under-rotate-left"
-              type="button"
-              onclick="rotateCurrentModalImage(-90)"
-              class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-amber-400 border border-slate-700 text-xs font-semibold transition flex items-center gap-1.5"
-              title="90° gegen den Uhrzeigersinn drehen (verlustfrei)"
-            >
-              <span>↺</span> 90° links
-            </button>
-            <button
-              id="modal-under-rotate-right"
-              type="button"
-              onclick="rotateCurrentModalImage(90)"
-              class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-amber-400 border border-slate-700 text-xs font-semibold transition flex items-center gap-1.5"
-              title="90° im Uhrzeigersinn drehen (verlustfrei)"
-            >
-              <span>↻</span> 90° rechts
-            </button>
-            <button
-              id="modal-under-rotate-180"
-              type="button"
-              onclick="rotateCurrentModalImage(180)"
-              class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 text-xs transition"
-              title="180° drehen (auf den Kopf)"
-            >
-              180°
-            </button>
           </div>
         </div>
 
@@ -1115,93 +1080,117 @@
               </div>
             </div>
 
-            <!-- Slider Helligkeit (-50% bis +50%) -->
-            <div class="space-y-1">
-              <div class="flex justify-between text-xs text-slate-300 font-medium">
-                <span>Helligkeit</span>
-                <span id="label-edit-brightness" class="font-mono text-amber-400 text-xs">0%</span>
-              </div>
-              <input type="range" id="edit-slider-brightness" min="-50" max="50" value="0" step="1"
-                class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
-                oninput="onEditSliderChange()">
-              <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>-50%</span><span>0%</span><span>+50%</span>
-              </div>
-            </div>
-
-            <!-- Slider Kontrast (-50% bis +50%) -->
-            <div class="space-y-1">
-              <div class="flex justify-between text-xs text-slate-300 font-medium">
-                <span>Kontrast</span>
-                <span id="label-edit-contrast" class="font-mono text-amber-400 text-xs">0%</span>
-              </div>
-              <input type="range" id="edit-slider-contrast" min="-50" max="50" value="0" step="1"
-                class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
-                oninput="onEditSliderChange()">
-              <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>-50%</span><span>0%</span><span>+50%</span>
-              </div>
-            </div>
-
-            <!-- Slider Gamma (0.5 bis 2.0) -->
-            <div class="space-y-1">
-              <div class="flex justify-between text-xs text-slate-300 font-medium">
-                <span class="flex items-center gap-1">
-                  <span>Gamma</span>
-                  <span class="text-[10px] text-emerald-400 font-normal">(Echtzeit GPU)</span>
-                </span>
-                <span id="label-edit-gamma" class="font-mono text-amber-400 text-xs">1.00</span>
-              </div>
-              <input type="range" id="edit-slider-gamma" min="0.5" max="2.0" value="1.0" step="0.05"
-                class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
-                oninput="onEditSliderChange()">
-              <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>0.5 (dunkler)</span><span>1.0</span><span>2.0 (heller)</span>
+            <!-- 1-Klick Archiv-Schnellfilter -->
+            <div class="space-y-1.5 pb-2 border-b border-slate-800">
+              <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Archiv-Schnellfilter</span>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                <button type="button" onclick="applyArchivalPreset('document')"
+                  class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-slate-200 hover:text-amber-300 border border-slate-700 hover:border-amber-500/40 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm"
+                  title="Erhöht Kontrast & Schärfe für verblasste Schriften, Urkunden und Protokolle">
+                  <span>📜</span> <span>Urkunde</span>
+                </button>
+                <button type="button" onclick="applyArchivalPreset('unyellow')"
+                  class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-slate-200 hover:text-amber-300 border border-slate-700 hover:border-amber-500/40 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm"
+                  title="Entfernt Vergilbungen und Farbstiche durch saubere Monochromie & Tonwertspreizung">
+                  <span>🏛️</span> <span>Entgilben</span>
+                </button>
+                <button type="button" onclick="applyArchivalPreset('negative')"
+                  class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-slate-200 hover:text-amber-300 border border-slate-700 hover:border-amber-500/40 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm"
+                  title="Invertiert Glasplattennegative und Mikrofilme in Positivbilder">
+                  <span>🎞️</span> <span>Negativ</span>
+                </button>
+                <button type="button" onclick="applyArchivalPreset('neutral')"
+                  class="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 text-[11px] font-mono transition flex items-center justify-center gap-1 shadow-sm"
+                  title="Alle Regler auf neutralen Urzustand zurücksetzen">
+                  <span>↺</span> <span>Neutral</span>
+                </button>
               </div>
             </div>
 
-            <!-- Slider Schärfung (0% bis 100%) -->
-            <div class="space-y-1">
-              <div class="flex justify-between text-xs text-slate-300 font-medium">
-                <span class="flex items-center gap-1">
-                  <span>Schärfung</span>
-                  <span class="text-[10px] text-emerald-400 font-normal">(Faltungsmatrix)</span>
-                </span>
-                <span id="label-edit-sharpness" class="font-mono text-amber-400 text-xs">0%</span>
+            <!-- Kompakte 2-Spalten Slider Matrix -->
+            <div class="grid grid-cols-2 gap-x-3 gap-y-2.5">
+              <!-- Helligkeit -->
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs text-slate-300 font-medium">
+                  <span>Helligkeit</span>
+                  <span id="label-edit-brightness" class="font-mono text-amber-400 text-xs">0%</span>
+                </div>
+                <input type="range" id="edit-slider-brightness" min="-50" max="50" value="0" step="1"
+                  class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                  oninput="onEditSliderChange()">
+                <div class="flex justify-between text-[9px] text-slate-500 font-mono">
+                  <span>-50%</span><span>0</span><span>+50%</span>
+                </div>
               </div>
-              <input type="range" id="edit-slider-sharpness" min="0" max="100" value="0" step="2"
-                class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
-                oninput="onEditSliderChange()">
-              <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>0% (weich)</span><span>50%</span><span>100% (scharf)</span>
-              </div>
-            </div>
 
-            <!-- Slider Feinbegradigung / Deskew (-10° bis +10°) -->
-            <div class="space-y-1">
-              <div class="flex justify-between text-xs text-slate-300 font-medium">
-                <span>Feinbegradigung (Deskew)</span>
-                <span id="label-edit-fine-rotation" class="font-mono text-amber-400 text-xs">0.0°</span>
+              <!-- Kontrast -->
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs text-slate-300 font-medium">
+                  <span>Kontrast</span>
+                  <span id="label-edit-contrast" class="font-mono text-amber-400 text-xs">0%</span>
+                </div>
+                <input type="range" id="edit-slider-contrast" min="-50" max="50" value="0" step="1"
+                  class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                  oninput="onEditSliderChange()">
+                <div class="flex justify-between text-[9px] text-slate-500 font-mono">
+                  <span>-50%</span><span>0</span><span>+50%</span>
+                </div>
               </div>
-              <input type="range" id="edit-slider-fine-rotation" min="-10.0" max="10.0" value="0.0" step="0.1"
-                class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
-                oninput="onEditSliderChange()">
-              <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>-10°</span><span>0.0°</span><span>+10°</span>
-              </div>
-            </div>
 
-            <!-- Slider Farbsättigung / Entgilben (0% bis 150%) -->
-            <div class="space-y-1">
-              <div class="flex justify-between text-xs text-slate-300 font-medium">
-                <span>Farbsättigung / Entgilben</span>
-                <span id="label-edit-saturation" class="font-mono text-amber-400 text-xs">100%</span>
+              <!-- Gamma -->
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs text-slate-300 font-medium">
+                  <span class="truncate" title="Gamma (GPU Echtzeit)">Gamma</span>
+                  <span id="label-edit-gamma" class="font-mono text-amber-400 text-xs">1.00</span>
+                </div>
+                <input type="range" id="edit-slider-gamma" min="0.5" max="2.0" value="1.0" step="0.05"
+                  class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                  oninput="onEditSliderChange()">
+                <div class="flex justify-between text-[9px] text-slate-500 font-mono">
+                  <span>0.5 (dunkel)</span><span>1.0</span><span>2.0 (hell)</span>
+                </div>
               </div>
-              <input type="range" id="edit-slider-saturation" min="0" max="150" value="100" step="2"
-                class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
-                oninput="onEditSliderChange()">
-              <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>0% (S/W)</span><span>100% (normal)</span><span>150%</span>
+
+              <!-- Schärfung -->
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs text-slate-300 font-medium">
+                  <span class="truncate" title="Schärfung (Faltungsmatrix)">Schärfe</span>
+                  <span id="label-edit-sharpness" class="font-mono text-amber-400 text-xs">0%</span>
+                </div>
+                <input type="range" id="edit-slider-sharpness" min="0" max="100" value="0" step="2"
+                  class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                  oninput="onEditSliderChange()">
+                <div class="flex justify-between text-[9px] text-slate-500 font-mono">
+                  <span>0%</span><span>50%</span><span>100%</span>
+                </div>
+              </div>
+
+              <!-- Feinbegradigung -->
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs text-slate-300 font-medium">
+                  <span class="truncate" title="Feinbegradigung (-10° bis +10°)">Begradigen</span>
+                  <span id="label-edit-fine-rotation" class="font-mono text-amber-400 text-xs">0.0°</span>
+                </div>
+                <input type="range" id="edit-slider-fine-rotation" min="-10.0" max="10.0" value="0.0" step="0.1"
+                  class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                  oninput="onEditSliderChange()">
+                <div class="flex justify-between text-[9px] text-slate-500 font-mono">
+                  <span>-10°</span><span>0°</span><span>+10°</span>
+                </div>
+              </div>
+
+              <!-- Sättigung -->
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs text-slate-300 font-medium">
+                  <span class="truncate" title="Farbsättigung / Entgilben">Sättigung</span>
+                  <span id="label-edit-saturation" class="font-mono text-amber-400 text-xs">100%</span>
+                </div>
+                <input type="range" id="edit-slider-saturation" min="0" max="150" value="100" step="2"
+                  class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                  oninput="onEditSliderChange()">
+                <div class="flex justify-between text-[9px] text-slate-500 font-mono">
+                  <span>0% (S/W)</span><span>100%</span><span>150%</span>
+                </div>
               </div>
             </div>
 
@@ -1647,7 +1636,7 @@
   </div>
 
   <script src="/cropper.min.js"></script>
-  <script src="/app.js?v=3.9"></script>
+  <script src="/app.js?v=4.0"></script>
 </body>
 
 </html>

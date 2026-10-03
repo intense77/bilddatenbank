@@ -3505,37 +3505,58 @@ function stopCompareOriginal() {
 
 function toggleWideEditMode(forceState = null) {
   const dialog = document.getElementById('image-modal-dialog');
-  const img = document.getElementById('modal-img');
-  const sidePanel = document.getElementById('modal-side-panel');
   const btnLabel = document.getElementById('label-wide-mode-btn');
   if (!dialog) return;
 
   isWideEditMode = forceState !== null ? forceState : !isWideEditMode;
 
   if (isWideEditMode) {
-    dialog.classList.remove('max-w-5xl');
-    dialog.classList.add('max-w-[96vw]', 'w-[96vw]', 'max-h-[96vh]', 'h-[96vh]');
-    if (img) {
-      img.classList.remove('max-h-[58vh]');
-      img.classList.add('max-h-[78vh]');
-    }
-    if (sidePanel) {
-      sidePanel.classList.remove('max-h-[64vh]');
-      sidePanel.classList.add('max-h-[82vh]');
-    }
+    dialog.classList.add('workbench-mode');
     if (btnLabel) btnLabel.textContent = 'Normal';
   } else {
-    dialog.classList.remove('max-w-[96vw]', 'w-[96vw]', 'max-h-[96vh]', 'h-[96vh]');
-    dialog.classList.add('max-w-5xl');
-    if (img) {
-      img.classList.remove('max-h-[78vh]');
-      img.classList.add('max-h-[58vh]');
-    }
-    if (sidePanel) {
-      sidePanel.classList.remove('max-h-[82vh]');
-      sidePanel.classList.add('max-h-[64vh]');
-    }
+    dialog.classList.remove('workbench-mode');
     if (btnLabel) btnLabel.textContent = 'Groß';
+  }
+
+  // Bei Großansicht hochauflösendes Preview laden
+  if (isWideEditMode && currentModalImageDetails && currentModalImageDetails.filePath) {
+    const img = document.getElementById('modal-img');
+    if (img && !img.src.includes('max_dim=2400')) {
+      img.src = `/images/serve?path=${encodeURIComponent(currentModalImageDetails.filePath)}&max_dim=2400`;
+    }
+  }
+
+  // Bounding Boxes / Cropper Resize synchronisieren
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 100);
+}
+
+function applyArchivalPreset(presetName) {
+  if (presetName === 'document') {
+    currentEditSettings.brightness = 0;
+    currentEditSettings.contrast = 30;
+    currentEditSettings.gamma = 0.85;
+    currentEditSettings.sharpness = 45;
+    currentEditSettings.saturation = 80;
+    loadModalEditSettings(currentEditSettings);
+    showToast('Preset „Urkunde / Schrift“ angewendet.', false);
+  } else if (presetName === 'unyellow') {
+    currentEditSettings.brightness = 5;
+    currentEditSettings.contrast = 20;
+    currentEditSettings.gamma = 1.05;
+    currentEditSettings.sharpness = 20;
+    currentEditSettings.saturation = 0;
+    loadModalEditSettings(currentEditSettings);
+    showToast('Preset „Entgilben / S/W“ angewendet.', false);
+  } else if (presetName === 'negative') {
+    currentEditSettings.invert = true;
+    currentEditSettings.contrast = 20;
+    currentEditSettings.gamma = 1.1;
+    loadModalEditSettings(currentEditSettings);
+    showToast('Preset „Negativ-Invertierung“ angewendet.', false);
+  } else if (presetName === 'neutral') {
+    resetAllImageAdjustments();
   }
 }
 
