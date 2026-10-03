@@ -858,6 +858,9 @@ class ImageEditSettingsRequest(BaseModel):
     gamma: float = Field(1.0, description="Gamma von 0.5 bis 2.0")
     sharpness: float = Field(0.0, description="Schärfung von 0 bis 100")
     rotation: int = Field(0, description="Drehung in Grad (0, 90, 180, 270)")
+    fine_rotation: float = Field(0.0, description="Feinbegradigung von -10.0° bis +10.0°")
+    flip_h: bool = Field(False, description="Horizontales Spiegeln (für Glasplatten)")
+    saturation: float = Field(100.0, description="Farbsättigung / Entgilben von 0 bis 150")
     invert: bool = Field(False, description="Negativ-Invertierung")
     crop: Optional[Dict[str, Any]] = Field(None, description="Ausschnitt-Koordinaten")
 
@@ -881,6 +884,9 @@ def save_image_edit_settings(
         "gamma": data.gamma,
         "sharpness": data.sharpness,
         "rotation": data.rotation,
+        "fine_rotation": data.fine_rotation,
+        "flip_h": data.flip_h,
+        "saturation": data.saturation,
         "invert": data.invert,
         "crop": data.crop,
     }
@@ -923,6 +929,9 @@ def export_processed_image_endpoint(
     gamma: Optional[float] = Query(None, description="Gamma (0.5 bis 2.0)"),
     sharpness: Optional[float] = Query(None, description="Schärfung (0 bis 100)"),
     rotation: Optional[int] = Query(None, description="Rotation (0, 90, 180, 270)"),
+    fine_rotation: Optional[float] = Query(None, description="Feindrehung (-10 bis 10)"),
+    flip_h: Optional[bool] = Query(None, description="Horizontales Spiegeln"),
+    saturation: Optional[float] = Query(None, description="Sättigung (0 bis 150)"),
     invert: Optional[bool] = Query(None, description="Negativ-Invertierung"),
     crop: Optional[str] = Query(None, description="Crop als JSON-String"),
     qdrant: QdrantService = Depends(get_qdrant_service),
@@ -946,6 +955,9 @@ def export_processed_image_endpoint(
         "gamma": gamma if gamma is not None else float(saved_settings.get("gamma", 1.0)),
         "sharpness": sharpness if sharpness is not None else float(saved_settings.get("sharpness", 0.0)),
         "rotation": rotation if rotation is not None else int(saved_settings.get("rotation", 0)),
+        "fine_rotation": fine_rotation if fine_rotation is not None else float(saved_settings.get("fine_rotation", 0.0)),
+        "flip_h": flip_h if flip_h is not None else bool(saved_settings.get("flip_h", False)),
+        "saturation": saturation if saturation is not None else float(saved_settings.get("saturation", 100.0)),
         "invert": invert if invert is not None else bool(saved_settings.get("invert", False)),
         "crop": None,
     }

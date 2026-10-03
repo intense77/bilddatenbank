@@ -53,17 +53,20 @@ class ImageTransformService:
             if (right - left) > 5 and (bottom - top) > 5:
                 img = img.crop((left, top, right, bottom))
 
-        # 2. Rotation (im Uhrzeigersinn: 90, 180, 270)
-        rotation = int(settings.get("rotation", 0)) % 360
-        if rotation in (90, 180, 270):
-            # PIL .rotate() dreht gegen den Uhrzeigersinn -> -rotation dreht im Uhrzeigersinn
-            img = img.rotate(-rotation, expand=True)
+        # 2. Rotation & Feinbegradigung (Deskew)
+        total_rot = (float(settings.get("rotation", 0)) + float(settings.get("fine_rotation", 0))) % 360
+        if abs(total_rot) > 0.01:
+            img = img.rotate(-total_rot, resample=Image.Resampling.BICUBIC, expand=True)
+
+        # 3. Horizontales Spiegeln (Flip H - wichtig für seitenverkehrte Glasplatten)
+        if settings.get("flip_h", False):
+            img = ImageOps.mirror(img)
 
         # Farbformat sicherstellen
         if img.mode not in ("RGB", "RGBA", "L"):
             img = img.convert("RGB")
 
-        # 3. Negativ-Invertierung (z. B. für Glasplattennegative)
+        # 4. Negativ-Invertierung (z. B. für Glasplattennegative)
         if settings.get("invert", False):
             if img.mode == "RGBA":
                 r, g, b, a = img.split()
@@ -74,21 +77,27 @@ class ImageTransformService:
             else:
                 img = ImageOps.invert(img.convert("RGB"))
 
-        # 4. Helligkeit (-50% bis +50% -> Faktor 0.5 bis 1.5)
+        # 5. Helligkeit (-50% bis +50% -> Faktor 0.5 bis 1.5)
         brightness_pct = float(settings.get("brightness", 0))
         if brightness_pct != 0:
             factor = 1.0 + (brightness_pct / 100.0)
             factor = max(0.1, min(3.0, factor))
             img = ImageEnhance.Brightness(img).enhance(factor)
 
-        # 5. Kontrast (-50% bis +50% -> Faktor 0.5 bis 1.5)
+        # 6. Kontrast (-50% bis +50% -> Faktor 0.5 bis 1.5)
         contrast_pct = float(settings.get("contrast", 0))
         if contrast_pct != 0:
             factor = 1.0 + (contrast_pct / 100.0)
             factor = max(0.1, min(3.0, factor))
             img = ImageEnhance.Contrast(img).enhance(factor)
 
-        # 6. Gamma-Korrektur (0.5 bis 2.0, Standard 1.0)
+        # 7. Sättigung / Entgilben (0% = Monochrom, 100% = normal, 150% = erhöht)
+        saturation_pct = float(settings.get("saturation", 100))
+        if saturation_pct != 100 and img.mode in ("RGB", "RGBA"):
+            sat_factor = max(0.0, min(3.0, saturation_pct / 100.0))
+            img = ImageEnhance.Color(img).enhance(sat_factor)
+
+        # 8. Gamma-Korrektur (0.5 bis 2.0, Standard 1.0)
         gamma = float(settings.get("gamma", 1.0))
         if gamma != 1.0 and 0.2 <= gamma <= 3.0:
             inv_gamma = 1.0 / gamma
@@ -99,7 +108,7 @@ class ImageTransformService:
                 lut = lut * 3 + list(range(256))
             img = img.point(lut)
 
-        # 7. Schärfung (0 bis 100 -> Faktor 1.0 bis 3.0)
+        # 9. Schärfung (0 bis 100 -> Faktor 1.0 bis 3.0)
         sharpness = float(settings.get("sharpness", 0))
         if sharpness > 0:
             factor = 1.0 + (sharpness / 50.0)

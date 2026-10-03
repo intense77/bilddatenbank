@@ -1488,6 +1488,7 @@ function closeImageModal() {
     cropperInstance = null;
   }
   resetAllImageAdjustments();
+  toggleWideEditMode(false);
   toggleMetadataEditMode(false);
   switchModalSidebarTab('meta');
   currentModalImageDetails = null;
@@ -3288,11 +3289,16 @@ let currentEditSettings = {
   gamma: 1.0,
   sharpness: 0,
   rotation: 0,
+  fine_rotation: 0.0,
+  flip_h: false,
+  saturation: 100,
   invert: false,
   crop: null
 };
 
 let cropperInstance = null;
+let currentCropperRatio = NaN;
+let isWideEditMode = false;
 
 function loadModalEditSettings(settings) {
   currentEditSettings = {
@@ -3301,6 +3307,9 @@ function loadModalEditSettings(settings) {
     gamma: 1.0,
     sharpness: 0,
     rotation: 0,
+    fine_rotation: 0.0,
+    flip_h: false,
+    saturation: 100,
     invert: false,
     crop: null
   };
@@ -3314,24 +3323,41 @@ function loadModalEditSettings(settings) {
   const cSlider = document.getElementById('edit-slider-contrast');
   const gSlider = document.getElementById('edit-slider-gamma');
   const sSlider = document.getElementById('edit-slider-sharpness');
+  const rSlider = document.getElementById('edit-slider-fine-rotation');
+  const satSlider = document.getElementById('edit-slider-saturation');
 
   if (bSlider) bSlider.value = currentEditSettings.brightness;
   if (cSlider) cSlider.value = currentEditSettings.contrast;
   if (gSlider) gSlider.value = currentEditSettings.gamma;
   if (sSlider) sSlider.value = currentEditSettings.sharpness;
+  if (rSlider) rSlider.value = currentEditSettings.fine_rotation;
+  if (satSlider) satSlider.value = currentEditSettings.saturation;
 
   const bLabel = document.getElementById('label-edit-brightness');
   const cLabel = document.getElementById('label-edit-contrast');
   const gLabel = document.getElementById('label-edit-gamma');
   const sLabel = document.getElementById('label-edit-sharpness');
+  const rLabel = document.getElementById('label-edit-fine-rotation');
+  const satLabel = document.getElementById('label-edit-saturation');
 
   if (bLabel) bLabel.textContent = `${currentEditSettings.brightness > 0 ? '+' : ''}${currentEditSettings.brightness}%`;
   if (cLabel) cLabel.textContent = `${currentEditSettings.contrast > 0 ? '+' : ''}${currentEditSettings.contrast}%`;
   if (gLabel) gLabel.textContent = Number(currentEditSettings.gamma).toFixed(2);
   if (sLabel) sLabel.textContent = `${currentEditSettings.sharpness}%`;
+  if (rLabel) rLabel.textContent = `${currentEditSettings.fine_rotation > 0 ? '+' : ''}${Number(currentEditSettings.fine_rotation).toFixed(1)}°`;
+  if (satLabel) satLabel.textContent = `${currentEditSettings.saturation}%`;
 
   const rotBtnLabel = document.getElementById('label-edit-rotation-btn');
-  if (rotBtnLabel) rotBtnLabel.textContent = `${currentEditSettings.rotation}° drehen`;
+  if (rotBtnLabel) rotBtnLabel.textContent = `${currentEditSettings.rotation}°`;
+
+  const flipBtn = document.getElementById('edit-btn-flip-h');
+  if (flipBtn) {
+    if (currentEditSettings.flip_h) {
+      flipBtn.classList.add('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    } else {
+      flipBtn.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    }
+  }
 
   const invBtn = document.getElementById('edit-btn-invert');
   if (invBtn) {
@@ -3348,7 +3374,7 @@ function loadModalEditSettings(settings) {
 
   if (currentEditSettings.crop) {
     if (cropBadge) {
-      cropBadge.textContent = 'aktiv';
+      cropBadge.textContent = `${Math.round(currentEditSettings.crop.width)}×${Math.round(currentEditSettings.crop.height)} px`;
       cropBadge.className = 'text-[10px] text-emerald-400 font-mono font-semibold';
     }
     if (clearCropBtn) clearCropBtn.classList.remove('hidden');
@@ -3370,34 +3396,52 @@ function onEditSliderChange() {
   const cSlider = document.getElementById('edit-slider-contrast');
   const gSlider = document.getElementById('edit-slider-gamma');
   const sSlider = document.getElementById('edit-slider-sharpness');
+  const rSlider = document.getElementById('edit-slider-fine-rotation');
+  const satSlider = document.getElementById('edit-slider-saturation');
 
   currentEditSettings.brightness = bSlider ? parseInt(bSlider.value, 10) : 0;
   currentEditSettings.contrast = cSlider ? parseInt(cSlider.value, 10) : 0;
   currentEditSettings.gamma = gSlider ? parseFloat(gSlider.value) : 1.0;
   currentEditSettings.sharpness = sSlider ? parseInt(sSlider.value, 10) : 0;
+  currentEditSettings.fine_rotation = rSlider ? parseFloat(rSlider.value) : 0.0;
+  currentEditSettings.saturation = satSlider ? parseInt(satSlider.value, 10) : 100;
 
   const bLabel = document.getElementById('label-edit-brightness');
   const cLabel = document.getElementById('label-edit-contrast');
   const gLabel = document.getElementById('label-edit-gamma');
   const sLabel = document.getElementById('label-edit-sharpness');
+  const rLabel = document.getElementById('label-edit-fine-rotation');
+  const satLabel = document.getElementById('label-edit-saturation');
 
   if (bLabel) bLabel.textContent = `${currentEditSettings.brightness > 0 ? '+' : ''}${currentEditSettings.brightness}%`;
   if (cLabel) cLabel.textContent = `${currentEditSettings.contrast > 0 ? '+' : ''}${currentEditSettings.contrast}%`;
   if (gLabel) gLabel.textContent = Number(currentEditSettings.gamma).toFixed(2);
   if (sLabel) sLabel.textContent = `${currentEditSettings.sharpness}%`;
+  if (rLabel) rLabel.textContent = `${currentEditSettings.fine_rotation > 0 ? '+' : ''}${Number(currentEditSettings.fine_rotation).toFixed(1)}°`;
+  if (satLabel) satLabel.textContent = `${currentEditSettings.saturation}%`;
 
   applyLiveImageTransformations();
 }
 
-function applyLiveImageTransformations() {
+function applyLiveImageTransformations(isComparingOriginal = false) {
   const img = document.getElementById('modal-img');
   if (!img) return;
+
+  if (isComparingOriginal) {
+    img.style.filter = 'none';
+    img.style.transform = 'none';
+    return;
+  }
 
   const b = currentEditSettings.brightness;
   const c = currentEditSettings.contrast;
   const g = currentEditSettings.gamma;
+  const s = currentEditSettings.sharpness;
+  const sat = currentEditSettings.saturation;
   const inv = currentEditSettings.invert;
-  const rot = currentEditSettings.rotation;
+  const rot = currentEditSettings.rotation || 0;
+  const fineRot = currentEditSettings.fine_rotation || 0;
+  const flipH = currentEditSettings.flip_h;
 
   const filters = [];
   const brightPct = Math.round(100 + b);
@@ -3406,17 +3450,112 @@ function applyLiveImageTransformations() {
   const contrastPct = Math.round(100 + c);
   if (contrastPct !== 100) filters.push(`contrast(${contrastPct}%)`);
 
+  if (sat !== 100) filters.push(`saturate(${sat}%)`);
+
   if (inv) filters.push('invert(1)');
 
+  // Hardware-beschleunigte SVG Filter für Gamma und Schärfung
+  const hasGamma = Math.abs(g - 1.0) > 0.01;
+  const hasSharpness = s > 0;
+
+  if (hasGamma || hasSharpness) {
+    const exp = (1.0 / Math.max(0.1, g)).toFixed(4);
+    const rFunc = document.getElementById('svg-gamma-r');
+    const gFunc = document.getElementById('svg-gamma-g');
+    const bFunc = document.getElementById('svg-gamma-b');
+    if (rFunc) rFunc.setAttribute('exponent', exp);
+    if (gFunc) gFunc.setAttribute('exponent', exp);
+    if (bFunc) bFunc.setAttribute('exponent', exp);
+
+    const k = (s / 100.0).toFixed(2);
+    const center = (1.0 + 4.0 * parseFloat(k)).toFixed(2);
+    const matrix = document.getElementById('svg-sharpen-matrix');
+    if (matrix) {
+      matrix.setAttribute('kernelMatrix', `0 -${k} 0  -${k} ${center} -${k}  0 -${k} 0`);
+    }
+
+    filters.push('url(#archive-live-filter)');
+  }
+
   img.style.filter = filters.length > 0 ? filters.join(' ') : 'none';
-  img.style.transform = rot !== 0 ? `rotate(${rot}deg)` : 'none';
+
+  // CSS Transform: Spiegelung & Rotation
+  const totalAngle = (rot + fineRot) % 360;
+  const scaleX = flipH ? -1 : 1;
+  const transformParts = [];
+  if (scaleX !== 1) transformParts.push(`scaleX(${scaleX})`);
+  if (totalAngle !== 0) transformParts.push(`rotate(${totalAngle}deg)`);
+
+  img.style.transform = transformParts.length > 0 ? transformParts.join(' ') : 'none';
+  img.style.transformOrigin = 'center center';
   img.style.transition = 'filter 0.05s ease, transform 0.15s ease';
+}
+
+function startCompareOriginal() {
+  const btn = document.getElementById('btn-compare-original');
+  if (btn) btn.classList.add('bg-amber-500', 'text-slate-950', 'font-bold');
+  applyLiveImageTransformations(true);
+}
+
+function stopCompareOriginal() {
+  const btn = document.getElementById('btn-compare-original');
+  if (btn) btn.classList.remove('bg-amber-500', 'text-slate-950', 'font-bold');
+  applyLiveImageTransformations(false);
+}
+
+function toggleWideEditMode(forceState = null) {
+  const dialog = document.getElementById('image-modal-dialog');
+  const img = document.getElementById('modal-img');
+  const sidePanel = document.getElementById('modal-side-panel');
+  const btnLabel = document.getElementById('label-wide-mode-btn');
+  if (!dialog) return;
+
+  isWideEditMode = forceState !== null ? forceState : !isWideEditMode;
+
+  if (isWideEditMode) {
+    dialog.classList.remove('max-w-5xl');
+    dialog.classList.add('max-w-[96vw]', 'w-[96vw]', 'max-h-[96vh]', 'h-[96vh]');
+    if (img) {
+      img.classList.remove('max-h-[58vh]');
+      img.classList.add('max-h-[78vh]');
+    }
+    if (sidePanel) {
+      sidePanel.classList.remove('max-h-[64vh]');
+      sidePanel.classList.add('max-h-[82vh]');
+    }
+    if (btnLabel) btnLabel.textContent = 'Normal';
+  } else {
+    dialog.classList.remove('max-w-[96vw]', 'w-[96vw]', 'max-h-[96vh]', 'h-[96vh]');
+    dialog.classList.add('max-w-5xl');
+    if (img) {
+      img.classList.remove('max-h-[78vh]');
+      img.classList.add('max-h-[58vh]');
+    }
+    if (sidePanel) {
+      sidePanel.classList.remove('max-h-[82vh]');
+      sidePanel.classList.add('max-h-[64vh]');
+    }
+    if (btnLabel) btnLabel.textContent = 'Groß';
+  }
 }
 
 function rotateEditTransformation(delta = 90) {
   currentEditSettings.rotation = (currentEditSettings.rotation + delta) % 360;
   const rotBtnLabel = document.getElementById('label-edit-rotation-btn');
-  if (rotBtnLabel) rotBtnLabel.textContent = `${currentEditSettings.rotation}° drehen`;
+  if (rotBtnLabel) rotBtnLabel.textContent = `${currentEditSettings.rotation}°`;
+  applyLiveImageTransformations();
+}
+
+function toggleEditFlipH() {
+  currentEditSettings.flip_h = !currentEditSettings.flip_h;
+  const flipBtn = document.getElementById('edit-btn-flip-h');
+  if (flipBtn) {
+    if (currentEditSettings.flip_h) {
+      flipBtn.classList.add('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    } else {
+      flipBtn.classList.remove('bg-amber-500/30', 'text-amber-400', 'border-amber-500/50');
+    }
+  }
   applyLiveImageTransformations();
 }
 
@@ -3444,11 +3583,41 @@ function resetAllImageAdjustments() {
     gamma: 1.0,
     sharpness: 0,
     rotation: 0,
+    fine_rotation: 0.0,
+    flip_h: false,
+    saturation: 100,
     invert: false,
     crop: null
   };
   loadModalEditSettings(currentEditSettings);
   showToast('Alle Bildparameter auf neutralen Zustand zurückgesetzt.', false);
+}
+
+function setCropperRatio(ratio, btnElement) {
+  const img = document.getElementById('modal-img');
+  if (ratio === 'original') {
+    if (img && img.naturalWidth && img.naturalHeight) {
+      currentCropperRatio = img.naturalWidth / img.naturalHeight;
+    } else {
+      currentCropperRatio = NaN;
+    }
+  } else {
+    currentCropperRatio = Number(ratio);
+  }
+
+  // Update preset buttons styling
+  document.querySelectorAll('.crop-ratio-btn').forEach(b => {
+    b.className = 'crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 transition text-center';
+  });
+  if (btnElement) {
+    btnElement.className = 'crop-ratio-btn flex-1 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 transition text-center font-bold';
+  }
+
+  if (cropperInstance) {
+    cropperInstance.setAspectRatio(currentCropperRatio);
+  } else {
+    toggleCropperMode();
+  }
 }
 
 function toggleCropperMode() {
@@ -3461,28 +3630,29 @@ function toggleCropperMode() {
     // Auswahl übernehmen
     const data = cropperInstance.getData(true);
     currentEditSettings.crop = {
-      x: data.x,
-      y: data.y,
-      width: data.width,
-      height: data.height,
+      x: Math.round(data.x),
+      y: Math.round(data.y),
+      width: Math.round(data.width),
+      height: Math.round(data.height),
       is_percent: false
     };
     cropperInstance.destroy();
     cropperInstance = null;
 
     if (badge) {
-      badge.textContent = `${Math.round(data.width)}×${Math.round(data.height)} px`;
+      badge.textContent = `${currentEditSettings.crop.width}×${currentEditSettings.crop.height} px`;
       badge.className = 'text-[10px] text-emerald-400 font-mono font-semibold';
     }
     if (btnLabel) btnLabel.textContent = 'Ausschnitt ändern';
     if (clearBtn) clearBtn.classList.remove('hidden');
-    showToast('Ausschnitt non-destruktiv übernommen.', false);
+    showToast(`Ausschnitt (${currentEditSettings.crop.width}×${currentEditSettings.crop.height} px) non-destruktiv übernommen.`, false);
   } else {
     if (typeof Cropper === 'undefined') {
       showToast('Cropper-Bibliothek wird initialisiert...', true);
       return;
     }
     cropperInstance = new Cropper(img, {
+      aspectRatio: currentCropperRatio,
       viewMode: 1,
       autoCropArea: 0.85,
       movable: false,
@@ -3544,6 +3714,9 @@ async function saveEditSettingsToBackend() {
       gamma: currentEditSettings.gamma,
       sharpness: currentEditSettings.sharpness,
       rotation: currentEditSettings.rotation,
+      fine_rotation: currentEditSettings.fine_rotation,
+      flip_h: currentEditSettings.flip_h,
+      saturation: currentEditSettings.saturation,
       invert: currentEditSettings.invert,
       crop: currentEditSettings.crop
     };
@@ -3583,6 +3756,9 @@ function exportProcessedImage(format = 'jpg') {
     gamma: currentEditSettings.gamma,
     sharpness: currentEditSettings.sharpness,
     rotation: currentEditSettings.rotation,
+    fine_rotation: currentEditSettings.fine_rotation,
+    flip_h: currentEditSettings.flip_h,
+    saturation: currentEditSettings.saturation,
     invert: currentEditSettings.invert
   });
 

@@ -799,11 +799,25 @@
     </footer>
   </main>
 
+  <!-- Hardware-beschleunigte SVG Filter für browser-natives Gamma und Schärfung -->
+  <svg style="position: absolute; width: 0; height: 0; overflow: hidden;" aria-hidden="true">
+    <defs>
+      <filter id="archive-live-filter" color-interpolation-filters="sRGB">
+        <feComponentTransfer id="svg-gamma-transfer">
+          <feFuncR id="svg-gamma-r" type="gamma" amplitude="1" exponent="1"/>
+          <feFuncG id="svg-gamma-g" type="gamma" amplitude="1" exponent="1"/>
+          <feFuncB id="svg-gamma-b" type="gamma" amplitude="1" exponent="1"/>
+        </feComponentTransfer>
+        <feConvolveMatrix id="svg-sharpen-matrix" order="3" preserveAlpha="true" kernelMatrix="0 0 0  0 1 0  0 0 0"/>
+      </filter>
+    </defs>
+  </svg>
+
   <!-- ================= BILD-DETAIL MODAL ================= -->
   <div id="image-modal"
-    class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 sm:p-6 md:p-8 bg-slate-950/80 backdrop-blur-md">
-    <div
-      class="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    class="fixed inset-0 z-50 hidden flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/85 backdrop-blur-md">
+    <div id="image-modal-dialog"
+      class="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-5xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden transition-all duration-300">
 
       <!-- Modal Header -->
       <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
@@ -1071,16 +1085,34 @@
           </div>
 
           <!-- TAB 2: NON-DESTRUKTIVE BILDBEARBEITUNG -->
-          <div id="modal-tab-content-edit" class="hidden p-4 flex-1 overflow-y-auto space-y-3.5">
+          <div id="modal-tab-content-edit" class="hidden p-3.5 sm:p-4 flex-1 overflow-y-auto space-y-3.5">
+            <!-- Header mit Aktionen -->
             <div class="flex items-center justify-between border-b border-slate-800 pb-2">
               <span class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-                <span class="text-amber-400">🎛️</span> Transformations-Parameter
+                <span class="text-amber-400">🎛️</span> Parameter
               </span>
-              <button type="button" onclick="resetAllImageAdjustments()"
-                class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 text-[11px] font-mono transition"
-                title="Alle Schieberegler und Transformationen auf neutralen Zustand zurücksetzen">
-                ↺ Reset
-              </button>
+              <div class="flex items-center gap-1.5">
+                <!-- Vorher/Nachher Vergleich Button (Gedrückt halten) -->
+                <button type="button" id="btn-compare-original"
+                  onmousedown="startCompareOriginal()" onmouseup="stopCompareOriginal()"
+                  onmouseleave="stopCompareOriginal()"
+                  ontouchstart="startCompareOriginal()" ontouchend="stopCompareOriginal()"
+                  class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 text-[11px] font-medium transition flex items-center gap-1 shadow-sm select-none"
+                  title="Gedrückt halten für Vorher/Nachher-Originalvergleich">
+                  <span>👁️</span> <span>Original</span>
+                </button>
+                <!-- Großansicht / Werkbank Toggle Button -->
+                <button type="button" id="btn-toggle-wide-mode" onclick="toggleWideEditMode()"
+                  class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 text-[11px] font-medium transition flex items-center gap-1 shadow-sm"
+                  title="Werkbank-Größe maximieren (Vorschau vergrößern)">
+                  <span>⛶</span> <span id="label-wide-mode-btn">Groß</span>
+                </button>
+                <button type="button" onclick="resetAllImageAdjustments()"
+                  class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 text-[11px] font-mono transition"
+                  title="Alle Schieberegler und Transformationen auf neutralen Zustand zurücksetzen">
+                  ↺ Reset
+                </button>
+              </div>
             </div>
 
             <!-- Slider Helligkeit (-50% bis +50%) -->
@@ -1093,7 +1125,7 @@
                 class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
                 oninput="onEditSliderChange()">
               <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>-50%</span><span>0% (neutral)</span><span>+50%</span>
+                <span>-50%</span><span>0%</span><span>+50%</span>
               </div>
             </div>
 
@@ -1107,28 +1139,34 @@
                 class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
                 oninput="onEditSliderChange()">
               <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>-50%</span><span>0% (neutral)</span><span>+50%</span>
+                <span>-50%</span><span>0%</span><span>+50%</span>
               </div>
             </div>
 
             <!-- Slider Gamma (0.5 bis 2.0) -->
             <div class="space-y-1">
               <div class="flex justify-between text-xs text-slate-300 font-medium">
-                <span>Gamma</span>
-                <span id="label-edit-gamma" class="font-mono text-amber-400 text-xs">1.0</span>
+                <span class="flex items-center gap-1">
+                  <span>Gamma</span>
+                  <span class="text-[10px] text-emerald-400 font-normal">(Echtzeit GPU)</span>
+                </span>
+                <span id="label-edit-gamma" class="font-mono text-amber-400 text-xs">1.00</span>
               </div>
               <input type="range" id="edit-slider-gamma" min="0.5" max="2.0" value="1.0" step="0.05"
                 class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
                 oninput="onEditSliderChange()">
               <div class="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>0.5</span><span>1.0 (neutral)</span><span>2.0</span>
+                <span>0.5 (dunkler)</span><span>1.0</span><span>2.0 (heller)</span>
               </div>
             </div>
 
             <!-- Slider Schärfung (0% bis 100%) -->
             <div class="space-y-1">
               <div class="flex justify-between text-xs text-slate-300 font-medium">
-                <span>Schärfung</span>
+                <span class="flex items-center gap-1">
+                  <span>Schärfung</span>
+                  <span class="text-[10px] text-emerald-400 font-normal">(Faltungsmatrix)</span>
+                </span>
                 <span id="label-edit-sharpness" class="font-mono text-amber-400 text-xs">0%</span>
               </div>
               <input type="range" id="edit-slider-sharpness" min="0" max="100" value="0" step="2"
@@ -1139,21 +1177,54 @@
               </div>
             </div>
 
-            <!-- Schnelltasten: 90°-Drehung & Negativ-Invertierung -->
-            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+            <!-- Slider Feinbegradigung / Deskew (-10° bis +10°) -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs text-slate-300 font-medium">
+                <span>Feinbegradigung (Deskew)</span>
+                <span id="label-edit-fine-rotation" class="font-mono text-amber-400 text-xs">0.0°</span>
+              </div>
+              <input type="range" id="edit-slider-fine-rotation" min="-10.0" max="10.0" value="0.0" step="0.1"
+                class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                oninput="onEditSliderChange()">
+              <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+                <span>-10°</span><span>0.0°</span><span>+10°</span>
+              </div>
+            </div>
+
+            <!-- Slider Farbsättigung / Entgilben (0% bis 150%) -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs text-slate-300 font-medium">
+                <span>Farbsättigung / Entgilben</span>
+                <span id="label-edit-saturation" class="font-mono text-amber-400 text-xs">100%</span>
+              </div>
+              <input type="range" id="edit-slider-saturation" min="0" max="150" value="100" step="2"
+                class="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+                oninput="onEditSliderChange()">
+              <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+                <span>0% (S/W)</span><span>100% (normal)</span><span>150%</span>
+              </div>
+            </div>
+
+            <!-- Schnelltasten: 90°-Drehung, Spiegeln (Flip H), Negativ-Invertierung -->
+            <div class="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-800">
               <button type="button" onclick="rotateEditTransformation(90)"
-                class="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm"
+                class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm"
                 title="Bildanzeige non-destruktiv um 90° drehen">
-                <span>↻</span> <span id="label-edit-rotation-btn">90° drehen</span>
+                <span>↻</span> <span id="label-edit-rotation-btn">90°</span>
+              </button>
+              <button type="button" id="edit-btn-flip-h" onclick="toggleEditFlipH()"
+                class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm"
+                title="Horizontale Spiegelung (ideal für seitenverkehrte Glasplatten & Negative)">
+                <span>🪞</span> <span>Spiegeln</span>
               </button>
               <button type="button" id="edit-btn-invert" onclick="toggleEditInvert()"
-                class="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm"
+                class="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-sm"
                 title="Farben umkehren (unverzichtbar für Glasplattennegative und Mikrofilme)">
-                <span>🔄</span> <span>Negativ-Scan</span>
+                <span>🔄</span> <span>Negativ</span>
               </button>
             </div>
 
-            <!-- Cropper.js Ausschnittswahl -->
+            <!-- Cropper.js Ausschnittswahl mit Seitenverhältnis-Presets -->
             <div class="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
@@ -1161,6 +1232,16 @@
                 </span>
                 <span id="cropper-status-badge" class="text-[10px] text-slate-500 font-mono">inaktiv</span>
               </div>
+
+              <!-- Aspect Ratio Presets -->
+              <div class="flex items-center gap-1 text-[10px] font-mono">
+                <button type="button" onclick="setCropperRatio(NaN, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">Frei</button>
+                <button type="button" onclick="setCropperRatio('original', this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700">Original</button>
+                <button type="button" onclick="setCropperRatio(1, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700">1:1</button>
+                <button type="button" onclick="setCropperRatio(4/3, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700">4:3</button>
+                <button type="button" onclick="setCropperRatio(1/1.4142, this)" class="crop-ratio-btn flex-1 py-1 rounded bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700">DIN A4</button>
+              </div>
+
               <div class="flex items-center gap-2">
                 <button type="button" id="btn-toggle-cropper" onclick="toggleCropperMode()"
                   class="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition flex items-center justify-center gap-1 shadow-sm">
@@ -1184,12 +1265,12 @@
               <div class="flex items-center gap-2">
                 <button type="button" onclick="exportProcessedImage('jpg')"
                   class="flex-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-emerald-400 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm"
-                  title="Wendet die Parameter via Pillow an und lädt ein bearbeitetes JPEG herunter">
+                  title="Wendet die Parameter via Pillow serverseitig an und streamt ein JPEG">
                   <span>📥</span> <span>JPEG Export</span>
                 </button>
                 <button type="button" onclick="exportProcessedImage('tiff')"
                   class="flex-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-blue-400 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm"
-                  title="Wendet die Parameter via Pillow an und lädt ein verlustfreies TIFF herunter">
+                  title="Wendet die Parameter via Pillow serverseitig an und streamt ein TIFF">
                   <span>📥</span> <span>TIFF Export</span>
                 </button>
               </div>
@@ -1566,7 +1647,7 @@
   </div>
 
   <script src="/cropper.min.js"></script>
-  <script src="/app.js?v=3.7"></script>
+  <script src="/app.js?v=3.9"></script>
 </body>
 
 </html>
