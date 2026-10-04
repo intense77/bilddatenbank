@@ -67,6 +67,12 @@ def get_image_rotation_service():
     )
 
 
+@lru_cache(maxsize=1)
+def get_network_service():
+    from app.services.network_service import NetworkService
+    return NetworkService(qdrant_service=get_qdrant_service())
+
+
 def clear_face_service_cache():
     """Löscht den Cache für get_face_service und get_indexing_service bei Schalterwechsel."""
     get_face_service.cache_clear()

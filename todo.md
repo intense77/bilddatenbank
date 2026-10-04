@@ -328,13 +328,13 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   * **Historische Deduktion:** Unbenannte Personen im Umfeld prominenter Persönlichkeiten (z. B. *„Wer ist der unbekannte Geistliche, der auf 6 verschiedenen Fotos neben Bischof Müller steht?“*) können über Co-Occurrence-Muster und Aktenabgleich in Minuten identifiziert werden.
   * **Serendipity & freies Erkunden:** Archivare und Historiker können sich von Foto zu Foto durch das soziale Geflecht einer Stadt oder Pfarrei hangeln, ohne die Recherche abbrechen zu müssen.
 * **Aufgaben:**
-  - [ ] **Direktsprung zum Cluster jeder abgebildeten Person (Cross-Cluster-Navigation):**
-    * Im Bild-Detailmodal und in den Gesichts-Tags: Klick auf eine Person B auf dem Foto von Person A führt mit einem Klick direkt zu allen Bildern von Person B.
-  - [ ] **Schnittmengen-Filter (Gemeinsame Aufnahmen zweier Personen):**
-    * Schnellfilter-Aktion: *„Zeige alle Fotos, auf denen Person A und Person B gemeinsam abgebildet sind“* (Qdrant-Schnittmenge der Elternbilder zweier Cluster).
-  - [ ] **Häufigkeits-Rangliste der Begleitpersonen (Co-Occurrence Ranking):**
-    * Statistische Auswertung im Personen-Profil: *„Wurde am häufigsten fotografiert mit: Pfarrer Huber (12-mal), Schwester Theresia (8-mal), Bürgermeister Schmidt (5-mal)“*.
-  - [ ] **Interaktiver Beziehungs-Graph (Netzwerk-Visualisierung):**
-    * Visuelle Graph-Darstellung (Knoten = Personen, Kanten = gemeinsame Fotos; Kantendicke = Häufigkeit), die historische Seilschaften, Freundschaften, Amtskreise und Familienverbände auf einen Blick greifbar macht.
+  - [x] **Direktsprung zum Cluster jeder abgebildeten Person (Cross-Cluster-Navigation):**
+    * Im Bild-Detailmodal und in den Gesichts-Tags: Klick auf eine Person B auf dem Foto von Person A führt mit einem Klick direkt zu allen Bildern von Person B (`jumpToCluster`).
+  - [x] **Schnittmengen-Filter (Gemeinsame Aufnahmen zweier Personen):**
+    * Schnellfilter-Aktion: *„Zeige alle Fotos, auf denen Person A und Person B gemeinsam abgebildet sind“* (Qdrant-Schnittmenge der Elternbilder zweier Cluster über `/network/shared-images`).
+  - [x] **Häufigkeits-Rangliste der Begleitpersonen (Co-Occurrence Ranking):**
+    * Statistische Auswertung im Personen-Profil: *„Wird oft gesehen mit: ...“* mit Profil-Chips, gemeinsamen Fotoanzahlen und 1-Klick-Filter (`/network/person/{cluster_id}/co-occurrences`).
+  - [x] **Interaktiver Beziehungs-Graph (Netzwerk-Visualisierung):**
+    * Neuer Tab „Netzwerk“ mit interaktiver Force-Directed Graph-Darstellung via lokal gebündeltem vis-network (Knoten = Personen-Crops, Kanten = gemeinsame Fotos; Kantendicke = Häufigkeit, Tiefenstufen 1 & 2, Schwellenwert-Filter, Klick-Zentrierung & Profil-Sprung).
 
 
