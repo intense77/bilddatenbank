@@ -377,7 +377,10 @@
               <kbd class="hidden sm:inline px-1.5 py-0.5 text-[10px] font-mono bg-slate-700/80 group-hover:bg-amber-600/30 rounded text-slate-400 group-hover:text-slate-950">Esc</kbd>
             </button>
             <div>
-              <h3 id="cd-title" class="text-base font-semibold text-slate-100">Cluster Details</h3>
+              <h3 id="cd-title" class="text-base font-semibold text-slate-100 flex items-center gap-2 flex-wrap">
+                <span id="cd-title-text">Cluster Details</span>
+                <span id="cd-named-badge" class="hidden px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-medium tracking-wide">✓ Benannt</span>
+              </h3>
               <p id="cd-stats" class="text-xs text-slate-400 font-mono">0 Vorkommen im Archiv</p>
             </div>
           </div>
@@ -386,12 +389,14 @@
             <!-- Inline Label Assignment Form -->
             <form id="cluster-label-form" onsubmit="handleClusterLabelSubmit(event)" class="flex items-center gap-2">
               <input type="text" id="cluster-label-input" placeholder="Personenname (z. B. Bischof Müller)"
-                class="px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 w-48 sm:w-64"
+                class="px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 w-48 sm:w-64 transition-all duration-200"
                 required>
-              <button type="submit"
-                class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs sm:text-sm rounded-xl transition shadow-sm whitespace-nowrap">
-                Speichern
+              <button type="submit" id="cluster-label-save-btn"
+                class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs sm:text-sm rounded-xl transition-all duration-200 shadow-sm whitespace-nowrap flex items-center gap-1.5 active:scale-95">
+                <span id="cluster-label-save-btn-icon">💾</span>
+                <span id="cluster-label-save-btn-text">Speichern</span>
               </button>
+              <div id="cluster-label-feedback" class="hidden"></div>
             </form>
 
             <div class="h-6 w-px bg-slate-800 hidden sm:block"></div>
@@ -2151,7 +2156,7 @@
 
   <script src="/cropper.min.js"></script>
   <script src="/vis-network.min.js"></script>
-  <script src="/app.js?v=4.8"></script>
+  <script src="/app.js?v=4.9"></script>
 </body>
 
 </html>

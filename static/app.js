@@ -815,6 +815,56 @@ function setClusterCategoryFilter(category) {
   applyClusterFilters();
 }
 
+function normalizeClusterId(cid) {
+  if (cid === null || cid === undefined) return '';
+  const str = String(cid).trim();
+  return str.startsWith('cluster_') ? str : `cluster_${str}`;
+}
+
+async function quickRenameClusterPrompt(clusterId, currentLabel) {
+  const displayId = String(clusterId).replace('cluster_', '#');
+  const newName = prompt(`Neuen Namen für Personen-Cluster ${displayId} eingeben:`, currentLabel || '');
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (!trimmed) {
+    showToast('Name darf nicht leer sein.', true);
+    return;
+  }
+  if (trimmed === (currentLabel || '')) return;
+
+  try {
+    showToast(`Speichere Name "${trimmed}"...`, false);
+    const res = await fetch(`/faces/clusters/${encodeURIComponent(clusterId)}/label`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: trimmed }),
+    });
+    if (!res.ok) throw new Error(`Fehler beim Speichern (${res.status})`);
+    const data = await res.json();
+
+    const normId = normalizeClusterId(clusterId);
+    const target = allLoadedClusters.find(c => normalizeClusterId(c.cluster_id) === normId);
+    if (target) {
+      target.label = trimmed;
+    }
+    if (activeCluster && normalizeClusterId(activeCluster.cluster_id) === normId) {
+      activeCluster.label = trimmed;
+      const cdTitleText = document.getElementById('cd-title-text');
+      if (cdTitleText) cdTitleText.textContent = trimmed;
+      const cdBadge = document.getElementById('cd-named-badge');
+      if (cdBadge) cdBadge.classList.remove('hidden');
+      const cdInput = document.getElementById('cluster-label-input');
+      if (cdInput) cdInput.value = trimmed;
+    }
+
+    updateClusterCounts();
+    applyClusterFilters();
+    showToast(`✓ Name "${trimmed}" für ${data.updated_faces} Gesichter gespeichert!`, false);
+  } catch (err) {
+    showToast(`Fehler beim Umbenennen: ${err.message}`, true);
+  }
+}
+
 function updateClusterCounts() {
   const allCount = allLoadedClusters.length;
   const namedCount = allLoadedClusters.filter(c => c.label && c.label.trim().length > 0).length;
@@ -880,13 +930,23 @@ function applyClusterFilters() {
 
   filtered.forEach(c => {
     const card = document.createElement('div');
-    card.className = 'group bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-xl overflow-hidden p-4 shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col items-center text-center';
+    card.className = 'group bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-xl overflow-hidden p-4 shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col items-center text-center relative';
 
-    const displayName = c.label || `Person ${c.cluster_id.replace('cluster_', '#')}`;
+    const displayName = c.label || `Person ${String(c.cluster_id).replace('cluster_', '#')}`;
     const avatarSrc = c.preview_image || (`/faces/clusters/${encodeURIComponent(c.cluster_id)}/preview`);
     const defaultPlaceholder = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="%231e293b"><circle cx="50" cy="50" r="40" fill="%23334155"/></svg>';
 
     card.innerHTML = `
+      <!-- Quick Rename Button -->
+      <button type="button"
+        onclick="event.stopPropagation(); quickRenameClusterPrompt('${escapeHtml(c.cluster_id)}', '${escapeHtml(c.label || '')}')"
+        class="absolute top-2.5 right-2.5 p-1.5 rounded-lg bg-slate-800/80 hover:bg-amber-500 hover:text-slate-950 text-slate-400 hover:text-slate-950 transition opacity-0 group-hover:opacity-100 focus:opacity-100 z-10 shadow-sm"
+        title="Personenname direkt bearbeiten">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+        </svg>
+      </button>
+
       <div class="w-20 h-20 rounded-full overflow-hidden bg-slate-950 border-2 border-slate-700 group-hover:border-amber-400 transition-colors shadow-inner flex items-center justify-center mb-3">
         <img src="${avatarSrc}" alt="Avatar" class="w-full h-full object-cover" loading="lazy" onerror="this.onerror=null;this.src='${defaultPlaceholder}'">
       </div>
@@ -958,8 +1018,21 @@ async function openClusterDetail(cluster) {
   clearClusterSharedFilter(false);
   loadClusterCoOccurrences(cluster.cluster_id);
 
-  const displayName = cluster.label || `Person ${cluster.cluster_id.replace('cluster_', '#')}`;
-  title.textContent = displayName;
+  const displayName = cluster.label || `Person ${String(cluster.cluster_id).replace('cluster_', '#')}`;
+  const titleText = document.getElementById('cd-title-text');
+  if (titleText) {
+    titleText.textContent = displayName;
+  } else if (title) {
+    title.textContent = displayName;
+  }
+  const namedBadge = document.getElementById('cd-named-badge');
+  if (namedBadge) {
+    if (cluster.label && cluster.label.trim()) {
+      namedBadge.classList.remove('hidden');
+    } else {
+      namedBadge.classList.add('hidden');
+    }
+  }
   stats.textContent = `${cluster.face_count} Vorkommen in historischen Scans (Cluster ID: ${cluster.cluster_id})`;
   input.value = cluster.label || '';
 
@@ -1287,8 +1360,22 @@ async function handleClusterLabelSubmit(e) {
   if (!activeCluster) return;
 
   const input = document.getElementById('cluster-label-input');
-  const label = input.value.trim();
+  const saveBtn = document.getElementById('cluster-label-save-btn');
+  const saveBtnIcon = document.getElementById('cluster-label-save-btn-icon');
+  const saveBtnText = document.getElementById('cluster-label-save-btn-text');
+  const feedback = document.getElementById('cluster-label-feedback');
+
+  const label = input ? input.value.trim() : '';
   if (!label) return;
+
+  // Immediate loading state feedback
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.classList.add('opacity-80', 'cursor-wait');
+  }
+  if (saveBtnIcon) saveBtnIcon.innerHTML = '<span class="inline-block animate-spin">⏳</span>';
+  if (saveBtnText) saveBtnText.textContent = 'Speichern...';
+  if (feedback) feedback.className = 'hidden';
 
   try {
     const res = await fetch(`/faces/clusters/${encodeURIComponent(activeCluster.cluster_id)}/label`, {
@@ -1300,14 +1387,83 @@ async function handleClusterLabelSubmit(e) {
     if (!res.ok) throw new Error(`Fehler beim Speichern (${res.status})`);
     const data = await res.json();
 
+    // 1. In-Memory Active Cluster aktualisieren
     activeCluster.label = label;
-    const target = allLoadedClusters.find(c => c.cluster_id === activeCluster.cluster_id);
-    if (target) target.label = label;
+
+    // 2. Normalisierter Abgleich in allLoadedClusters
+    const normActiveId = normalizeClusterId(activeCluster.cluster_id);
+    const target = allLoadedClusters.find(c => normalizeClusterId(c.cluster_id) === normActiveId);
+    if (target) {
+      target.label = label;
+    }
+
+    // 3. Header im Detail-View sofort anpassen
+    const cdTitle = document.getElementById('cd-title');
+    const cdTitleText = document.getElementById('cd-title-text');
+    if (cdTitleText) {
+      cdTitleText.textContent = label;
+    } else if (cdTitle) {
+      cdTitle.textContent = label;
+    }
+    const cdNamedBadge = document.getElementById('cd-named-badge');
+    if (cdNamedBadge) cdNamedBadge.classList.remove('hidden');
+
+    // 4. Übersichtskarten & Zähler direkt und ohne Neuladen synchronisieren!
     updateClusterCounts();
-    document.getElementById('cd-title').textContent = label;
-    showToast(`Name "${label}" für ${data.updated_faces} Gesichter gespeichert!`);
+    applyClusterFilters();
+
+    // 5. Begleitpersonen-Netzwerk im Hintergrund mit neuem Namen auffrischen
+    loadClusterCoOccurrences(activeCluster.cluster_id);
+
+    // 6. Sofortiges visuelles Feedback am Eingabefeld & Button
+    if (input) {
+      input.classList.remove('border-slate-700', 'focus:ring-amber-500/50');
+      input.classList.add('border-emerald-500', 'ring-2', 'ring-emerald-500/40', 'bg-emerald-950/20');
+    }
+
+    if (saveBtn) {
+      saveBtn.classList.remove('bg-amber-500', 'hover:bg-amber-400', 'text-slate-950', 'opacity-80', 'cursor-wait');
+      saveBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500', 'text-white');
+    }
+    if (saveBtnIcon) saveBtnIcon.textContent = '✓';
+    if (saveBtnText) saveBtnText.textContent = 'Gespeichert!';
+
+    if (feedback) {
+      const faceCountStr = data.updated_faces ? `(${data.updated_faces} ${data.updated_faces === 1 ? 'Porträt' : 'Porträts'})` : '';
+      feedback.innerHTML = `<span>✓ Gespeichert</span> <span class="opacity-80 font-normal">${faceCountStr}</span>`;
+      feedback.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold';
+    }
+
+    showToast(`✓ Name "${label}" erfolgreich für ${data.updated_faces} Gesichter gespeichert!`, false);
+
+    // Nach 2,5 Sekunden den Button & das Feld wieder unaufdringlich zurücksetzen
+    setTimeout(() => {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500', 'text-white', 'opacity-80', 'cursor-wait');
+        saveBtn.classList.add('bg-amber-500', 'hover:bg-amber-400', 'text-slate-950');
+      }
+      if (saveBtnIcon) saveBtnIcon.textContent = '💾';
+      if (saveBtnText) saveBtnText.textContent = 'Speichern';
+      if (input) {
+        input.classList.remove('border-emerald-500', 'ring-2', 'ring-emerald-500/40', 'bg-emerald-950/20');
+        input.classList.add('border-slate-700', 'focus:ring-amber-500/50');
+      }
+      if (feedback) feedback.className = 'hidden';
+    }, 2500);
+
   } catch (err) {
-    showToast(`Fehler: ${err.message}`, true);
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.classList.remove('opacity-80', 'cursor-wait');
+    }
+    if (saveBtnIcon) saveBtnIcon.textContent = '💾';
+    if (saveBtnText) saveBtnText.textContent = 'Speichern';
+    if (feedback) {
+      feedback.innerHTML = `<span>⚠️ ${escapeHtml(err.message)}</span>`;
+      feedback.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs font-semibold';
+    }
+    showToast(`Fehler beim Speichern: ${err.message}`, true);
   }
 }
 
