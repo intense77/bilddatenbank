@@ -161,7 +161,8 @@ def browse_folders(path: Optional[str] = None):
 @router.post("/scan-folder")
 def scan_folder(request: ScanFolderRequest):
     """
-    Schnelle Ordner-Vorschau: Prüft Pfad-Existenz und zählt vorhandene Bilddateien vor der Indexierung.
+    Schnelle Ordner-Vorschau: Prüft Pfad-Existenz, zählt vorhandene Bilddateien
+    und gleicht sie mit bereits indexierten Aufnahmen in Qdrant ab.
     """
     path = resolve_archive_path(request.folder_path)
 
@@ -172,24 +173,74 @@ def scan_folder(request: ScanFolderRequest):
 
     # Dateien zählen
     iterator = path.rglob("*") if request.recursive else path.glob("*")
-    images = []
+    image_files = []
+    sample_files = []
     sidecars = 0
 
     for p in iterator:
         if p.is_file():
             suf = p.suffix.lower()
             if suf in ALLOWED_IMAGE_EXTENSIONS:
-                images.append(p.name)
+                image_files.append(p)
+                if len(sample_files) < 10:
+                    sample_files.append(p.name)
             elif suf == ".json":
                 sidecars += 1
+
+    # Registrierungsstatus prüfen
+    allowed_dirs = [str(d.resolve()) for d in get_allowed_base_dirs()]
+    abs_path_str = str(path.resolve())
+    is_registered = abs_path_str in allowed_dirs or any(
+        abs_path_str.startswith(d) for d in allowed_dirs if d != "/"
+    )
+
+    image_count = len(image_files)
+    already_indexed_count = 0
+
+    if image_count > 0:
+        try:
+            from app.services.indexing_service import UUID_NAMESPACE
+            from app.services.qdrant_service import QdrantService
+            import uuid
+
+            qs = QdrantService()
+            candidate_ids = []
+            for img in image_files:
+                try:
+                    rel = img.relative_to(path).as_posix()
+                except ValueError:
+                    rel = img.name
+                candidate_ids.append(str(uuid.uuid5(UUID_NAMESPACE, rel)))
+
+            chunk_size = 100
+            for i in range(0, len(candidate_ids), chunk_size):
+                chunk = candidate_ids[i:i + chunk_size]
+                pts = qs.client.retrieve(
+                    collection_name=settings.COLLECTION_IMAGES,
+                    ids=chunk,
+                    with_payload=False,
+                    with_vectors=False,
+                )
+                already_indexed_count += len(pts)
+        except Exception as e:
+            logger.debug("Fehler beim Prüfen existierender IDs in Qdrant: %s", e)
+
+    new_images_count = max(0, image_count - already_indexed_count)
+    is_fully_indexed = (image_count > 0 and already_indexed_count == image_count)
+    is_partially_indexed = (image_count > 0 and 0 < already_indexed_count < image_count)
 
     return {
         "status": "success",
         "folder_path": str(path),
         "exists": True,
-        "image_count": len(images),
+        "is_registered": is_registered,
+        "image_count": image_count,
+        "already_indexed_count": already_indexed_count,
+        "new_images_count": new_images_count,
+        "is_fully_indexed": is_fully_indexed,
+        "is_partially_indexed": is_partially_indexed,
         "sidecar_count": sidecars,
-        "sample_files": images[:10],
+        "sample_files": sample_files,
     }
 
 
@@ -208,6 +259,13 @@ async def index_existing_folder(
 
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"Ungültiges Verzeichnis: {path}")
+
+    from app.services.indexing_service import INDEXING_PROGRESS
+    if INDEXING_PROGRESS.get("is_running"):
+        raise HTTPException(
+            status_code=409,
+            detail="Es läuft bereits eine Indexierung im Hintergrund. Bitte warten Sie, bis diese abgeschlossen ist.",
+        )
 
     # 1. Pfad in den erlaubten Archiv-Pfaden registrieren und in .env sichern
     registered_path = register_allowed_archive_dir(path, persist=True)

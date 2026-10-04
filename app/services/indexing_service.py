@@ -29,6 +29,7 @@ INDEXING_PROGRESS: Dict[str, Any] = {
     "new_indexed": 0,
     "skipped": 0,
     "faces_detected": 0,
+    "already_fully_indexed": False,
     "percent": 0,
     "error": None,
     "last_updated": None,
@@ -334,12 +335,14 @@ class IndexingService:
                     logger.error("Fehler beim Indexieren von %s: %s", file_path, e)
                     errors.append(file_path.name)
 
+            already_fully = (total_found > 0 and indexed_count == 0 and skipped_count == total_found)
             return {
                 "folder_path": str(abs_folder),
                 "total_found": total_found,
                 "new_indexed": indexed_count,
                 "skipped": skipped_count,
                 "faces_detected": faces_count,
+                "already_fully_indexed": already_fully,
                 "error_count": len(errors),
                 "errors": errors[:20],
             }
@@ -347,12 +350,14 @@ class IndexingService:
             INDEXING_PROGRESS["error"] = str(e)
             raise
         finally:
+            already_fully = (total_found > 0 and indexed_count == 0 and skipped_count == total_found)
             INDEXING_PROGRESS.update({
                 "is_running": False,
                 "finished": True,
                 "new_indexed": indexed_count,
                 "skipped": skipped_count,
                 "faces_detected": faces_count,
+                "already_fully_indexed": already_fully,
                 "percent": 100,
                 "last_updated": datetime.now(timezone.utc).isoformat(),
             })

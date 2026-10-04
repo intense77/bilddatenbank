@@ -2162,6 +2162,8 @@ async function loadRegisteredFolders() {
   }
 }
 
+let lastFolderScanResult = null;
+
 async function scanFolderPreview() {
   const input = document.getElementById('folder-path-input');
   const recursive = document.getElementById('folder-recursive')?.checked ?? true;
@@ -2176,7 +2178,12 @@ async function scanFolderPreview() {
   }
 
   preview.classList.remove('hidden');
-  preview.innerHTML = '<span class="text-slate-400 font-mono">Scanne Ordner...</span>';
+  preview.innerHTML = `
+    <div class="flex items-center gap-2 text-slate-400 font-mono py-1">
+      <div class="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+      <span>Prüfe Verzeichnis und bestehende Datenbank-Indizes...</span>
+    </div>
+  `;
 
   try {
     const res = await fetch('/api/archive/scan-folder', {
@@ -2191,45 +2198,133 @@ async function scanFolderPreview() {
     }
 
     const data = await res.json();
+    lastFolderScanResult = data;
+
     let samplesHtml = '';
     if (data.sample_files && data.sample_files.length > 0) {
       samplesHtml = `
-        <div class="mt-2 pt-2 border-t border-slate-800 text-[11px] text-slate-400">
+        <div class="mt-2.5 pt-2.5 border-t border-slate-800/80 text-[11px] text-slate-400">
           <span class="font-medium text-slate-300 block mb-1">Beispieldateien:</span>
           <div class="flex flex-wrap gap-1 font-mono">
-            ${data.sample_files.map(f => `<span class="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">${escapeHtml(f)}</span>`).join('')}
-            ${data.image_count > 10 ? `<span class="text-slate-500 self-center">+${data.image_count - 10} weitere</span>` : ''}
+            ${data.sample_files.map(f => `<span class="bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-800 text-slate-300">${escapeHtml(f)}</span>`).join('')}
+            ${data.image_count > 10 ? `<span class="text-slate-500 self-center text-[10px]">+${data.image_count - 10} weitere</span>` : ''}
           </div>
         </div>
       `;
     }
 
-    preview.innerHTML = `
-      <div class="flex items-center justify-between text-slate-200">
-        <span class="font-medium flex items-center gap-1.5 text-emerald-400">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-          Gültiges Verzeichnis gefunden
-        </span>
-        <span class="font-mono text-amber-400 font-semibold">${data.image_count} Bilddateien</span>
-      </div>
-      <div class="text-[11px] text-slate-400 font-mono">
-        ${data.sidecar_count} .json-Sidecars gefunden
-      </div>
-      ${samplesHtml}
-    `;
-
-    if (status) {
-      status.textContent = `${data.image_count} Bilder bereit`;
+    if (data.image_count === 0) {
+      // Keine Bilder gefunden
+      preview.innerHTML = `
+        <div class="rounded-xl border border-slate-700 bg-slate-900/80 p-3.5 space-y-1.5">
+          <div class="font-semibold text-slate-300 flex items-center gap-2">
+            <span>⚠️ Keine Bilddateien gefunden</span>
+          </div>
+          <p class="text-xs text-slate-400">
+            In diesem Verzeichnis wurden keine unterstützten Bilddateien (.jpg, .png, .tif, .webp) gefunden.
+          </p>
+        </div>
+      `;
+      if (status) status.textContent = '0 Bilddateien gefunden';
+    } else if (data.is_fully_indexed) {
+      // 100% bereits im Archiv vorhanden!
+      preview.innerHTML = `
+        <div class="rounded-xl border border-blue-500/50 bg-blue-950/40 p-4 space-y-3 shadow-lg animate-fadeIn">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-blue-300 flex items-center gap-2 text-sm">
+              <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span>Ordner ist bereits vollständig importiert</span>
+            </span>
+            <span class="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-mono text-xs font-bold border border-blue-500/30">
+              ${data.already_indexed_count} / ${data.image_count} im Archiv
+            </span>
+          </div>
+          <p class="text-xs text-blue-100/90 leading-relaxed">
+            Alle <strong>${data.image_count} Bilder</strong> aus diesem Ordner befinden sich bereits in der Datenbank. Ein erneuter Import ist nicht notwendig und erzeugt keine Duplikate.
+          </p>
+          <div class="pt-2 border-t border-blue-900/60 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+            <span class="flex items-center gap-1.5">
+              <span>${data.is_registered ? '📁 Als Archiv-Pfad registriert' : '📁 Pfad bereit'}</span>
+              <span>&bull;</span>
+              <span>${data.sidecar_count} .json-Sidecars</span>
+            </span>
+            <button type="button" onclick="forceReindexFolder()" class="text-amber-400 hover:text-amber-300 font-medium underline underline-offset-4 flex items-center gap-1 transition">
+              <span>↻ Trotzdem neu indexieren (Erzwingen)</span>
+            </button>
+          </div>
+          ${samplesHtml}
+        </div>
+      `;
+      if (status) status.textContent = `Bereits vollständig vorhanden (${data.already_indexed_count} Bilder)`;
+    } else if (data.is_partially_indexed) {
+      // Teilweise vorhanden (Inkrementell)
+      preview.innerHTML = `
+        <div class="rounded-xl border border-amber-500/50 bg-amber-950/30 p-4 space-y-3 shadow-lg animate-fadeIn">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-amber-300 flex items-center gap-2 text-sm">
+              <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+              </svg>
+              <span>Teilweise vorhanden: Inkrementeller Import</span>
+            </span>
+            <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-xs font-bold border border-amber-500/30">
+              ${data.new_images_count} neue Bilder
+            </span>
+          </div>
+          <p class="text-xs text-slate-200 leading-relaxed">
+            Von insgesamt <strong>${data.image_count} Bildern</strong> sind <strong>${data.already_indexed_count} bereits im Archiv</strong> erfasst. Es werden nur die <strong>${data.new_images_count} neuen Bilder</strong> eingelesen.
+          </p>
+          <div class="pt-2 border-t border-slate-800 text-[11px] text-slate-400">
+            ${data.sidecar_count} .json-Sidecars gefunden
+          </div>
+          ${samplesHtml}
+        </div>
+      `;
+      if (status) status.textContent = `${data.new_images_count} neue Bilder (${data.already_indexed_count} bereits erfasst)`;
+    } else {
+      // Komplett neu
+      preview.innerHTML = `
+        <div class="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 space-y-3 shadow-lg animate-fadeIn">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-emerald-300 flex items-center gap-2 text-sm">
+              <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+              <span>Neuer Bestand: Bereit zum Einlesen</span>
+            </span>
+            <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-xs font-bold border border-emerald-500/30">
+              ${data.image_count} Bilder
+            </span>
+          </div>
+          <p class="text-xs text-slate-200 leading-relaxed">
+            Noch keine dieser Aufnahmen ist im Archiv vorhanden. Alle <strong>${data.image_count} Bilder</strong> werden neu indexiert und analysiert.
+          </p>
+          <div class="pt-2 border-t border-slate-800 text-[11px] text-slate-400">
+            ${data.sidecar_count} .json-Sidecars gefunden
+          </div>
+          ${samplesHtml}
+        </div>
+      `;
+      if (status) status.textContent = `${data.image_count} Bilder bereit`;
     }
   } catch (err) {
     preview.innerHTML = `
-      <div class="text-rose-400 flex items-center gap-1.5">
+      <div class="text-rose-400 flex items-center gap-1.5 p-3 rounded-xl bg-rose-950/30 border border-rose-800/40">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         <span>${escapeHtml(err.message)}</span>
       </div>
     `;
     if (status) status.textContent = 'Fehler beim Scannen';
   }
+}
+
+function forceReindexFolder() {
+  const skipCheckbox = document.getElementById('folder-skip-existing');
+  if (skipCheckbox) skipCheckbox.checked = false;
+  showToast('Modus geändert: Neuindexierung wird erzwungen (Force Re-Scan).', false);
+  startFolderIndexing(true);
 }
 
 let progressPollTimer = null;
@@ -2316,29 +2411,75 @@ async function checkIndexingProgress() {
           if (preview) {
             preview.classList.remove('hidden');
             preview.innerHTML = `
-              <div class="text-rose-400 font-medium flex items-center gap-1.5">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                Indexierung mit Fehler beendet
+              <div class="rounded-xl border border-rose-500/40 bg-rose-950/30 p-4 space-y-2">
+                <div class="text-rose-400 font-semibold flex items-center gap-2">
+                  <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <span>Indexierung mit Fehler beendet</span>
+                </div>
+                <p class="text-xs text-rose-300 font-mono">${escapeHtml(data.error)}</p>
               </div>
-              <p class="text-[11px] text-rose-300 font-mono mt-1">${escapeHtml(data.error)}</p>
             `;
           }
-        } else {
-          if (status) status.textContent = 'Indexierung abgeschlossen';
-
+        } else if (data.already_fully_indexed || (data.total_found > 0 && data.new_indexed === 0 && data.skipped > 0)) {
+          // Explizite Rückmeldung: Bereits vollständig vorhanden!
+          if (status) status.textContent = 'Bereits vollständig vorhanden (0 neue Bilder)';
           if (preview) {
             preview.classList.remove('hidden');
             preview.innerHTML = `
-              <div class="text-emerald-400 font-medium flex items-center gap-1.5">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                Indexierung erfolgreich abgeschlossen!
-              </div>
-              <div class="text-[11px] text-slate-300 font-mono mt-1 space-y-0.5">
-                <p>&bull; Verarbeitet: <strong class="text-amber-400">${data.processed_count || 0}</strong> Bilder (${data.new_indexed || 0} neu, ${data.skipped || 0} übersprungen)</p>
-                <p>&bull; Erkannte Gesichter: <strong class="text-amber-400">${data.faces_detected || 0}</strong></p>
+              <div class="rounded-xl border border-blue-500/50 bg-blue-950/40 p-4 space-y-2.5 shadow-lg animate-fadeIn">
+                <div class="text-blue-300 font-bold flex items-center gap-2 text-sm">
+                  <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <span>Bereits vollständig im Archiv vorhanden!</span>
+                </div>
+                <p class="text-xs text-blue-100/90 leading-relaxed">
+                  Alle <strong>${data.skipped || data.total_found} Bilder</strong> in diesem Ordner waren bereits vollständig in der Bilddatenbank erfasst. Es wurden keine Duplikate angelegt.
+                </p>
+                <div class="text-[11px] text-slate-400 font-mono pt-1">
+                  0 neu indexiert &bull; ${data.skipped || data.total_found} vorhandene Bilder übersprungen
+                </div>
               </div>
             `;
           }
+          showToast(`Ordner ist bereits vollständig vorhanden (${data.skipped || data.total_found} Bilder).`, false);
+        } else if (data.new_indexed > 0 && data.skipped > 0) {
+          if (status) status.textContent = `${data.new_indexed} neue Bilder hinzugefügt (${data.skipped} vorh.)`;
+          if (preview) {
+            preview.classList.remove('hidden');
+            preview.innerHTML = `
+              <div class="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 space-y-2.5 shadow-lg animate-fadeIn">
+                <div class="text-emerald-400 font-bold flex items-center gap-2 text-sm">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                  <span>Inkrementeller Import erfolgreich abgeschlossen!</span>
+                </div>
+                <div class="text-[11px] text-slate-300 font-mono space-y-1">
+                  <p>&bull; Neu hinzugefügt: <strong class="text-emerald-400">${data.new_indexed}</strong> Bilder</p>
+                  <p>&bull; Bereits vorhanden: <strong class="text-slate-400">${data.skipped}</strong> Bilder (übersprungen)</p>
+                  <p>&bull; Erkannte Gesichter: <strong class="text-amber-400">${data.faces_detected}</strong></p>
+                </div>
+              </div>
+            `;
+          }
+          showToast(`Inkrementeller Import: ${data.new_indexed} neue Bilder hinzugefügt (${data.skipped} übersprungen).`);
+        } else {
+          if (status) status.textContent = 'Indexierung abgeschlossen';
+          if (preview) {
+            preview.classList.remove('hidden');
+            preview.innerHTML = `
+              <div class="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 space-y-2.5 shadow-lg animate-fadeIn">
+                <div class="text-emerald-400 font-bold flex items-center gap-2 text-sm">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                  <span>Indexierung erfolgreich abgeschlossen!</span>
+                </div>
+                <div class="text-[11px] text-slate-300 font-mono space-y-1">
+                  <p>&bull; Neu indexiert: <strong class="text-amber-400">${data.processed_count || data.new_indexed || 0}</strong> Bilder</p>
+                  <p>&bull; Erkannte Gesichter: <strong class="text-amber-400">${data.faces_detected || 0}</strong></p>
+                </div>
+              </div>
+            `;
+          }
+          showToast(`Indexierung erfolgreich: ${data.processed_count || data.new_indexed || 0} Bilder erfasst.`);
         }
         loadRegisteredFolders();
       }
@@ -2348,10 +2489,13 @@ async function checkIndexingProgress() {
   }
 }
 
-async function startFolderIndexing() {
+async function startFolderIndexing(forceExplicit = false) {
   const input = document.getElementById('folder-path-input');
   const recursive = document.getElementById('folder-recursive')?.checked ?? true;
-  const skipExisting = document.getElementById('folder-skip-existing')?.checked ?? true;
+  let skipExisting = document.getElementById('folder-skip-existing')?.checked ?? true;
+  if (forceExplicit) {
+    skipExisting = false;
+  }
   const btn = document.getElementById('start-folder-index-btn');
   const status = document.getElementById('folder-index-status');
   const preview = document.getElementById('folder-scan-preview');
@@ -2362,6 +2506,21 @@ async function startFolderIndexing() {
     showToast('Bitte geben Sie einen Verzeichnispfad an.', true);
     input.focus();
     return;
+  }
+
+  // Sanity check: Wenn Ordner bereits zu 100% indexiert ist und skipExisting aktiv ist
+  if (!forceExplicit && skipExisting && lastFolderScanResult && lastFolderScanResult.folder_path === folderPath && lastFolderScanResult.is_fully_indexed) {
+    const confirmReindex = confirm(
+      `Alle ${lastFolderScanResult.image_count} Bilder in diesem Ordner befinden sich bereits in der Datenbank.\n\nMöchten Sie eine vollständige Neuindexierung (z. B. für geänderte Metadaten oder Gesichter) trotzdem erzwingen?`
+    );
+    if (!confirmReindex) {
+      showToast('Import übersprungen: Ordner ist bereits vollständig vorhanden.', false);
+      if (status) status.textContent = 'Bereits vollständig vorhanden';
+      return;
+    }
+    skipExisting = false;
+    const skipCheckbox = document.getElementById('folder-skip-existing');
+    if (skipCheckbox) skipCheckbox.checked = false;
   }
 
   btn.disabled = true;
