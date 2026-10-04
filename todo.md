@@ -337,4 +337,27 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   - [x] **Interaktiver Beziehungs-Graph (Netzwerk-Visualisierung):**
     * Neuer Tab „Netzwerk“ mit interaktiver Force-Directed Graph-Darstellung via lokal gebündeltem vis-network (Knoten = Personen-Crops, Kanten = gemeinsame Fotos; Kantendicke = Häufigkeit, Tiefenstufen 1 & 2, Schwellenwert-Filter, Klick-Zentrierung & Profil-Sprung).
 
+---
+
+## 24. Performanz- & Skalierungsarchitektur für Massen-Imports (Universelle Ingest-Pipeline)
+* **Ziel:** Universeller, hardware-agnostischer und robuster Massen-Import, der auch bei großen Beständen (> 50.000 Bilder), über Netzwerkfreigaben (NAS/SMB) und auf variierender Hardware (starke GPU-Workstations bis Standard-Büro-Server ohne dedizierte GPU) dauerhaft performant bleibt und nicht mit wachsender Bildzahl einbricht.
+* **Problemstellung & Flaschenhals-Analyse:**
+  * Mit wachsender Collection-Größe (> 50.000 Bilder, > 160.000 Gesichter) wachsen die Kosten synchroner Einzel-Schreibvorgänge (`wait=true`) in Qdrant drastisch, da HNSW-Segmente im Hintergrund ständig reorganisiert werden.
+  * Synchrone Netzwerk-Latenzen über FUSE/GVFS-Shares blockieren die KI-Inferenz; I/O und Compute laufen strikt nacheinander statt überlappend.
+* **Aufgaben:**
+  - [ ] **Batch-Upserts in Qdrant:**
+    * Vektoren nicht bildweise einzeln schreiben, sondern in konfigurierbaren Batches (z. B. 50–100 Bilder auf einmal) sammeln und gebündelt übertragen.
+    * Reduziert den Qdrant-Lock- und WAL-Overhead um ca. 70–80 % und verhindert ständiges Einbremsen durch Segment-Flushes.
+  - [ ] **Asynchrones Prefetching & Pipelining (I/O- und Compute-Entkopplung):**
+    * Entkopplung über Produzent-Konsument-Architektur (Worker-Queue): Das nächste Bild wird im Hintergrund über das Netzwerk gestreamt, validiert und vorbereitet, während die GPU/CPU noch an der Inferenz (CLIP / InsightFace) des aktuellen Bildes rechnet.
+    * Beseitigt Leerlaufzeiten von Netzwerk und Recheneinheiten vollständig.
+  - [ ] **Echtes Kernel-CIFS-Mount & Netzwerk-I/O-Optimierung:**
+    * NAS-Ordner fest über nativer Kernel-Treiber (`mount -t cifs`) einbinden statt über die träge, single-threaded GVFS-Desktop-Emulation (`/run/user/1000/gvfs/...`).
+    * Dokumentation und Prüf-Routine im System, die bei GVFS-Pfaden warnt und CIFS-Optionen vorschlägt.
+  - [ ] **Universeller, hardware-agnostischer Lösungsansatz:**
+    * *Dynamische Ressourcen-Adaption:* Automatische Erkennung der Systemressourcen (CUDA-VRAM, CPU-Kerne, RAM) und adaptive Anpassung von Batch-Größen und Worker-Threads (z. B. kleiner Batch & INT8/CPU-Fallback auf Standard-Hardware, großer Batch auf GPU-Servern).
+    * *Temporäres Deferral der HNSW-Indexierung bei Massen-Imports:* Möglichkeit, bei Initial-Imports von zehntausenden Bildern den HNSW-Indexbau temporär auszusetzen und nach Abschluss des Imports in einem einzigen optimierten Durchlauf zu erstellen.
+    * *Stabile I/O-Pufferung:* Sicheres Zwischenspeichern im lokalen Cache bei instabilen Netzwerkverbindungen zum NAS.
+
+
 
