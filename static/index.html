@@ -150,16 +150,17 @@
             <select id="search-threshold"
               class="bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-3 text-xs sm:text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
               title="Mindest-Relevanz zur Vermeidung unpassender Zufallstreffer">
-              <option value="0.23">Relevanz: Standard (ab 23%)</option>
+              <option value="0.20">Relevanz: Standard (ab 20%)</option>
+              <option value="0.23">Relevanz: Präzise (ab 23%)</option>
               <option value="0.25">Relevanz: Streng (ab 25%)</option>
-              <option value="0.20">Relevanz: Locker (ab 20%)</option>
+              <option value="0.18">Relevanz: Locker (ab 18%)</option>
               <option value="0">Alle Treffer (ohne Filter)</option>
             </select>
             <select id="search-limit"
               class="bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-3 text-xs sm:text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/50">
-              <option value="20">20 Treffer</option>
-              <option value="40">40 Treffer</option>
-              <option value="80">80 Treffer</option>
+              <option value="24">24 Treffer</option>
+              <option value="48">48 Treffer</option>
+              <option value="96">96 Treffer</option>
             </select>
             <label
               class="flex items-center gap-1.5 px-3 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-xs sm:text-sm text-slate-300 cursor-pointer hover:border-slate-600 transition select-none"
@@ -193,11 +194,14 @@
       </div>
 
       <!-- Results Stats Bar -->
-      <div id="results-bar" class="hidden flex items-center justify-between text-xs sm:text-sm text-slate-400 px-1">
-        <div class="flex items-center gap-3">
-          <span id="results-count">0 Treffer</span>
+      <div id="results-bar" class="hidden flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm text-slate-400 px-3 py-2 bg-slate-900/60 rounded-xl border border-slate-800/80">
+        <div class="flex flex-wrap items-center gap-2">
+          <span id="results-count" class="font-medium text-slate-200">0 Treffer</span>
+          <div id="results-filter-pills" class="flex flex-wrap items-center gap-1.5 ml-1">
+            <!-- Filter Pills injected here -->
+          </div>
           <button id="add-all-results-to-lightbox-btn" type="button" onclick="addAllCurrentResultsToLightbox()"
-            class="hidden px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5 shadow-sm"
+            class="hidden px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5 shadow-sm ml-2"
             title="Alle gefundenen Bilder auf den Leuchttisch legen">
             <span>💡</span>
             <span>Alle auf Leuchttisch</span>
@@ -215,6 +219,17 @@
       <!-- Results Grid -->
       <div id="results-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
         <!-- Result Cards will be injected here -->
+      </div>
+
+      <!-- Load More Container -->
+      <div id="search-load-more-container" class="hidden text-center py-6">
+        <button id="search-load-more-btn" type="button" onclick="loadMoreSearchResults()"
+          class="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-amber-400 hover:text-amber-300 font-medium text-sm rounded-xl border border-slate-700/80 hover:border-amber-500/50 transition-all shadow-md flex items-center gap-2 mx-auto cursor-pointer">
+          <span id="search-load-more-spinner" class="hidden animate-spin">⏳</span>
+          <span id="search-load-more-icon">↓</span>
+          <span id="search-load-more-text">Mehr Ergebnisse laden</span>
+        </button>
+        <p id="search-load-more-info" class="text-xs text-slate-500 mt-2 font-mono"></p>
       </div>
 
       <!-- Empty State -->

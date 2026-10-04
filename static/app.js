@@ -238,18 +238,33 @@ function handleSearchSubmit(e) {
   executeSearch(query, limit);
 }
 
-async function executeSearch(query, limit = 20) {
+let currentSearchQuery = '';
+let currentSearchLimit = 24;
+let currentSearchOffset = 0;
+let currentSearchFilter = 'all';
+let hasMoreSearchResults = false;
+let currentSearchResults = [];
+
+async function executeSearch(query, limit = 24) {
   const spinner = document.getElementById('search-spinner');
   const grid = document.getElementById('results-grid');
   const empty = document.getElementById('search-empty');
   const resultsBar = document.getElementById('results-bar');
   const resultsCount = document.getElementById('results-count');
   const resultsQuery = document.getElementById('results-query');
+  const loadMoreContainer = document.getElementById('search-load-more-container');
+
+  currentSearchQuery = query;
+  currentSearchLimit = parseInt(limit) || 24;
+  currentSearchOffset = 0;
+  currentSearchFilter = 'all';
+  currentSearchResults = [];
 
   grid.innerHTML = '';
   empty.classList.add('hidden');
   spinner.classList.remove('hidden');
   resultsBar.classList.add('hidden');
+  if (loadMoreContainer) loadMoreContainer.classList.add('hidden');
 
   const thresholdElem = document.getElementById('search-threshold');
   const threshold = thresholdElem ? parseFloat(thresholdElem.value) : 0;
@@ -257,7 +272,7 @@ async function executeSearch(query, limit = 20) {
   const stackVariants = stackToggle ? stackToggle.checked : true;
 
   try {
-    let url = `/search/semantic?q=${encodeURIComponent(query)}&limit=${limit}&stack_variants=${stackVariants}`;
+    let url = `/search/semantic?q=${encodeURIComponent(query)}&limit=${currentSearchLimit}&offset=0&stack_variants=${stackVariants}`;
     if (threshold > 0) {
       url += `&score_threshold=${threshold}`;
     }
@@ -267,7 +282,18 @@ async function executeSearch(query, limit = 20) {
 
     spinner.classList.add('hidden');
     resultsBar.classList.remove('hidden');
-    resultsCount.textContent = `${data.length} Treffer gefunden`;
+    currentSearchResults = data || [];
+
+    const personCount = currentSearchResults.filter(i => i.match_type === 'person').length;
+    const metaCount = currentSearchResults.filter(i => i.match_type === 'metadata').length;
+    const clipCount = currentSearchResults.filter(i => i.match_type === 'clip').length;
+
+    let countHtml = `<span>${currentSearchResults.length} Treffer gefunden</span>`;
+    if (personCount > 0) {
+      countHtml = `<span class="text-emerald-400 font-semibold">👤 ${personCount} Personen-Treffer</span>` + 
+                  (clipCount > 0 ? ` <span class="text-slate-400">(${clipCount} Motive)</span>` : '');
+    }
+    resultsCount.innerHTML = countHtml;
     resultsQuery.textContent = `Suchbegriff: "${query}"`;
 
     const addAllBtn = document.getElementById('add-all-results-to-lightbox-btn');
@@ -279,21 +305,160 @@ async function executeSearch(query, limit = 20) {
     if (data.length === 0) {
       empty.classList.remove('hidden');
       empty.querySelector('p').textContent = `Keine Treffer für "${query}"`;
+      updateLoadMoreVisibility(0);
       return;
     }
 
-    renderSearchResults(data, grid);
+    updateSearchFilterPills();
+    updateLoadMoreVisibility(data.length);
+    renderSearchResults(getFilteredSearchResults(), grid);
   } catch (err) {
     spinner.classList.add('hidden');
     showToast(`Fehler: ${err.message}`, true);
   }
 }
 
-let currentSearchResults = [];
+function updateSearchFilterPills() {
+  const container = document.getElementById('results-filter-pills');
+  if (!container) return;
+
+  const personCount = currentSearchResults.filter(i => i.match_type === 'person').length;
+  const metaCount = currentSearchResults.filter(i => i.match_type === 'metadata').length;
+  const clipCount = currentSearchResults.filter(i => i.match_type === 'clip').length;
+
+  const typesCount = (personCount > 0 ? 1 : 0) + (metaCount > 0 ? 1 : 0) + (clipCount > 0 ? 1 : 0);
+  if (typesCount <= 1) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const pillClass = (type) => currentSearchFilter === type 
+    ? 'px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 shadow-sm cursor-pointer transition'
+    : 'px-2.5 py-0.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer transition';
+
+  let html = `
+    <button type="button" onclick="setSearchFilter('all')" class="${pillClass('all')}">
+      Alle (${currentSearchResults.length})
+    </button>
+  `;
+  if (personCount > 0) {
+    html += `
+      <button type="button" onclick="setSearchFilter('person')" class="${pillClass('person')}">
+        👤 Personen (${personCount})
+      </button>
+    `;
+  }
+  if (metaCount > 0) {
+    html += `
+      <button type="button" onclick="setSearchFilter('metadata')" class="${pillClass('metadata')}">
+        📝 Metadaten (${metaCount})
+      </button>
+    `;
+  }
+  if (clipCount > 0) {
+    html += `
+      <button type="button" onclick="setSearchFilter('clip')" class="${pillClass('clip')}">
+        🔍 Bildmotive (${clipCount})
+      </button>
+    `;
+  }
+  container.innerHTML = html;
+}
+
+function setSearchFilter(filterType) {
+  currentSearchFilter = filterType;
+  updateSearchFilterPills();
+  const filtered = getFilteredSearchResults();
+  const grid = document.getElementById('results-grid');
+  renderSearchResults(filtered, grid);
+  const resultsCount = document.getElementById('results-count');
+  if (resultsCount) {
+    if (filterType === 'all') {
+      resultsCount.textContent = `${currentSearchResults.length} Treffer gefunden`;
+    } else {
+      resultsCount.textContent = `Zeige ${filtered.length} von ${currentSearchResults.length} Treffern (${filterType})`;
+    }
+  }
+}
+
+function getFilteredSearchResults() {
+  if (currentSearchFilter === 'all') return currentSearchResults;
+  return currentSearchResults.filter(i => i.match_type === currentSearchFilter);
+}
+
+function updateLoadMoreVisibility(lastBatchCount) {
+  const container = document.getElementById('search-load-more-container');
+  const info = document.getElementById('search-load-more-info');
+  if (!container) return;
+
+  if (lastBatchCount >= currentSearchLimit) {
+    container.classList.remove('hidden');
+    hasMoreSearchResults = true;
+    if (info) {
+      info.textContent = `${currentSearchResults.length} Ergebnisse geladen (Klicken zum Nachladen weiterer Treffer)`;
+    }
+  } else {
+    container.classList.add('hidden');
+    hasMoreSearchResults = false;
+  }
+}
+
+async function loadMoreSearchResults() {
+  const btn = document.getElementById('search-load-more-btn');
+  const spinner = document.getElementById('search-load-more-spinner');
+  const icon = document.getElementById('search-load-more-icon');
+  const text = document.getElementById('search-load-more-text');
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (icon) icon.classList.add('hidden');
+  if (text) text.textContent = 'Lade weitere Treffer...';
+  if (btn) btn.disabled = true;
+
+  const thresholdElem = document.getElementById('search-threshold');
+  const threshold = thresholdElem ? parseFloat(thresholdElem.value) : 0;
+  const stackToggle = document.getElementById('search-stack-variants');
+  const stackVariants = stackToggle ? stackToggle.checked : true;
+
+  currentSearchOffset += currentSearchLimit;
+
+  try {
+    let url = `/search/semantic?q=${encodeURIComponent(currentSearchQuery)}&limit=${currentSearchLimit}&offset=${currentSearchOffset}&stack_variants=${stackVariants}`;
+    if (threshold > 0) {
+      url += `&score_threshold=${threshold}`;
+    }
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fehler beim Nachladen (${res.status})`);
+    const newData = await res.json();
+
+    if (newData.length === 0) {
+      updateLoadMoreVisibility(0);
+      showToast('Keine weiteren Treffer vorhanden.', false);
+    } else {
+      currentSearchResults = currentSearchResults.concat(newData);
+      updateSearchFilterPills();
+      updateLoadMoreVisibility(newData.length);
+      const grid = document.getElementById('results-grid');
+      renderSearchResults(getFilteredSearchResults(), grid);
+      const resultsCount = document.getElementById('results-count');
+      if (resultsCount) {
+        resultsCount.textContent = `${currentSearchResults.length} Treffer geladen`;
+      }
+      showToast(`+${newData.length} weitere Treffer nachgeladen.`, false);
+    }
+  } catch (err) {
+    showToast(`Fehler beim Nachladen: ${err.message}`, true);
+  } finally {
+    if (spinner) spinner.classList.add('hidden');
+    if (icon) icon.classList.remove('hidden');
+    if (text) text.textContent = 'Mehr Ergebnisse laden';
+    if (btn) btn.disabled = false;
+  }
+}
 
 function renderSearchResults(items, container) {
-  currentSearchResults = items || [];
   container.innerHTML = '';
+  const hasPersonMatches = currentSearchResults.some(i => i.match_type === 'person');
+
   items.forEach((item, itemIdx) => {
     const card = document.createElement('div');
     const isStack = !!item.is_stack && (item.variants_count > 0);
@@ -325,6 +490,30 @@ function renderSearchResults(items, container) {
         </button>`;
     }
 
+    // Treffer-Typ Badge (Person / Metadaten / Bildmotiv)
+    let matchTypeBadgeHtml = '';
+    const badgeLeftClass = isStack ? 'left-28' : 'left-2';
+    if (item.match_type === 'person') {
+      const personName = item.matched_query || (item.persons && item.persons[0]) || 'Person';
+      matchTypeBadgeHtml = `
+        <span class="absolute top-2 ${badgeLeftClass} px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500 text-slate-950 shadow-md backdrop-blur-sm z-10 flex items-center gap-1" title="Namentlich bekannte Person: ${escapeHtml(personName)}">
+          <span>👤</span>
+          <span class="truncate max-w-[110px]">${escapeHtml(personName)}</span>
+        </span>`;
+    } else if (item.match_type === 'metadata') {
+      matchTypeBadgeHtml = `
+        <span class="absolute top-2 ${badgeLeftClass} px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500 text-slate-950 shadow-md backdrop-blur-sm z-10 flex items-center gap-1" title="Archivischer Metadaten-Treffer: ${escapeHtml(item.matched_query || '')}">
+          <span>📝</span>
+          <span class="truncate max-w-[110px]">${escapeHtml(item.matched_query || 'Metadaten')}</span>
+        </span>`;
+    } else if (item.match_type === 'clip' && hasPersonMatches) {
+      matchTypeBadgeHtml = `
+        <span class="absolute top-2 ${badgeLeftClass} px-2 py-0.5 rounded text-[10px] font-medium bg-slate-900/85 text-slate-300 border border-slate-700/80 backdrop-blur-sm z-10 flex items-center gap-1" title="Optischer Bildinhalt (CLIP-Vektorsuche)">
+          <span>🔍</span>
+          <span>Bildmotiv</span>
+        </span>`;
+    }
+
     // Metadata Badges (Personen, Datierung, Signatur)
     let metaBadgesHtml = '';
     if (item.persons && item.persons.length > 0) {
@@ -353,6 +542,7 @@ function renderSearchResults(items, container) {
           onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100\\' height=\\'100\\' fill=\\'%23334155\\'><text x=\\'50%\\' y=\\'50%\\' text-anchor=\\'middle\\' fill=\\'%2364748b\\' font-size=\\'12\\'>Scan</text></svg>'"
         >
         ${stackBadgeHtml}
+        ${matchTypeBadgeHtml}
         <span class="absolute top-2 right-2 px-2 py-0.5 rounded text-[11px] font-mono font-medium border ${scoreColor} backdrop-blur-md">
           ${scorePct}% Score
         </span>

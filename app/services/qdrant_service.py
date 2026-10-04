@@ -41,7 +41,7 @@ class QdrantService:
                 ),
             )
             # Payload Index für schnelle Pfad-Suchen und Metadaten-Filter
-            for field in ["file_path", "image_path", "relative_path", "title", "creator", "date", "signature"]:
+            for field in ["file_path", "image_path", "relative_path", "title", "creator", "date", "signature", "keywords"]:
                 self.client.create_payload_index(
                     collection_name=settings.COLLECTION_IMAGES,
                     field_name=field,
@@ -61,8 +61,8 @@ class QdrantService:
                     distance=rest_models.Distance.COSINE,
                 ),
             )
-            # Payload Indizes für Metadaten: file_path, image_path, relative_path, face_id, cluster_id
-            for field in ["file_path", "image_path", "relative_path", "face_id", "cluster_id"]:
+            # Payload Indizes für Metadaten: file_path, image_path, relative_path, face_id, cluster_id, label
+            for field in ["file_path", "image_path", "relative_path", "face_id", "cluster_id", "label"]:
                 self.client.create_payload_index(
                     collection_name=settings.COLLECTION_FACES,
                     field_name=field,

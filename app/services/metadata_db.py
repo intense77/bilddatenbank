@@ -223,5 +223,44 @@ class MetadataDatabase:
             logger.error("Fehler beim Abfragen aller Cluster: %s", e)
             return []
 
+    def search_clusters(self, query: str) -> List[Dict[str, Any]]:
+        """Sucht nach Clustern anhand des Namens oder der Notizen."""
+        clean_q = query.strip()
+        if not clean_q:
+            return []
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT * FROM clusters WHERE name LIKE ? OR notes LIKE ? ORDER BY name ASC",
+                    (f"%{clean_q}%", f"%{clean_q}%")
+                )
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error("Fehler bei der Clustersuche in SQLite: %s", e)
+            return []
+
+    def search_metadata(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Sucht nach Bildmetadaten in title, signature, description, creator, file_name."""
+        clean_q = query.strip()
+        if not clean_q:
+            return []
+        pattern = f"%{clean_q}%"
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    """
+                    SELECT * FROM metadata 
+                    WHERE title LIKE ? OR signature LIKE ? OR description LIKE ? OR creator LIKE ? OR file_name LIKE ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (pattern, pattern, pattern, pattern, pattern, limit)
+                )
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error("Fehler bei der Metadatensuche in SQLite: %s", e)
+            return []
+
 
 metadata_db = MetadataDatabase()
+

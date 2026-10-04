@@ -1,4 +1,5 @@
 import io
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 import re
@@ -25,7 +26,10 @@ from app.services.clustering_service import ClusteringService
 from app.services.variant_service import VariantService
 from app.services.thumbnail_service import thumbnail_service
 from app.services.metadata_service import metadata_service
+from app.services.metadata_db import metadata_db
 from qdrant_client.http import models as rest_models
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Suche & Cluster"])
 
@@ -53,6 +57,8 @@ class SemanticSearchResult(BaseModel):
     variant_label: Optional[str] = Field(default=None, description="Lesbare Bezeichnung der Beziehung")
     variant_similarity: Optional[float] = Field(default=None, description="Ähnlichkeits-Score zur primären Aufnahme")
     primary_id: Optional[str] = Field(default=None, description="ID der primären Aufnahme bei Varianten")
+    match_type: Optional[str] = Field(default="clip", description="Art des Treffers: 'person', 'metadata', 'clip'")
+    matched_query: Optional[str] = Field(default=None, description="Der Begriff oder Name, der den Treffer ausgelöst hat")
 
 
 class FaceSearchResult(BaseModel):
@@ -127,7 +133,8 @@ class CropSearchRequest(BaseModel):
 @router.get("/search/semantic", response_model=List[SemanticSearchResult])
 def search_semantic(
     q: str = Query(..., description="Natürlicher Suchtext (z. B. 'historischer Marktplatz', 'Soldatenporträt')"),
-    limit: int = Query(default=20, ge=1, le=100, description="Maximale Anzahl Ergebnisse"),
+    limit: int = Query(default=24, ge=1, le=100, description="Maximale Anzahl Ergebnisse pro Seite"),
+    offset: int = Query(default=0, ge=0, description="Offset für Paginierung / Mehr laden"),
     score_threshold: Optional[float] = Query(default=None, ge=-1.0, le=1.0, description="Mindest-Ähnlichkeitsscore"),
     stack_variants: bool = Query(default=True, description="Fasst Varianten und Duplikate zu Bildstapeln zusammen"),
     clip_service: ClipService = Depends(get_clip_service),
@@ -136,22 +143,49 @@ def search_semantic(
 ):
     """
     Vektorisiert den Suchtext via CLIP und führt Vektorsuche in `archive_images` durch.
-    Erkennt zudem automatisch benannte Personen aus `archive_faces` und führt eine
-    hybride Relevanz-Verschmelzung durch, damit namentlich gesuchte Personen sofort
-    mit 100% Relevanz an erster Stelle stehen.
+    Erkennt zudem automatisch benannte Personen aus `archive_faces` (vollständig über alle Bestände
+    ohne 5000er-Scroll-Limit) sowie archivische Metadaten aus SQLite (Signatur, Titel, Urheber,
+    Beschreibung) und führt eine transparente Relevanz-Verschmelzung mit sauberer Abgrenzung
+    und Paginierung (offset/limit) durch.
     """
+    # Direkte Aufrufe außerhalb von FastAPI (z.B. Tests) absichern:
+    if hasattr(score_threshold, "default"):
+        score_threshold = score_threshold.default
+    if hasattr(limit, "default"):
+        limit = limit.default or 24
+    if hasattr(offset, "default"):
+        offset = offset.default or 0
+    if hasattr(stack_variants, "default"):
+        stack_variants = stack_variants.default if stack_variants.default is not None else True
+
     q_clean = q.strip().lower()
     q_words = [w for w in re.split(r"[^\w]+", q_clean) if len(w) >= 2]
 
-    # 1. Personen-Namenssuche in archive_faces
+    # 1. Vollständige Personen-Namenssuche in archive_faces
     matched_person_images: Dict[str, Dict[str, Any]] = {}
+    matching_person_labels: Set[str] = set()
+    is_exact_person_query: bool = False
+
     try:
-        face_records, _ = qdrant.client.scroll(
-            collection_name=settings.COLLECTION_FACES,
-            limit=5000,
-            with_payload=True,
-            with_vectors=False,
+        # Gezielter Filter: Nur Punkte mit nicht-leerem Label abfragen (eliminiert 5.000er-Flaschenhals!)
+        labeled_filter = rest_models.Filter(
+            must_not=[rest_models.IsEmptyCondition(is_empty=rest_models.PayloadField(key="label"))]
         )
+        face_records = []
+        next_offset = None
+        while True:
+            records, next_offset = qdrant.client.scroll(
+                collection_name=settings.COLLECTION_FACES,
+                scroll_filter=labeled_filter,
+                limit=1000,
+                offset=next_offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            face_records.extend(records)
+            if not next_offset:
+                break
+
         for r in face_records:
             p = r.payload or {}
             lbl = p.get("label")
@@ -162,8 +196,8 @@ def search_semantic(
             lbl_words = [w for w in re.split(r"[^\w]+", lbl_lower) if len(w) >= 2]
 
             # Matching Kriterien:
-            # - Exakter Treffer: "bischof müller" == "bischof müller" -> 1.0
-            # - Teilstring: "müller" in "bischof müller" oder umgekehrt -> 0.98
+            # - Exakter Treffer: "sabine" == "sabine" -> 1.0
+            # - Teilstring / Start: "sabine" in "sabine meier" -> 0.98
             # - Wort-Übereinstimmung -> 0.95
             is_match = False
             match_score = 0.0
@@ -171,6 +205,7 @@ def search_semantic(
             if q_clean == lbl_lower:
                 is_match = True
                 match_score = 1.0
+                is_exact_person_query = True
             elif q_clean in lbl_lower or lbl_lower in q_clean:
                 is_match = True
                 match_score = 0.98
@@ -179,6 +214,7 @@ def search_semantic(
                 match_score = 0.95
 
             if is_match:
+                matching_person_labels.add(lbl_clean)
                 img_path = p.get("file_path") or p.get("image_path")
                 if img_path:
                     if img_path not in matched_person_images:
@@ -186,27 +222,104 @@ def search_semantic(
                             "labels": {lbl_clean},
                             "score": match_score,
                             "parent_image_id": p.get("parent_image_id"),
+                            "match_type": "person",
+                            "matched_query": lbl_clean,
                         }
                     else:
                         matched_person_images[img_path]["labels"].add(lbl_clean)
-                        matched_person_images[img_path]["score"] = max(
-                            matched_person_images[img_path]["score"], match_score
-                        )
+                        if match_score > matched_person_images[img_path]["score"]:
+                            matched_person_images[img_path]["score"] = match_score
+                            matched_person_images[img_path]["matched_query"] = lbl_clean
     except Exception as e:
         logger.warning("Personen-Suche in archive_faces fehlgeschlagen: %s", e)
 
-    # 2. CLIP Semantische Vektorsuche
-    fetch_limit = limit * 2 if stack_variants else limit
+    # 1b. Abgleich über relationale SQLite-Cluster
+    try:
+        sqlite_clusters = metadata_db.search_clusters(q)
+        for c in sqlite_clusters:
+            c_id = c.get("id")
+            c_name = c.get("name")
+            if c_id and c_name:
+                matching_person_labels.add(c_name)
+                if q_clean == c_name.strip().lower():
+                    is_exact_person_query = True
+                c_records, _ = qdrant.client.scroll(
+                    collection_name=settings.COLLECTION_FACES,
+                    scroll_filter=rest_models.Filter(
+                        must=[rest_models.FieldCondition(key="cluster_id", match=rest_models.MatchValue(value=str(c_id)))]
+                    ),
+                    limit=500,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                for cr in c_records:
+                    cp = cr.payload or {}
+                    img_path = cp.get("file_path") or cp.get("image_path")
+                    if img_path:
+                        m_score = 1.0 if is_exact_person_query else 0.98
+                        if img_path not in matched_person_images:
+                            matched_person_images[img_path] = {
+                                "labels": {c_name},
+                                "score": m_score,
+                                "parent_image_id": cp.get("parent_image_id"),
+                                "match_type": "person",
+                                "matched_query": c_name,
+                            }
+                        else:
+                            matched_person_images[img_path]["labels"].add(c_name)
+                            matched_person_images[img_path]["score"] = max(
+                                matched_person_images[img_path]["score"], m_score
+                            )
+    except Exception as e:
+        logger.warning("Clustersuche in SQLite fehlgeschlagen: %s", e)
+
+    # 2. Volltextsuche in archivischen Metadatenfeldern (SQLite Hybrid Search)
+    matched_metadata_images: Dict[str, Dict[str, Any]] = {}
+    try:
+        meta_rows = metadata_db.search_metadata(q, limit=100)
+        for row in meta_rows:
+            m_path = row.get("file_path")
+            if not m_path or m_path in matched_person_images:
+                continue
+            match_field = "Metadaten"
+            if row.get("signature") and q_clean in str(row["signature"]).lower():
+                match_field = f"Signatur: {row['signature']}"
+            elif row.get("title") and q_clean in str(row["title"]).lower():
+                match_field = f"Titel: {row['title']}"
+            elif row.get("creator") and q_clean in str(row["creator"]).lower():
+                match_field = f"Urheber: {row['creator']}"
+            elif row.get("description") and q_clean in str(row["description"]).lower():
+                match_field = f"Beschreibung: {str(row['description'])[:30]}..."
+
+            matched_metadata_images[m_path] = {
+                "score": 0.90,
+                "match_type": "metadata",
+                "matched_query": match_field,
+                "metadata_row": row,
+            }
+    except Exception as e:
+        logger.warning("Metadaten-Suche in SQLite fehlgeschlagen: %s", e)
+
+    # 3. CLIP Semantische Vektorsuche
+    # Relevanz-Schwellenwert: Standard auf 0.20 optimieren (bei None)
+    effective_clip_threshold = score_threshold if score_threshold is not None else 0.20
+    # Genug Kandidaten für Paginierung und Varianten-Stacking abfragen
+    fetch_limit = min(600, max(80, (offset + limit) * 3))
     hits = []
     try:
         query_vector = clip_service.embed_text(q)
         hits = qdrant.search_images(
             query_vector=query_vector,
             limit=fetch_limit,
-            score_threshold=score_threshold,
+            score_threshold=effective_clip_threshold if effective_clip_threshold > 0 else None,
         )
     except Exception as e:
         logger.warning("CLIP Textvektorisierung fehlgeschlagen: %s", e)
+
+    # Bei exakter Namenssuche (z.B. "Sabine") und vorhandenen Personentreffern:
+    # Schwache CLIP-Zufallstreffer (< 0.28) ausblenden, um Relevanz nicht zu verwässern
+    if is_exact_person_query and matched_person_images:
+        hits = [h for h in hits if h.score >= 0.28]
 
     results_map: Dict[str, SemanticSearchResult] = {}
 
@@ -220,12 +333,21 @@ def search_semantic(
 
         score = float(hit.score)
         matched_persons = set(payload.get("persons") or [])
+        match_type = "clip"
+        matched_query_str = None
 
-        # Wurde das Bild zusätzlich durch Personen-Match gefunden?
+        # Wurde das Bild zusätzlich durch Personen-Match oder Metadaten gefunden?
         if file_path in matched_person_images:
             p_info = matched_person_images[file_path]
             matched_persons.update(p_info["labels"])
             score = max(score, p_info["score"])
+            match_type = "person"
+            matched_query_str = p_info.get("matched_query")
+        elif file_path in matched_metadata_images:
+            m_info = matched_metadata_images[file_path]
+            score = max(score, m_info["score"])
+            match_type = "metadata"
+            matched_query_str = m_info.get("matched_query")
 
         results_map[file_path] = SemanticSearchResult(
             id=str(hit.id),
@@ -239,25 +361,45 @@ def search_semantic(
             description=payload.get("description"),
             keywords=payload.get("keywords") or [],
             persons=sorted(list(matched_persons)),
+            match_type=match_type,
+            matched_query=matched_query_str,
         )
+
+    # Fehlende Personen- und Metadaten-Treffer nachladen
+    parent_ids_to_fetch = []
+    for p_path, p_info in {**matched_person_images, **matched_metadata_images}.items():
+        if p_path not in results_map:
+            pid = p_info.get("parent_image_id")
+            if pid:
+                parent_ids_to_fetch.append(str(pid))
+
+    payloads_by_id: Dict[str, Dict[str, Any]] = {}
+    payloads_by_path: Dict[str, Dict[str, Any]] = {}
+    if parent_ids_to_fetch:
+        try:
+            records = qdrant.client.retrieve(
+                collection_name=settings.COLLECTION_IMAGES,
+                ids=parent_ids_to_fetch,
+                with_payload=True,
+            )
+            for rec in records:
+                payloads_by_id[str(rec.id)] = rec.payload or {}
+                f_path = (rec.payload or {}).get("file_path") or (rec.payload or {}).get("image_path")
+                if f_path:
+                    payloads_by_path[f_path] = rec.payload or {}
+        except Exception as e:
+            logger.warning("Batch-Retrieve von Bild-Payloads fehlgeschlagen: %s", e)
 
     # Nun noch alle Personen-Treffer hinzufügen, falls CLIP sie nicht in den Top-Hits hatte
     for file_path, p_info in matched_person_images.items():
         if file_path in results_map:
             continue
 
-        img_payload = {}
-        parent_id = p_info.get("parent_image_id")
-        try:
-            if parent_id:
-                ret = qdrant.client.retrieve(
-                    collection_name=settings.COLLECTION_IMAGES,
-                    ids=[parent_id],
-                    with_payload=True,
-                )
-                if ret:
-                    img_payload = ret[0].payload or {}
-            if not img_payload:
+        parent_id = str(p_info.get("parent_image_id") or "")
+        img_payload = payloads_by_id.get(parent_id) or payloads_by_path.get(file_path) or {}
+
+        if not img_payload:
+            try:
                 rec, _ = qdrant.client.scroll(
                     collection_name=settings.COLLECTION_IMAGES,
                     scroll_filter=rest_models.Filter(
@@ -272,14 +414,20 @@ def search_semantic(
                 if rec:
                     img_payload = rec[0].payload or {}
                     parent_id = str(rec[0].id)
-        except Exception as e:
-            logger.warning("Bilddaten für %s konnten nicht geladen werden: %s", file_path, e)
+            except Exception as e:
+                logger.warning("Bilddaten für %s konnten nicht geladen werden: %s", file_path, e)
+
+        # Fallback: SQLite
+        if not img_payload:
+            meta_sq = metadata_db.get_metadata(file_path)
+            if meta_sq:
+                img_payload = meta_sq
 
         file_name = img_payload.get("file_name") or img_payload.get("filename") or Path(file_path).name
         all_persons = set(img_payload.get("persons") or [])
         all_persons.update(p_info["labels"])
 
-        fallback_id = str(parent_id or uuid.uuid5(UUID_NAMESPACE, Path(file_path).name))
+        fallback_id = parent_id if parent_id else str(uuid.uuid5(UUID_NAMESPACE, Path(file_path).name))
         results_map[file_path] = SemanticSearchResult(
             id=fallback_id,
             score=round(p_info["score"], 4),
@@ -292,13 +440,41 @@ def search_semantic(
             description=img_payload.get("description"),
             keywords=img_payload.get("keywords") or [],
             persons=sorted(list(all_persons)),
+            match_type="person",
+            matched_query=p_info.get("matched_query"),
         )
 
-    # Sortiere nach Score absteigend und liefere maximal 'limit' Ergebnisse
-    sorted_results = sorted(results_map.values(), key=lambda r: r.score, reverse=True)
+    # Nun noch alle reinen Metadaten-Treffer hinzufügen
+    for file_path, m_info in matched_metadata_images.items():
+        if file_path in results_map:
+            continue
+        m_row = m_info.get("metadata_row") or {}
+        fallback_id = str(uuid.uuid5(UUID_NAMESPACE, Path(file_path).name))
+        results_map[file_path] = SemanticSearchResult(
+            id=fallback_id,
+            score=round(m_info["score"], 4),
+            file_path=file_path,
+            file_name=m_row.get("file_name") or Path(file_path).name,
+            title=m_row.get("title"),
+            creator=m_row.get("creator"),
+            date=m_row.get("date"),
+            signature=m_row.get("signature"),
+            description=m_row.get("description"),
+            keywords=[],
+            persons=[],
+            match_type="metadata",
+            matched_query=m_info.get("matched_query"),
+        )
+
+    # Sortiere nach Score absteigend
+    sorted_results = sorted(results_map.values(), key=lambda r: (r.score, r.file_path), reverse=True)
+
+    # Varianten und Duplikate optional zu Bildstapeln zusammenfassen
     if stack_variants:
         sorted_results = variant_service.stack_search_results(sorted_results, similarity_threshold=0.92)
-    return sorted_results[:limit]
+
+    # Paginierung: Schneide anhand von offset und limit ab
+    return sorted_results[offset : offset + limit]
 
 
 @router.api_route("/search/faces/by-image", methods=["GET", "POST"], response_model=List[FaceSearchResult])
