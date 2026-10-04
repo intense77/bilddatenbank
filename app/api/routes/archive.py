@@ -291,7 +291,9 @@ async def index_existing_folder(
         except Exception as e:
             logger.error("Hintergrund-Indexierung für '%s' fehlgeschlagen: %s", registered_path, e, exc_info=True)
 
-    background_tasks.add_task(run_indexing_job)
+    import threading
+    thread = threading.Thread(target=run_indexing_job, daemon=True, name="ArchiveFolderIndexer")
+    thread.start()
 
     return {
         "status": "started",
