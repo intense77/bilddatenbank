@@ -26,6 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (q) {
     setQueryAndSearch(q);
   }
+
+  // Hintergrund-Import sofort reaktivieren, wenn Tab wieder in den Vordergrund tritt
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      checkIndexingProgress();
+    }
+  });
 });
 
 // --- Tab Navigation ---
@@ -2952,11 +2959,6 @@ async function startFolderIndexing(forceExplicit = false) {
   if (status) status.textContent = 'Indexierung startet...';
   if (liveBox) liveBox.classList.remove('hidden');
 
-  // Starte sofort das Live-Polling für den Fortschrittsbalken
-  if (!progressPollTimer) {
-    progressPollTimer = setInterval(checkIndexingProgress, 800);
-  }
-
   try {
     const res = await fetch('/api/archive/index-folder', {
       method: 'POST',
@@ -2970,13 +2972,29 @@ async function startFolderIndexing(forceExplicit = false) {
     });
 
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
+      // Falls bereits ein Import im Hintergrund läuft (HTTP 409):
+      // Nicht abbrechen, sondern Live-Fortschrittsanzeige sofort aktivieren und verbinden!
+      if (res.status === 409 || (err.detail && err.detail.includes('bereits eine Indexierung'))) {
+        showToast('Ein Hintergrund-Import läuft bereits – Live-Fortschrittsanzeige aktiviert.', false);
+        if (liveBox) liveBox.classList.remove('hidden');
+        if (status) status.textContent = 'Hintergrund-Indexierung aktiv...';
+        checkIndexingProgress();
+        if (!progressPollTimer) {
+          progressPollTimer = setInterval(checkIndexingProgress, 1000);
+        }
+        return;
+      }
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
 
     showToast('Indexierung im Hintergrund gestartet.');
     loadRegisteredFolders();
-    // Das Polling checkIndexingProgress() läuft im Hintergrund automatisch weiter!
+    // Erst NACH erfolgreicher Bestätigung das Polling aktivieren, damit keine veralteten 'finished'-Stati gelesen werden
+    checkIndexingProgress();
+    if (!progressPollTimer) {
+      progressPollTimer = setInterval(checkIndexingProgress, 1000);
+    }
   } catch (err) {
     showToast(`Start fehlgeschlagen: ${err.message}`, true);
     if (status) status.textContent = 'Fehlgeschlagen';
