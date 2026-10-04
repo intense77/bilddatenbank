@@ -2234,6 +2234,26 @@ async function scanFolderPreview() {
 
 let progressPollTimer = null;
 
+const DEFAULT_FOLDER_INDEX_BTN_HTML = `
+  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+      d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z">
+    </path>
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+      d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+  </svg>
+  <span>Ordner jetzt indexieren</span>
+`;
+
+function resetFolderIndexButton() {
+  const btn = document.getElementById('start-folder-index-btn');
+  if (btn) {
+    btn.disabled = false;
+    btn.classList.remove('opacity-50');
+    btn.innerHTML = DEFAULT_FOLDER_INDEX_BTN_HTML;
+  }
+}
+
 async function checkIndexingProgress() {
   try {
     const res = await fetch('/api/archive/index-progress');
@@ -2261,41 +2281,67 @@ async function checkIndexingProgress() {
       if (facesSpan) facesSpan.textContent = `${data.faces_detected} Gesichter`;
       if (curFileSpan) curFileSpan.textContent = data.current_file || 'Verarbeite...';
 
-      if (btn && !btn.disabled) {
+      if (btn) {
         btn.disabled = true;
         btn.classList.add('opacity-50');
+        if (!btn.innerHTML.includes('animate-spin')) {
+          btn.innerHTML = `
+            <svg class="animate-spin w-4 h-4 text-slate-950" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Indexiere Ordner...</span>
+          `;
+        }
       }
       if (status) status.textContent = `Indexierung läuft (${data.percent}%)...`;
 
       if (!progressPollTimer) {
         progressPollTimer = setInterval(checkIndexingProgress, 1000);
       }
-    } else if (data.finished && data.processed_count > 0) {
+    } else {
+      // Indexierung läuft nicht (mehr): Button zwingend zurücksetzen!
+      resetFolderIndexButton();
+
       if (progressPollTimer) {
         clearInterval(progressPollTimer);
         progressPollTimer = null;
       }
-      if (liveBox) liveBox.classList.add('hidden');
-      if (btn) {
-        btn.disabled = false;
-        btn.classList.remove('opacity-50');
-      }
-      if (status) status.textContent = 'Indexierung abgeschlossen';
 
-      if (preview) {
-        preview.classList.remove('hidden');
-        preview.innerHTML = `
-          <div class="text-emerald-400 font-medium flex items-center gap-1.5">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-            Indexierung erfolgreich abgeschlossen!
-          </div>
-          <div class="text-[11px] text-slate-300 font-mono mt-1 space-y-0.5">
-            <p>&bull; Verarbeitet: <strong class="text-amber-400">${data.processed_count}</strong> Bilder (${data.new_indexed} neu, ${data.skipped} übersprungen)</p>
-            <p>&bull; Erkannte Gesichter: <strong class="text-amber-400">${data.faces_detected}</strong></p>
-          </div>
-        `;
+      if (data.finished) {
+        if (liveBox) liveBox.classList.add('hidden');
+
+        if (data.error) {
+          if (status) status.textContent = 'Indexierung fehlgeschlagen';
+          if (preview) {
+            preview.classList.remove('hidden');
+            preview.innerHTML = `
+              <div class="text-rose-400 font-medium flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                Indexierung mit Fehler beendet
+              </div>
+              <p class="text-[11px] text-rose-300 font-mono mt-1">${escapeHtml(data.error)}</p>
+            `;
+          }
+        } else {
+          if (status) status.textContent = 'Indexierung abgeschlossen';
+
+          if (preview) {
+            preview.classList.remove('hidden');
+            preview.innerHTML = `
+              <div class="text-emerald-400 font-medium flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                Indexierung erfolgreich abgeschlossen!
+              </div>
+              <div class="text-[11px] text-slate-300 font-mono mt-1 space-y-0.5">
+                <p>&bull; Verarbeitet: <strong class="text-amber-400">${data.processed_count || 0}</strong> Bilder (${data.new_indexed || 0} neu, ${data.skipped || 0} übersprungen)</p>
+                <p>&bull; Erkannte Gesichter: <strong class="text-amber-400">${data.faces_detected || 0}</strong></p>
+              </div>
+            `;
+          }
+        }
+        loadRegisteredFolders();
       }
-      loadRegisteredFolders();
     }
   } catch (err) {
     // Stiller Fehler beim Polling
@@ -2320,7 +2366,6 @@ async function startFolderIndexing() {
 
   btn.disabled = true;
   btn.classList.add('opacity-50');
-  const origBtnHtml = btn.innerHTML;
   btn.innerHTML = `
     <svg class="animate-spin w-4 h-4 text-slate-950" fill="none" viewBox="0 0 24 24">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -2365,9 +2410,7 @@ async function startFolderIndexing() {
       clearInterval(progressPollTimer);
       progressPollTimer = null;
     }
-    btn.disabled = false;
-    btn.classList.remove('opacity-50');
-    btn.innerHTML = origBtnHtml;
+    resetFolderIndexButton();
   }
 }
 
