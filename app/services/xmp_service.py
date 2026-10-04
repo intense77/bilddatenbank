@@ -47,14 +47,22 @@ class XmpService:
         signature: Optional[str] = None,
         persons: Optional[List[str]] = None,
         keywords: Optional[List[str]] = None,
+        iconclass: Optional[str] = None,
     ) -> str:
         """
         Erzeugt einen standardkonformen Adobe XMP (RDF/XML) Metadaten-String.
-        Unterstützt Dublin Core (dc), Photoshop und IPTC Extension (PersonInImage).
+        Unterstützt Dublin Core (dc), Photoshop, IPTC Extension (PersonInImage) und Iconclass-Notationen.
         """
         p = Path(file_path)
         persons_list = [p.strip() for p in (persons or []) if p and p.strip()]
         kw_list = [k.strip() for k in (keywords or []) if k and k.strip()]
+        
+        # Iconclass Notation in Schlagworte einbetten
+        if iconclass and iconclass.strip():
+            ic_clean = iconclass.strip()
+            ic_tag = f"Iconclass: {ic_clean}"
+            if ic_tag not in kw_list:
+                kw_list.append(ic_tag)
         
         # Dublin Core Subject vereint Personen und Schlagwörter
         all_subjects = list(dict.fromkeys(persons_list + kw_list))
@@ -168,6 +176,7 @@ class XmpService:
         signature: Optional[str] = None,
         persons: Optional[List[str]] = None,
         keywords: Optional[List[str]] = None,
+        iconclass: Optional[str] = None,
         force_mirror: bool = False,
     ) -> Dict[str, Any]:
         """
@@ -186,6 +195,7 @@ class XmpService:
             signature=signature,
             persons=persons,
             keywords=keywords,
+            iconclass=iconclass,
         )
 
         target_path = self.get_sidecar_path(validated_path)

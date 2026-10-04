@@ -177,37 +177,67 @@
         </form>
 
         <!-- Search Prompt Chips -->
-        <div class="mt-4 flex flex-wrap items-center gap-2 pt-3 border-t border-slate-800/80 text-xs text-slate-400">
-          <span class="font-medium text-slate-500 mr-1">Beispiele:</span>
-          <button type="button" onclick="setQueryAndSearch('gotischer Altar')"
-            class="px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 hover:text-amber-400 border border-slate-700/50 transition">gotischer
-            Altar</button>
-          <button type="button" onclick="setQueryAndSearch('Gemeindefest')"
-            class="px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 hover:text-amber-400 border border-slate-700/50 transition">Gemeindefest</button>
-          <button type="button" onclick="setQueryAndSearch('Häuser')"
-            class="px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 hover:text-amber-400 border border-slate-700/50 transition">Häuser</button>
-          <button type="button" onclick="setQueryAndSearch('Soldatenporträt')"
-            class="px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 hover:text-amber-400 border border-slate-700/50 transition">Soldatenporträt</button>
-          <button type="button" onclick="setQueryAndSearch('Marktplatz')"
-            class="px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 hover:text-amber-400 border border-slate-700/50 transition">Marktplatz</button>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800/80 text-xs text-slate-400">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="font-medium text-slate-500 mr-1">Beispiele:</span>
+            <button type="button" onclick="setQueryAndSearch('gotischer Altar')"
+              class="px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 hover:text-amber-400 border border-slate-700/50 transition">gotischer Altar</button>
+            <button type="button" onclick="setQueryAndSearch('Messgewand')"
+              class="px-2.5 py-1 rounded-md bg-purple-950/40 text-purple-300 hover:bg-purple-900/50 border border-purple-500/30 transition flex items-center gap-1 font-medium">
+              <span>🏛️</span> Messgewand (Kasel)
+            </button>
+            <button type="button" onclick="setQueryAndSearch('Monstranz')"
+              class="px-2.5 py-1 rounded-md bg-purple-950/40 text-purple-300 hover:bg-purple-900/50 border border-purple-500/30 transition flex items-center gap-1 font-medium">
+              <span>🏛️</span> Monstranz
+            </button>
+            <button type="button" onclick="setQueryAndSearch('Fronleichnam')"
+              class="px-2.5 py-1 rounded-md bg-purple-950/40 text-purple-300 hover:bg-purple-900/50 border border-purple-500/30 transition flex items-center gap-1 font-medium">
+              <span>🏛️</span> Fronleichnam
+            </button>
+            <button type="button" onclick="setQueryAndSearch('Bischof')"
+              class="px-2.5 py-1 rounded-md bg-purple-950/40 text-purple-300 hover:bg-purple-900/50 border border-purple-500/30 transition flex items-center gap-1 font-medium">
+              <span>🏛️</span> Bischof
+            </button>
+            <button type="button" onclick="setQueryAndSearch('Marktplatz')"
+              class="px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 hover:text-amber-400 border border-slate-700/50 transition">Marktplatz</button>
+          </div>
+          <button type="button" onclick="openThesaurusModal()"
+            class="px-2.5 py-1 rounded-md bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-500/40 font-medium transition flex items-center gap-1.5 shadow-sm ml-auto"
+            title="Fachbegriffe nach GND und Iconclass durchstöbern">
+            <span>🏛️</span>
+            <span>Kirchlicher Thesaurus</span>
+          </button>
         </div>
       </div>
 
       <!-- Results Stats Bar -->
-      <div id="results-bar" class="hidden flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm text-slate-400 px-3 py-2 bg-slate-900/60 rounded-xl border border-slate-800/80">
-        <div class="flex flex-wrap items-center gap-2">
-          <span id="results-count" class="font-medium text-slate-200">0 Treffer</span>
-          <div id="results-filter-pills" class="flex flex-wrap items-center gap-1.5 ml-1">
-            <!-- Filter Pills injected here -->
+      <div id="results-bar" class="hidden flex flex-col gap-2 text-xs sm:text-sm text-slate-400 px-3 py-2 bg-slate-900/60 rounded-xl border border-slate-800/80">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <span id="results-count" class="font-medium text-slate-200">0 Treffer</span>
+            <div id="results-filter-pills" class="flex flex-wrap items-center gap-1.5 ml-1">
+              <!-- Filter Pills injected here -->
+            </div>
+            <button id="add-all-results-to-lightbox-btn" type="button" onclick="addAllCurrentResultsToLightbox()"
+              class="hidden px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5 shadow-sm ml-2"
+              title="Alle gefundenen Bilder auf den Leuchttisch legen">
+              <span>💡</span>
+              <span>Alle auf Leuchttisch</span>
+            </button>
           </div>
-          <button id="add-all-results-to-lightbox-btn" type="button" onclick="addAllCurrentResultsToLightbox()"
-            class="hidden px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5 shadow-sm ml-2"
-            title="Alle gefundenen Bilder auf den Leuchttisch legen">
-            <span>💡</span>
-            <span>Alle auf Leuchttisch</span>
-          </button>
+          <span id="results-query" class="font-mono text-amber-400/90 truncate max-w-xs sm:max-w-md"></span>
         </div>
-        <span id="results-query" class="font-mono text-amber-400/90 truncate max-w-xs sm:max-w-md"></span>
+        <!-- Thesaurus Expansion Info Banner -->
+        <div id="results-thesaurus-banner" class="hidden text-xs py-1.5 px-3 rounded-lg bg-purple-950/60 border border-purple-500/40 text-purple-200 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="text-sm">🏛️</span>
+            <span id="thesaurus-banner-text" class="font-sans"></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="thesaurus-banner-iconclass" class="font-mono px-2 py-0.5 rounded bg-purple-900/80 text-purple-300 border border-purple-500/30 text-[11px]"></span>
+            <span id="thesaurus-banner-gnd" class="font-mono px-2 py-0.5 rounded bg-slate-900/80 text-slate-300 border border-slate-700 text-[11px]"></span>
+          </div>
+        </div>
       </div>
 
       <!-- Loading Spinner -->
@@ -1977,6 +2007,64 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Kirchlicher Thesaurus Modal -->
+  <div id="thesaurus-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl shadow-2xl p-6 relative flex flex-col max-h-[90vh]">
+      <!-- Header -->
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
+        <div class="flex items-center gap-3">
+          <span class="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center font-bold text-lg">🏛️</span>
+          <div>
+            <h3 class="text-base font-semibold text-slate-100 flex items-center gap-2">
+              <span>Kirchlicher Thesaurus &amp; Ikonographie</span>
+              <span class="text-[11px] px-2 py-0.5 rounded-full bg-purple-900/60 text-purple-300 border border-purple-500/30 font-normal">Iconclass &amp; GND</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Kontrolliertes Vokabular zur präzisen Erschließung und semantischen Suche sakraler Bildinhalte</p>
+          </div>
+        </div>
+        <button onclick="closeThesaurusModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition">
+          ✕
+        </button>
+      </div>
+
+      <!-- Controls: Filter & Categories -->
+      <div class="py-3 border-b border-slate-800 shrink-0 space-y-3">
+        <div class="relative">
+          <input type="text" id="thesaurus-filter-input" placeholder="Begriffe, Synonyme oder Iconclass-Codes durchsuchen..."
+            oninput="filterThesaurusModal(this.value)"
+            class="w-full bg-slate-950/70 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition pl-10" />
+          <span class="absolute left-3.5 top-3 text-slate-500 text-sm">🔍</span>
+          <button id="thesaurus-filter-clear" type="button" onclick="clearThesaurusFilter()" class="hidden absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 text-xs px-2 py-0.5 rounded bg-slate-800">Löschen</button>
+        </div>
+        <!-- Category Tab Pills -->
+        <div id="thesaurus-category-tabs" class="flex flex-wrap gap-1.5 text-xs">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+
+      <!-- Scrollable Content Grid -->
+      <div id="thesaurus-terms-container" class="py-4 overflow-y-auto grow space-y-3 pr-1">
+        <div id="thesaurus-terms-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <!-- Injected via JavaScript -->
+        </div>
+        <div id="thesaurus-empty-state" class="hidden py-12 text-center text-slate-500 text-sm">
+          Keine passenden Thesaurus-Begriffe gefunden.
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0">
+        <div class="flex items-center gap-1.5">
+          <span>💡</span>
+          <span>Ein Klick auf <strong>„In Suche übernehmen“</strong> startet die semantische Suche inkl. automatischer Query-Expansion.</span>
+        </div>
+        <button type="button" onclick="closeThesaurusModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition font-medium">
+          Schließen
+        </button>
+      </div>
     </div>
   </div>
 

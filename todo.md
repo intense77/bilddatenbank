@@ -280,12 +280,12 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 * **Klerus & Ordenswesen:** *Bischof, Weihbischof, Abt/Äbtissin, Pfarrer, Kaplan, Diakon, Ministrant, Ordensschwester/Nonne (Habit), Franziskaner, Benediktiner, Jesuiten, Dominikaner, Zisterzienser*.
 
 ### Technische Umsetzungsaufgaben
-- [ ] **Thesaurus-basierte Synonym-Erweiterung (Query Expansion):**
+- [x] **Thesaurus-basierte Synonym-Erweiterung (Query Expansion):**
   * Sucht ein Nutzer nach *„Messgewand“*, expandiert die Such-Engine im Hintergrund automatisch auf *„Kasel“*, *„Parament“*, *„Pluviale“* und *„Dalmatik“*.
   * Sucht jemand nach *„Monstranz“*, werden auch *„Allerheiligstes“*, *„Ostensorium“* oder *„Aussetzung“* semantisch assoziiert.
-- [ ] **Zero-Shot Prompt-Katalog für kirchliche Motive:**
-  * Vorberechnete OpenCLIP-Embeddings für die ~250 wichtigsten kirchlichen Begriffe (GND/Iconclass), um bei neu indexierten Bildern automatisch passende Schlagwort-Vorschläge zu generieren (ohne zusätzlichen VRAM-Bedarf).
-- [ ] **Iconclass-Notationen im XMP-Sidecar:**
+- [x] **Zero-Shot Prompt-Katalog für kirchliche Motive:**
+  * Vorberechnete OpenCLIP-Embeddings für die wichtigsten kirchlichen Begriffe (GND/Iconclass), um bei neu indexierten Bildern automatisch passende Schlagwort-Vorschläge zu generieren (ohne zusätzlichen VRAM-Bedarf).
+- [x] **Iconclass-Notationen im XMP-Sidecar:**
   * Optionale Einbettung von Iconclass-Codes (z. B. `11Q714` für Messfeier/Liturgie) in die standardisierten `.xmp`-Metadaten.
 
 ---

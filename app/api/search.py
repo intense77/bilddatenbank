@@ -27,6 +27,7 @@ from app.services.variant_service import VariantService
 from app.services.thumbnail_service import thumbnail_service
 from app.services.metadata_service import metadata_service
 from app.services.metadata_db import metadata_db
+from app.services.thesaurus_service import thesaurus_service
 from qdrant_client.http import models as rest_models
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,8 @@ class SemanticSearchResult(BaseModel):
     primary_id: Optional[str] = Field(default=None, description="ID der primären Aufnahme bei Varianten")
     match_type: Optional[str] = Field(default="clip", description="Art des Treffers: 'person', 'metadata', 'clip'")
     matched_query: Optional[str] = Field(default=None, description="Der Begriff oder Name, der den Treffer ausgelöst hat")
+    iconclass: Optional[str] = Field(default=None, description="Iconclass-Notation christlicher Ikonographie")
+    thesaurus_category: Optional[str] = Field(default=None, description="Kategorie im kirchlichen Thesaurus (z. B. Paramente, Vasa sacra)")
 
 
 class FaceSearchResult(BaseModel):
@@ -273,41 +276,63 @@ def search_semantic(
     except Exception as e:
         logger.warning("Clustersuche in SQLite fehlgeschlagen: %s", e)
 
-    # 2. Volltextsuche in archivischen Metadatenfeldern (SQLite Hybrid Search)
+    # 2. Kirchliche Thesaurus- & Synonym-Erweiterung (Query Expansion nach GND & Iconclass)
+    thesaurus_exp = thesaurus_service.expand_query(q)
+    expansion_terms = [q]
+    thesaurus_canonical = None
+    thesaurus_category = None
+    thesaurus_iconclass = None
+    if thesaurus_exp:
+        thesaurus_canonical = thesaurus_exp.get("canonical")
+        thesaurus_category = thesaurus_exp.get("category")
+        thesaurus_iconclass = thesaurus_exp.get("iconclass")
+        expansion_terms = thesaurus_exp.get("expansion_terms") or [q]
+
+    # 3. Volltextsuche in archivischen Metadatenfeldern (SQLite Hybrid Search mit Thesaurus-Synonymen)
     matched_metadata_images: Dict[str, Dict[str, Any]] = {}
     try:
-        meta_rows = metadata_db.search_metadata(q, limit=100)
-        for row in meta_rows:
-            m_path = row.get("file_path")
-            if not m_path or m_path in matched_person_images:
-                continue
-            match_field = "Metadaten"
-            if row.get("signature") and q_clean in str(row["signature"]).lower():
-                match_field = f"Signatur: {row['signature']}"
-            elif row.get("title") and q_clean in str(row["title"]).lower():
-                match_field = f"Titel: {row['title']}"
-            elif row.get("creator") and q_clean in str(row["creator"]).lower():
-                match_field = f"Urheber: {row['creator']}"
-            elif row.get("description") and q_clean in str(row["description"]).lower():
-                match_field = f"Beschreibung: {str(row['description'])[:30]}..."
+        search_terms = list(dict.fromkeys([q] + expansion_terms[:5]))
+        for term in search_terms:
+            meta_rows = metadata_db.search_metadata(term, limit=40)
+            for row in meta_rows:
+                m_path = row.get("file_path")
+                if not m_path or m_path in matched_person_images or m_path in matched_metadata_images:
+                    continue
+                match_field = f"Thesaurus: {term} ({thesaurus_canonical})" if term != q else "Metadaten"
+                if row.get("signature") and term.lower() in str(row["signature"]).lower():
+                    match_field = f"Signatur: {row['signature']}"
+                elif row.get("title") and term.lower() in str(row["title"]).lower():
+                    match_field = f"Titel: {row['title']}"
+                elif row.get("creator") and term.lower() in str(row["creator"]).lower():
+                    match_field = f"Urheber: {row['creator']}"
+                elif row.get("description") and term.lower() in str(row["description"]).lower():
+                    match_field = f"Beschreibung: {str(row['description'])[:30]}..."
 
-            matched_metadata_images[m_path] = {
-                "score": 0.90,
-                "match_type": "metadata",
-                "matched_query": match_field,
-                "metadata_row": row,
-            }
+                matched_metadata_images[m_path] = {
+                    "score": 0.90 if term == q else 0.88,
+                    "match_type": "metadata",
+                    "matched_query": match_field,
+                    "metadata_row": row,
+                    "iconclass": thesaurus_iconclass,
+                    "thesaurus_category": thesaurus_category,
+                }
     except Exception as e:
         logger.warning("Metadaten-Suche in SQLite fehlgeschlagen: %s", e)
 
-    # 3. CLIP Semantische Vektorsuche
-    # Relevanz-Schwellenwert: Standard auf 0.20 optimieren (bei None)
+    # 4. CLIP Semantische Vektorsuche (angereichert durch kuratierte kirchliche Prompts)
     effective_clip_threshold = score_threshold if score_threshold is not None else 0.20
     # Genug Kandidaten für Paginierung und Varianten-Stacking abfragen
     fetch_limit = min(600, max(80, (offset + limit) * 3))
     hits = []
     try:
         query_vector = clip_service.embed_text(q)
+        if thesaurus_exp:
+            query_vector = thesaurus_service.blend_thesaurus_vector(
+                query=q,
+                primary_vector=query_vector,
+                clip_service=clip_service,
+                weight=0.25,
+            )
         hits = qdrant.search_images(
             query_vector=query_vector,
             limit=fetch_limit,
@@ -335,6 +360,8 @@ def search_semantic(
         matched_persons = set(payload.get("persons") or [])
         match_type = "clip"
         matched_query_str = None
+        item_iconclass = thesaurus_iconclass
+        item_thesaurus_category = thesaurus_category
 
         # Wurde das Bild zusätzlich durch Personen-Match oder Metadaten gefunden?
         if file_path in matched_person_images:
@@ -348,6 +375,7 @@ def search_semantic(
             score = max(score, m_info["score"])
             match_type = "metadata"
             matched_query_str = m_info.get("matched_query")
+            item_iconclass = m_info.get("iconclass") or item_iconclass
 
         results_map[file_path] = SemanticSearchResult(
             id=str(hit.id),
@@ -363,6 +391,8 @@ def search_semantic(
             persons=sorted(list(matched_persons)),
             match_type=match_type,
             matched_query=matched_query_str,
+            iconclass=item_iconclass,
+            thesaurus_category=item_thesaurus_category,
         )
 
     # Fehlende Personen- und Metadaten-Treffer nachladen
@@ -442,6 +472,8 @@ def search_semantic(
             persons=sorted(list(all_persons)),
             match_type="person",
             matched_query=p_info.get("matched_query"),
+            iconclass=thesaurus_iconclass,
+            thesaurus_category=thesaurus_category,
         )
 
     # Nun noch alle reinen Metadaten-Treffer hinzufügen
@@ -464,6 +496,8 @@ def search_semantic(
             persons=[],
             match_type="metadata",
             matched_query=m_info.get("matched_query"),
+            iconclass=m_info.get("iconclass") or thesaurus_iconclass,
+            thesaurus_category=m_info.get("thesaurus_category") or thesaurus_category,
         )
 
     # Sortiere nach Score absteigend
@@ -1516,6 +1550,7 @@ def write_image_xmp(
             "date": p.get("date"),
             "signature": p.get("signature"),
             "description": p.get("description"),
+            "iconclass": p.get("iconclass"),
         }
         persons = p.get("persons") or []
 
@@ -1527,6 +1562,7 @@ def write_image_xmp(
         date=meta.get("date"),
         signature=meta.get("signature"),
         persons=persons,
+        iconclass=meta.get("iconclass"),
         force_mirror=force_mirror,
     )
     return result
