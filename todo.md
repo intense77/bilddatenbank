@@ -359,5 +359,28 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
     * *Temporäres Deferral der HNSW-Indexierung bei Massen-Imports:* Möglichkeit, bei Initial-Imports von zehntausenden Bildern den HNSW-Indexbau temporär auszusetzen und nach Abschluss des Imports in einem einzigen optimierten Durchlauf zu erstellen.
     * *Stabile I/O-Pufferung:* Sicheres Zwischenspeichern im lokalen Cache bei instabilen Netzwerkverbindungen zum NAS.
 
+---
+
+## 25. UI-Responsivität & Entkopplung von Lese-/Schreiblast während aktiver Hintergrund-Imports
+* **Ziel:** Das Web-Frontend (Personen-Cluster, Detailansichten, Suchanfragen, Bildbetrachtung) muss sich auch während eines laufenden massiven Hintergrund-Imports mit maximaler Geschwindigkeit (< 50 ms) bedienen lassen, ohne durch Datenbank-Sperren oder Netzwerk-I/O ausgebremst zu werden.
+* **Problemstellung & Analyse:**
+  * Bisher scrollt `get_clusters()` bei jedem Aufruf über 80 HTTP-Requests hinweg sämtliche 160.000 Gesichter aus Qdrant (Dauer: ~13,5 s), während der Import mit `wait=true` im Sekundentakt Schreib-Locks auf dieselbe Collection setzt.
+  * Beim Klick auf ein Cluster versucht der Webserver ad-hoc über die überlastete SMB/GVFS-Netzwerkverbindung Vorschaubilder vom NAS zu generieren, während der Import dieselbe Leitung belegt.
+  * Webserver und Import teilen sich im selben Python-Prozess den Global Interpreter Lock (GIL) und CPU-Ressourcen ohne Vorrangsteuerung.
+* **Aufgaben:**
+  - [ ] **SQLite als primärer Index für Cluster-Metadaten (Aggregationen entkoppeln):**
+    * Anlage einer relationalen Tabelle `person_clusters (cluster_id TEXT PRIMARY KEY, name TEXT, face_count INTEGER, preview_path TEXT, last_updated TIMESTAMP)` in der lokalen SQLite-Datenbank (`app/services/metadata_db.py`).
+    * `get_clusters()` liest die Liste in < 5 ms direkt aus SQLite, anstatt 160.000 Vektorpunkte über HTTP aus Qdrant zu scrollen. Qdrant wird ausschließlich für Vektorähnlichkeit genutzt, nicht für relationale `GROUP BY`-Abfragen.
+  - [ ] **Proaktives Thumbnail-Caching direkt beim Import:**
+    * Der Import-Job schneidet die 160-Pixel-Gesichtsausschnitte und WebP-Thumbnails direkt während des Lesens auf die lokale SSD (`data/thumbnails/`), da das Bild und die Bounding-Box ohnehin im RAM liegen.
+    * Beim Klick auf ein Cluster im UI muss kein einziges Byte mehr über das NAS übertragen werden – 100 % der Porträts laden sofort von der lokalen NVMe-SSD.
+  - [ ] **Nicht-blockierende Schreibvorgänge (`wait=False`) in Qdrant:**
+    * Umstellung der Upsert-Aufrufe beim Import von synchron (`wait=True`) auf asynchron (`wait=False`) in Kombination mit Batches.
+    * Qdrant nimmt Schreib-Batches sofort entgegen und glättet das Schreiben im Hintergrund, sodass Lese-Abfragen für die Benutzeroberfläche nicht blockiert werden.
+  - [ ] **Priorisierung für Web-Anfragen (Quality of Service / QoS & Prozess-Entkopplung):**
+    * Ausführung rechenintensiver Import-Aufgaben mit niedrigerer CPU- und I/O-Priorität (`os.nice` / `ionice`) oder Auslagerung in einen separaten Worker-Prozess (Multiprocessing / Celery / RQ).
+    * Interaktive Benutzer-Requests (Cluster laden, Bilder betrachten, Freitextsuche) erhalten im Betriebssystem sofort Vorrang vor dem Hintergrund-Import.
+
+
 
 
