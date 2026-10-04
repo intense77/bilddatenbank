@@ -381,6 +381,25 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
     * Ausführung rechenintensiver Import-Aufgaben mit niedrigerer CPU- und I/O-Priorität (`os.nice` / `ionice`) oder Auslagerung in einen separaten Worker-Prozess (Multiprocessing / Celery / RQ).
     * Interaktive Benutzer-Requests (Cluster laden, Bilder betrachten, Freitextsuche) erhalten im Betriebssystem sofort Vorrang vor dem Hintergrund-Import.
 
+---
+
+## 26. Umfassende Performance-Stellschrauben für Großbestände (> 100.000 Bilder)
+* **Ziel:** Maximale System-Performance, Speichereffizienz und Reaktionsgeschwindigkeit über alle Ebenen hinweg (KI-Inferenz, Vektordatenbank, Relationale Datenbank, Browser-DOM).
+* **Priorisierte Handlungsfelder & Aufgaben:**
+  - [ ] **Vektordatenbank & Qdrant-Engine:**
+    * *Skalare Quantisierung (INT8):* Aktivierung von Qdrants `ScalarQuantization(int8)` für `archive_images` und `archive_faces`. Reduziert den RAM-Verbrauch um 75 % und beschleunigt Distanzberechnungen über AVX2/AVX-512 bzw. Tensor Cores um das 3- bis 4-fache bei > 99 % identischer Treffergüte.
+    * *gRPC-Protokoll statt HTTP-REST:* Aktivierung von `prefer_grpc = True` (`QDRANT_GRPC_PORT = 6334`). Beseitigt den massiven JSON-Serialisierungs-Overhead für 512-dimensionale Float-Arrays zugunsten von binären Protobuf-Streams.
+  - [ ] **KI-Inferenz & GPU-Beschleunigung (OpenCLIP & InsightFace):**
+    * *Mixed Precision Inferenz (FP16 / Tensor Cores):* Ausführung von OpenCLIP via `torch.cuda.amp.autocast(dtype=torch.float16)` zur vollen Ausnutzung der NVIDIA Quadro RTX 6000 Tensor Cores. Verdoppelt bis verdreifacht die Inferenzrate bei halbiertem VRAM-Bedarf.
+    * *Intelligentes Vorab-Downsampling vor KI & Hashing:* Herunterskalieren sehr großer Masterscans (15–50 Megapixel) auf max. 1.600 Pixel vor der Übergabe an CLIP ($224 \times 224$), InsightFace ($640 \times 640$) und pHash/dHash. Spart bis zu 60 % CPU-Dekompressionszeit und verhindert RAM-Spitzen.
+    * *Batching bei der Feature-Extraktion:* Zusammenfassung von Bildern zu Mini-Batches (z. B. 16–32 Bilder), um die GPU-Recheneinheiten effizient auszulasten (Anhebung der GPU-Nutzung von ~2 % auf 60–80 %).
+  - [ ] **Frontend & Browser-DOM:**
+    * *Paginierung oder Virtual Scrolling für Personen-Cluster:* Einführung von Seitenblöcken (z. B. 60 Karten/Seite) oder DOM-Virtualisierung für die derzeit über 6.000 Personen-Karten in `#clusters-grid`. Verhindert Browser-Speicherüberlastung, Layout-Thrashing und träges Scrollen.
+    * *WebP-Thumbnails statt JPEG:* Umstellung der dynamischen Thumbnail-Erzeugung (`/images/serve` und Vorschaubilder) auf WebP. Reduziert die Bild-Payloads um 30–50 % bei identischer visueller Schärfe.
+  - [ ] **Relationale Datenbank & Metadaten (SQLite):**
+    * *Aktivierung des WAL-Modus (Write-Ahead Logging):* Konfiguration von `PRAGMA journal_mode = WAL;`, `PRAGMA synchronous = NORMAL;` und 64 MB RAM-Cache (`PRAGMA cache_size = -64000;`). Stellt sicher, dass Lese- und Schreibzugriffe vollständig entkoppelt sind und sich niemals gegenseitig blockieren.
+
+
 
 
 
