@@ -244,6 +244,7 @@ let currentSearchOffset = 0;
 let currentSearchFilter = 'all';
 let hasMoreSearchResults = false;
 let currentSearchResults = [];
+let currentRenderedResults = [];
 
 async function executeSearch(query, limit = 24) {
   const spinner = document.getElementById('search-spinner');
@@ -462,6 +463,7 @@ async function loadMoreSearchResults() {
 
 function renderSearchResults(items, container) {
   container.innerHTML = '';
+  currentRenderedResults = items || [];
   const hasPersonMatches = currentSearchResults.some(i => i.match_type === 'person');
 
   items.forEach((item, itemIdx) => {
@@ -486,7 +488,7 @@ function renderSearchResults(items, container) {
       stackBadgeHtml = `
         <button
           type="button"
-          onclick="event.stopPropagation(); openStackModal(${itemIdx})"
+          onclick="event.stopPropagation(); openStackModalByPath('${escapeHtml(item.file_path).replace(/'/g, "\\'")}')"
           class="absolute top-2 left-2 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500 text-slate-950 shadow-md hover:bg-amber-400 transition-all flex items-center gap-1 z-10 backdrop-blur-sm"
           title="Dieser Bildstapel fasst ${item.variants_count + 1} verwandte Aufnahmen/Duplikate zusammen. Klicken zum Vergleichen."
         >
@@ -557,7 +559,7 @@ function renderSearchResults(items, container) {
         <!-- Leuchttisch Pin Button unten links -->
         <button
           type="button"
-          onclick="toggleLightboxCard(event, ${itemIdx})"
+          onclick="toggleLightboxCard(event, '${escapeHtml(item.file_path).replace(/'/g, "\\'")}')"
           class="absolute bottom-2 left-2 p-1.5 rounded-lg border border-slate-700/80 text-xs transition-all shadow-md backdrop-blur-sm z-10 ${isItemInLightbox(item.file_path) ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-900/80 text-slate-300 hover:text-amber-400 hover:bg-slate-800'}"
           title="${isItemInLightbox(item.file_path) ? 'Vom Leuchttisch entfernen' : 'Auf den Leuchttisch legen'}"
         >
@@ -603,7 +605,7 @@ function renderSearchResults(items, container) {
 
     card.addEventListener('click', () => {
       if (isStack) {
-        openStackModal(itemIdx);
+        openStackModal(item);
       } else {
         openImageModal(item.file_path, item.file_name);
       }
@@ -614,8 +616,17 @@ function renderSearchResults(items, container) {
 
 // --- Bildstapel & Varianten Modal ---
 
-function openStackModal(itemIdx) {
-  const item = currentSearchResults[itemIdx];
+function openStackModal(target) {
+  let item = null;
+  if (typeof target === 'object' && target !== null) {
+    item = target;
+  } else if (typeof target === 'string') {
+    item = (currentRenderedResults || []).find(i => i.file_path === target || i.id === target) ||
+           (currentSearchResults || []).find(i => i.file_path === target || i.id === target);
+  } else if (typeof target === 'number') {
+    item = (currentRenderedResults && currentRenderedResults[target]) ||
+           (currentSearchResults && currentSearchResults[target]);
+  }
   if (!item) return;
 
   const modal = document.getElementById('stack-modal');
@@ -645,6 +656,10 @@ function openStackModal(itemIdx) {
 function closeStackModal() {
   const modal = document.getElementById('stack-modal');
   if (modal) modal.classList.add('hidden');
+}
+
+function openStackModalByPath(filePath) {
+  openStackModal(filePath);
 }
 
 function renderStackComparisonItems(items, container) {
@@ -2004,31 +2019,53 @@ async function searchSimilarImages(filePath) {
   const resultsBar = document.getElementById('results-bar');
   const resultsCount = document.getElementById('results-count');
   const resultsQuery = document.getElementById('results-query');
+  const loadMoreContainer = document.getElementById('search-load-more-container');
+
+  currentSearchQuery = `similar:${filePath}`;
+  currentSearchFilter = 'all';
+  currentSearchResults = [];
+  currentRenderedResults = [];
 
   grid.innerHTML = '';
   empty.classList.add('hidden');
   spinner.classList.remove('hidden');
   resultsBar.classList.add('hidden');
+  if (loadMoreContainer) loadMoreContainer.classList.add('hidden');
+
+  const thesaurusBanner = document.getElementById('results-thesaurus-banner');
+  if (thesaurusBanner) thesaurusBanner.classList.add('hidden');
 
   const stackToggle = document.getElementById('search-stack-variants');
   const stackVariants = stackToggle ? stackToggle.checked : true;
 
   try {
-    const res = await fetch(`/search/similar?image_path=${encodeURIComponent(filePath)}&limit=20&stack_variants=${stackVariants}`);
+    const res = await fetch(`/search/similar?image_path=${encodeURIComponent(filePath)}&limit=24&stack_variants=${stackVariants}`);
     if (!res.ok) throw new Error(`Fehler bei der Ähnlichkeitssuche (${res.status})`);
     const data = await res.json();
 
     spinner.classList.add('hidden');
     resultsBar.classList.remove('hidden');
-    resultsCount.textContent = `${data.length} optisch ähnliche Bilder`;
+    currentSearchResults = data || [];
+    currentRenderedResults = currentSearchResults;
+
+    resultsCount.textContent = `${currentSearchResults.length} optisch ähnliche Bilder`;
     resultsQuery.textContent = `Referenz: "${filePath.split('/').pop()}"`;
 
-    if (data.length === 0) {
+    const addAllBtn = document.getElementById('add-all-results-to-lightbox-btn');
+    if (addAllBtn) {
+      if (currentSearchResults.length > 0) addAllBtn.classList.remove('hidden');
+      else addAllBtn.classList.add('hidden');
+    }
+
+    if (currentSearchResults.length === 0) {
       empty.classList.remove('hidden');
+      updateLoadMoreVisibility(0);
       return;
     }
 
-    renderSearchResults(data, grid);
+    updateSearchFilterPills();
+    updateLoadMoreVisibility(0);
+    renderSearchResults(currentSearchResults, grid);
     showToast('Ähnliche Bilder via CLIP gefunden.');
   } catch (err) {
     spinner.classList.add('hidden');
@@ -2257,20 +2294,34 @@ async function searchByCrop(filePath, cropBox, fileName) {
     spinner.classList.add('hidden');
     resultsBar.classList.remove('hidden');
 
+    currentSearchResults = data || [];
+    currentRenderedResults = currentSearchResults;
+    currentSearchFilter = 'all';
+    currentSearchQuery = `crop:${filePath}`;
+
     const pctW = Math.round(cropBox.width * 100);
     const pctH = Math.round(cropBox.height * 100);
     const displayName = fileName || filePath.split('/').pop();
 
-    resultsCount.textContent = `${data.length} optisch ähnliche Treffer`;
+    resultsCount.textContent = `${currentSearchResults.length} optisch ähnliche Treffer`;
     resultsQuery.textContent = `Ausschnitt aus "${displayName}" (${pctW}% × ${pctH}%)`;
 
-    if (data.length === 0) {
+    const addAllBtn = document.getElementById('add-all-results-to-lightbox-btn');
+    if (addAllBtn) {
+      if (currentSearchResults.length > 0) addAllBtn.classList.remove('hidden');
+      else addAllBtn.classList.add('hidden');
+    }
+
+    if (currentSearchResults.length === 0) {
       empty.classList.remove('hidden');
+      updateLoadMoreVisibility(0);
       return;
     }
 
-    renderSearchResults(data, grid);
-    showToast(`Bildausschnitt-Suche erfolgreich (${data.length} Treffer)`);
+    updateSearchFilterPills();
+    updateLoadMoreVisibility(0);
+    renderSearchResults(currentSearchResults, grid);
+    showToast(`Bildausschnitt-Suche erfolgreich (${currentSearchResults.length} Treffer)`);
   } catch (err) {
     spinner.classList.add('hidden');
     showToast(`Fehler: ${err.message}`, true);
@@ -3505,9 +3556,18 @@ function toggleLightboxItem(item) {
   }
 }
 
-function toggleLightboxCard(event, itemIdx) {
+function toggleLightboxCard(event, itemOrPathOrIdx) {
   event.stopPropagation();
-  const item = currentSearchResults[itemIdx];
+  let item = null;
+  if (typeof itemOrPathOrIdx === 'object' && itemOrPathOrIdx !== null) {
+    item = itemOrPathOrIdx;
+  } else if (typeof itemOrPathOrIdx === 'string') {
+    item = (currentRenderedResults || []).find(i => i.file_path === itemOrPathOrIdx) ||
+           (currentSearchResults || []).find(i => i.file_path === itemOrPathOrIdx);
+  } else if (typeof itemOrPathOrIdx === 'number') {
+    item = (currentRenderedResults && currentRenderedResults[itemOrPathOrIdx]) ||
+           (currentSearchResults && currentSearchResults[itemOrPathOrIdx]);
+  }
   if (!item) return;
   const added = toggleLightboxItem(item);
   const btn = event.currentTarget;
