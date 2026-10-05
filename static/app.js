@@ -1736,8 +1736,11 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
     }
   }
 
-  title.textContent = fileName || filePath.split('/').pop();
+  const displayTitle = fileName || filePath.split('/').pop();
+  title.textContent = displayTitle;
+  title.title = displayTitle;
   pathElem.textContent = filePath;
+  pathElem.title = filePath;
   const cbParam = cacheBuster ? `&t=${cacheBuster}` : '';
   rawLink.href = `/images/serve?path=${encodeURIComponent(filePath)}${cbParam}`;
 
@@ -1783,7 +1786,9 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
     // Titel anpassen, falls archivalischer Titel vorhanden ist
     if (data.metadata && data.metadata.title) {
       title.textContent = data.metadata.title;
+      title.title = data.metadata.title;
       pathElem.textContent = `${fileName} • ${filePath}`;
+      pathElem.title = `${fileName} • ${filePath}`;
     }
 
     currentModalImageDetails = {
