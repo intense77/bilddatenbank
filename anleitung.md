@@ -37,10 +37,10 @@ Das System besteht aus zwei Komponenten:
 
 ### Starten
 
-Öffnen Sie ein Terminal im Projektverzeichnis (`/home/norbert/Bilderdatenbank`):
+Öffnen Sie ein Terminal im Projektverzeichnis:
 
 ```bash
-cd /home/norbert/Bilderdatenbank
+cd /pfad/zum/Bildersuche
 
 # 1. Vektordatenbank Qdrant starten
 ./start_qdrant.sh
@@ -183,15 +183,49 @@ Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:
 
 ### Bild-Detailansicht (Modal)
 Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:
-* **Bild & Bounding Boxes:** Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter.
-* **Archiv-Metadaten Seitenleiste:** Strukturierte Übersicht mit Titel, Datierung, Urheber, Signatur, Abmessungen, Beschreibung und Lizenz.
+* **Bild & Bounding Boxes:** Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter. Gesichtsrahmen lassen sich über den Button oben rechts jederzeit ein- oder ausblenden.
+* **Archiv-Metadaten & Bearbeitung (Rechte Seitenleiste):** 
+  * *Metadaten-Tab:* Strukturierte Übersicht mit Signatur, Titel, Datierung, Urheber, Abmessungen, Beschreibung, Iconclass und Lizenz. Metadaten können über den ✏️-Button direkt in SQLite editiert werden.
+  * *Bearbeiten-Tab (Non-destruktiv):* Feinjustierung von Helligkeit, Kontrast, Gamma, Schärfung und Negativ-Invertierung. Mit dem Button **„Original“** (gedrückt halten) oder dem **Split-Slider** (Taste `S`) lässt sich das Vorher/Nachher-Ergebnis stufenlos vergleichen.
+* **Zweiblatt-Logik & 3D-Karten-Flip (Recto / Verso):**
+  * Handelt es sich um ein Vorder-/Rückseiten-Paar (z. B. `foto_01_r.jpg` und `foto_01_v.jpg` oder `_recto`/`_verso`, `_vorderseite`/`_rueckseite`, `_a`/`_b`), erkennt das System die Partnerdatei automatisch.
+  * In der Menüleiste erscheint der Button **`🔁 Rückseite / Vorderseite`**. Durch Klick oder die Schnelltaste **`V`** bzw. **`U`** dreht sich das Bild in einer flüssigen 3D-Karten-Animation um 180° um.
+  * In der Seitenleiste unter **📄 Rückseite & Notizen** können handschriftliche Vermerke, Stempelabdrücke und Transkriptionen eingegeben und gespeichert werden. Diese Notizen werden direkt mit dem Bild verknüpft und in der Volltextsuche indexiert.
+* **IIIF Image API 3.0 & Deep Zoom:**
+  * Der Button **`Deep Zoom`** schaltet auf den hochauflösenden, lokalen OpenSeadragon-Kachelbetrachter um.
+  * Ermöglicht stufenloses Hineinzoomen bis auf die Pixelebene historischer Großformate und Glasplatten – völlig ohne RAM-Überlastung des Browsers.
+  * Bietet Werkzeuge für 1:1 Pixelansicht, 90°-Drehung und Gesamteinpassung.
+* **Verlustfreies Drehen (JPEG DCT):**
+  * Über die Tasten `↺ 90° links` / `↻ 90° rechts` (bzw. Taste `R`) lässt sich das Originalbild verlustfrei ohne Rekomprimierung in 90°-Schritten rotieren.
 * **Bildausschnitt-Suche (Crop-to-Search):**
-  * Klicken Sie in der Kopfzeile auf den Button **„Ausschnitt suchen“**.
-  * Ziehen Sie mit gedrückter linker Maustaste einen Rahmen um das gewünschte Motivdetail (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät, eine Inschrift oder ein Gemälde im Hintergrund).
-  * In der schwebenden Aktionsleiste können Sie die Auswahl mit **„✕“** verwerfen oder mit **„Ausschnitt suchen“** bestätigen.
-  * Das Backend schneidet den Bildausschnitt verlustfrei zu, berechnet das OpenCLIP-Embedding und listet alle im Archiv vorhandenen Scans auf, die dieses oder ein ähnliches Motivdetail enthalten.
-* **Ähnliche Bilder suchen:** Nutzt das gesamte CLIP-Embedding des Fotos als Referenz und sucht optisch verwandte Gesamtmotive im Archiv.
-* **Originaldatei öffnen:** Öffnet den hochauflösenden Scan in einem neuen Browsertab.
+  * Klicken Sie auf **„Ausschnitt suchen“** und ziehen Sie mit der Maus einen Rahmen um ein Motivdetail (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät oder Inschrift).
+  * Das Backend schneidet das Detail zu, berechnet das Embedding und findet alle Scans mit diesem oder ähnlichen Motiven.
+* **Adobe XMP Sidecars:**
+  * Über das Dropdown-Menü **„XMP“** lassen sich Dublin-Core-konforme `.xmp`-Metadaten-Dateien herunterladen oder direkt neben dem Original-Masterbild auf der Festplatte sichern.
+* **Navigation & Schließen:**
+  * **✕ Schließen:** Oben rechts befindet sich ein prominenter, fest verankerter Schließen-Button (auch per Taste `Esc`).
+  * **Aus Personen-Clustern:** Wurde das Bild aus einem Personen-Cluster geöffnet, erscheint sowohl oben links (`← Zur Übersicht`) als auch im Personen-Kontrollbanner ein gut sichtbarer Button **`← Zurück zur Übersicht`**, der direkt zur Kachelansicht dieser Person zurückführt.
+
+---
+
+### Tastaturkürzel (Schnellübersicht)
+
+Drücken Sie jederzeit die Taste **`?`** in der Web-Oberfläche, um die Tastaturhilfe einzublenden:
+
+| Taste | Funktion |
+| :--- | :--- |
+| **`Esc`** | Modal, Detailansicht oder Vollbild schließen / Zurück zur Übersicht |
+| **`V`** oder **`U`** | Zweiblatt 3D-Karten-Flip (Wenden zwischen Vorder- und Rückseite) |
+| **`F`** | Vollbild-Leinwand ein- und ausschalten |
+| **`S`** | Vorher/Nachher Split-Slider im Bild-Modal umschalten |
+| **`L`** | Archiv-Lupe (250 % Detailvergrößerung) ein- und ausschalten |
+| **`R`** | Bild um 90° im Uhrzeigersinn drehen |
+| **`I`** | Negativ/Positiv-Invertierung umschalten |
+| **`+`** / **`-`** | Zoom im Bild-Modal vergrößern / verkleinern |
+| **`0`** | Zoom-Stufe auf 100 % zurücksetzen |
+| **`→`** / **`←`** | Nächstes bzw. vorheriges Bild der Suchergebnisse öffnen |
+| **`/`** | Suchfeld sofort fokussieren und Eingabe beginnen |
+| **`?`** | Tastaturkürzel-Übersicht anzeigen |
 
 ---
 
@@ -223,7 +257,7 @@ Um alle indizierten Merkmale, erkannten Gesichter und vergebenen Personennamen z
 1. Qdrant stoppen: `docker compose stop`
 2. Den Ordner kopieren:
    ```bash
-   cp -r /home/norbert/Bilderdatenbank/qdrant_storage /pfad/zum/backup/
+   cp -r ./qdrant_storage /pfad/zum/backup/
    ```
 3. Qdrant wieder starten: `docker compose start`
 
@@ -232,14 +266,12 @@ Um alle indizierten Merkmale, erkannten Gesichter und vergebenen Personennamen z
 #### „Verbindung zum Server unter localhost:8000 fehlgeschlagen“
 * Der FastAPI-Server läuft noch nicht. Starten Sie ihn im Terminal:
   ```bash
-  cd /home/norbert/Bilderdatenbank
   .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
   ```
 
 #### „Verbindung zu Qdrant fehlgeschlagen“
 * Der Docker-Container von Qdrant ist gestoppt. Starten Sie ihn mit:
   ```bash
-  cd /home/norbert/Bilderdatenbank
   ./start_qdrant.sh
   ```
   Prüfen Sie den Status im Browser unter [http://localhost:6333/dashboard](http://localhost:6333/dashboard).

@@ -20,6 +20,9 @@ Dieses Dokument bietet eine vollständige Übersicht über die im System eingese
 | **OpenCLIP** | MIT License | Multimodale Text- und Bild-Embeddings (ViT-B-32) | [github.com/mlfoundations/open_clip](https://github.com/mlfoundations/open_clip) |
 | **ONNX Runtime** | MIT License | Leistungsoptimierte Inferenz-Engine für Gesichtsmodelle | [onnxruntime.ai](https://onnxruntime.ai/) |
 | **Pillow (PIL)** | HPND License | Bilddekodierung, EXIF/IPTC-Extraktion, Caching | [python-pillow.org](https://python-pillow.org/) |
+| **OpenSeadragon** | New BSD License | Lokaler IIIF 3.0 Deep-Zoom Viewer für Gigapixel-Scans | [openseadragon.github.io](https://openseadragon.github.io/) |
+| **Cropper.js** | MIT License | Interaktive Bildausschnitt-Markierung (Crop-to-Search) | [fengyuanchen.github.io/cropperjs](https://fengyuanchen.github.io/cropperjs/) |
+| **SQLite (sqlite3)** | Public Domain | Lokale Metadaten-, Zweiblatt- & Thesaurus-Datenbank | [sqlite.org](https://sqlite.org/) |
 | **NumPy** | BSD 3-Clause | Mathematische Vektoroperationen | [numpy.org](https://numpy.org/) |
 | **Scikit-learn** | BSD 3-Clause | DBSCAN-Clustering für Personengruppierung | [scikit-learn.org](https://scikit-learn.org/) |
 | **Pydantic** | MIT License | Datenvalidierung, Schemadefinition & Settings | [docs.pydantic.dev](https://docs.pydantic.dev/) |

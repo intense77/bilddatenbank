@@ -223,8 +223,8 @@
 1. <strong>Qdrant (Vektordatenbank):</strong> Speichert die mathematischen Merkmalsvektoren persistent im Ordner <code>./qdrant_storage</code>.<br />
 2. <strong>FastAPI-Server:</strong> Stellt die Suchlogik, die Metadaten-Dienste und die Weboberfläche bereit.</p>
 <h3 id="starten">Starten</h3>
-<p>Öffnen Sie ein Terminal im Projektverzeichnis (<code>/home/norbert/Bilderdatenbank</code>):</p>
-<pre><code class="language-bash">cd /home/norbert/Bilderdatenbank
+<p>Öffnen Sie ein Terminal im Projektverzeichnis:</p>
+<pre><code class="language-bash">cd /pfad/zum/Bildersuche
 
 # 1. Vektordatenbank Qdrant starten
 ./start_qdrant.sh
@@ -383,15 +383,89 @@
    * Das System speichert die Dateien im Archiv und berechnet sofort alle Merkmals-Embeddings und Metadaten.</p>
 <h3 id="bild-detailansicht-modal">Bild-Detailansicht (Modal)</h3>
 <p>Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:<br />
-* <strong>Bild &amp; Bounding Boxes:</strong> Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter.<br />
-* <strong>Archiv-Metadaten Seitenleiste:</strong> Strukturierte Übersicht mit Titel, Datierung, Urheber, Signatur, Abmessungen, Beschreibung und Lizenz.<br />
+* <strong>Bild &amp; Bounding Boxes:</strong> Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter. Gesichtsrahmen lassen sich über den Button oben rechts jederzeit ein- oder ausblenden.<br />
+* <strong>Archiv-Metadaten &amp; Bearbeitung (Rechte Seitenleiste):</strong> <br />
+  * <em>Metadaten-Tab:</em> Strukturierte Übersicht mit Signatur, Titel, Datierung, Urheber, Abmessungen, Beschreibung, Iconclass und Lizenz. Metadaten können über den ✏️-Button direkt in SQLite editiert werden.<br />
+  * <em>Bearbeiten-Tab (Non-destruktiv):</em> Feinjustierung von Helligkeit, Kontrast, Gamma, Schärfung und Negativ-Invertierung. Mit dem Button <strong>„Original“</strong> (gedrückt halten) oder dem <strong>Split-Slider</strong> (Taste <code>S</code>) lässt sich das Vorher/Nachher-Ergebnis stufenlos vergleichen.<br />
+* <strong>Zweiblatt-Logik &amp; 3D-Karten-Flip (Recto / Verso):</strong><br />
+  * Handelt es sich um ein Vorder-/Rückseiten-Paar (z. B. <code>foto_01_r.jpg</code> und <code>foto_01_v.jpg</code> oder <code>_recto</code>/<code>_verso</code>, <code>_vorderseite</code>/<code>_rueckseite</code>, <code>_a</code>/<code>_b</code>), erkennt das System die Partnerdatei automatisch.<br />
+  * In der Menüleiste erscheint der Button <strong><code>🔁 Rückseite / Vorderseite</code></strong>. Durch Klick oder die Schnelltaste <strong><code>V</code></strong> bzw. <strong><code>U</code></strong> dreht sich das Bild in einer flüssigen 3D-Karten-Animation um 180° um.<br />
+  * In der Seitenleiste unter <strong>📄 Rückseite &amp; Notizen</strong> können handschriftliche Vermerke, Stempelabdrücke und Transkriptionen eingegeben und gespeichert werden. Diese Notizen werden direkt mit dem Bild verknüpft und in der Volltextsuche indexiert.<br />
+* <strong>IIIF Image API 3.0 &amp; Deep Zoom:</strong><br />
+  * Der Button <strong><code>Deep Zoom</code></strong> schaltet auf den hochauflösenden, lokalen OpenSeadragon-Kachelbetrachter um.<br />
+  * Ermöglicht stufenloses Hineinzoomen bis auf die Pixelebene historischer Großformate und Glasplatten – völlig ohne RAM-Überlastung des Browsers.<br />
+  * Bietet Werkzeuge für 1:1 Pixelansicht, 90°-Drehung und Gesamteinpassung.<br />
+* <strong>Verlustfreies Drehen (JPEG DCT):</strong><br />
+  * Über die Tasten <code>↺ 90° links</code> / <code>↻ 90° rechts</code> (bzw. Taste <code>R</code>) lässt sich das Originalbild verlustfrei ohne Rekomprimierung in 90°-Schritten rotieren.<br />
 * <strong>Bildausschnitt-Suche (Crop-to-Search):</strong><br />
-  * Klicken Sie in der Kopfzeile auf den Button <strong>„Ausschnitt suchen“</strong>.<br />
-  * Ziehen Sie mit gedrückter linker Maustaste einen Rahmen um das gewünschte Motivdetail (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät, eine Inschrift oder ein Gemälde im Hintergrund).<br />
-  * In der schwebenden Aktionsleiste können Sie die Auswahl mit <strong>„✕“</strong> verwerfen oder mit <strong>„Ausschnitt suchen“</strong> bestätigen.<br />
-  * Das Backend schneidet den Bildausschnitt verlustfrei zu, berechnet das OpenCLIP-Embedding und listet alle im Archiv vorhandenen Scans auf, die dieses oder ein ähnliches Motivdetail enthalten.<br />
-* <strong>Ähnliche Bilder suchen:</strong> Nutzt das gesamte CLIP-Embedding des Fotos als Referenz und sucht optisch verwandte Gesamtmotive im Archiv.<br />
-* <strong>Originaldatei öffnen:</strong> Öffnet den hochauflösenden Scan in einem neuen Browsertab.</p>
+  * Klicken Sie auf <strong>„Ausschnitt suchen“</strong> und ziehen Sie mit der Maus einen Rahmen um ein Motivdetail (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät oder Inschrift).<br />
+  * Das Backend schneidet das Detail zu, berechnet das Embedding und findet alle Scans mit diesem oder ähnlichen Motiven.<br />
+* <strong>Adobe XMP Sidecars:</strong><br />
+  * Über das Dropdown-Menü <strong>„XMP“</strong> lassen sich Dublin-Core-konforme <code>.xmp</code>-Metadaten-Dateien herunterladen oder direkt neben dem Original-Masterbild auf der Festplatte sichern.<br />
+* <strong>Navigation &amp; Schließen:</strong><br />
+  * <strong>✕ Schließen:</strong> Oben rechts befindet sich ein prominenter, fest verankerter Schließen-Button (auch per Taste <code>Esc</code>).<br />
+  * <strong>Aus Personen-Clustern:</strong> Wurde das Bild aus einem Personen-Cluster geöffnet, erscheint sowohl oben links (<code>← Zur Übersicht</code>) als auch im Personen-Kontrollbanner ein gut sichtbarer Button <strong><code>← Zurück zur Übersicht</code></strong>, der direkt zur Kachelansicht dieser Person zurückführt.</p>
+<hr />
+<h3 id="tastaturkurzel-schnellubersicht">Tastaturkürzel (Schnellübersicht)</h3>
+<p>Drücken Sie jederzeit die Taste <strong><code>?</code></strong> in der Web-Oberfläche, um die Tastaturhilfe einzublenden:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Taste</th>
+<th style="text-align: left;">Funktion</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong><code>Esc</code></strong></td>
+<td style="text-align: left;">Modal, Detailansicht oder Vollbild schließen / Zurück zur Übersicht</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>V</code></strong> oder <strong><code>U</code></strong></td>
+<td style="text-align: left;">Zweiblatt 3D-Karten-Flip (Wenden zwischen Vorder- und Rückseite)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>F</code></strong></td>
+<td style="text-align: left;">Vollbild-Leinwand ein- und ausschalten</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>S</code></strong></td>
+<td style="text-align: left;">Vorher/Nachher Split-Slider im Bild-Modal umschalten</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>L</code></strong></td>
+<td style="text-align: left;">Archiv-Lupe (250 % Detailvergrößerung) ein- und ausschalten</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>R</code></strong></td>
+<td style="text-align: left;">Bild um 90° im Uhrzeigersinn drehen</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>I</code></strong></td>
+<td style="text-align: left;">Negativ/Positiv-Invertierung umschalten</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>+</code></strong> / <strong><code>-</code></strong></td>
+<td style="text-align: left;">Zoom im Bild-Modal vergrößern / verkleinern</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>0</code></strong></td>
+<td style="text-align: left;">Zoom-Stufe auf 100 % zurücksetzen</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>→</code></strong> / <strong><code>←</code></strong></td>
+<td style="text-align: left;">Nächstes bzw. vorheriges Bild der Suchergebnisse öffnen</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>/</code></strong></td>
+<td style="text-align: left;">Suchfeld sofort fokussieren und Eingabe beginnen</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>?</code></strong></td>
+<td style="text-align: left;">Tastaturkürzel-Übersicht anzeigen</td>
+</tr>
+</tbody>
+</table>
 <hr />
 <h2 id="6-haufige-fragen-besonderheiten">6. Häufige Fragen &amp; Besonderheiten</h2>
 <h3 id="warum-erhalte-ich-treffer-fur-worter-die-im-bild-gar-nicht-vorkommen">Warum erhalte ich Treffer für Wörter, die im Bild gar nicht vorkommen?</h3>
@@ -416,21 +490,19 @@
 1. Qdrant stoppen: <code>docker compose stop</code><br />
 2. Den Ordner kopieren:<br />
 <code>bash
-   cp -r /home/norbert/Bilderdatenbank/qdrant_storage /pfad/zum/backup/</code><br />
+   cp -r ./qdrant_storage /pfad/zum/backup/</code><br />
 3. Qdrant wieder starten: <code>docker compose start</code></p>
 <h3 id="fehlerbehebung">Fehlerbehebung</h3>
 <h4 id="verbindung-zum-server-unter-localhost8000-fehlgeschlagen">„Verbindung zum Server unter localhost:8000 fehlgeschlagen“</h4>
 <ul>
 <li>Der FastAPI-Server läuft noch nicht. Starten Sie ihn im Terminal:<br />
 <code>bash
-  cd /home/norbert/Bilderdatenbank
   .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload</code></li>
 </ul>
 <h4 id="verbindung-zu-qdrant-fehlgeschlagen">„Verbindung zu Qdrant fehlgeschlagen“</h4>
 <ul>
 <li>Der Docker-Container von Qdrant ist gestoppt. Starten Sie ihn mit:<br />
 <code>bash
-  cd /home/norbert/Bilderdatenbank
   ./start_qdrant.sh</code><br />
   Prüfen Sie den Status im Browser unter <a href="http://localhost:6333/dashboard">http://localhost:6333/dashboard</a>.</li>
 </ul>

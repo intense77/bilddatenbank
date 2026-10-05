@@ -302,22 +302,34 @@
 <li>Da ArcFace-Embeddings L2-normalisiert sind ($|u|=1$), entspricht die Cosine-Distanz mathematisch der halben quadrierten euklidischen Distanz:<br />
     $$\text{dist}<em _text_cosine="\text{cosine">{\text{cosine}}(u, v) = 1 - \langle u, v \rangle = \frac{1}{2} |u - v|^2 \iff |u - v| = \sqrt{2 \cdot \text{dist}</em>$$}}(u, v)</li>
 <li><strong>Aufgaben:</strong></li>
-<li>[ ] Umstellung von <code>metric='cosine'</code> auf <code>metric='euclidean'</code> mit $\varepsilon_{\text{euclid}} = \sqrt{2 \cdot \varepsilon_{\text{cosine}}}$.</li>
-<li>[ ] Nutzung von raumteilenden Bäumen (<code>algorithm='ball_tree'</code> oder <code>'kd_tree'</code>) für $O(N \log N)$ Laufzeit und minimalen Speicherbedarf.</li>
-<li>[ ] Chunking / Batching bei sehr großen Porträtsammlungen (&gt; 50.000 Gesichter).</li>
-</ul>
-<hr />
-<h2 id="7-provenienz-revisionssicherheit-bei-personen-labels">7. Provenienz &amp; Revisionssicherheit bei Personen-Labels</h2>
-<ul>
-<li><strong>Ziel:</strong> Wissenschaftliche Nachvollziehbarkeit und Schutz vor unabsichtlichem Überschreiben bei der Zuweisung von Klarnamen.</li>
-<li><strong>Aufgaben:</strong></li>
-<li>[ ] Speichern von Revisionsdaten im Qdrant-Payload bei Labelvergabe:<ul>
-<li><code>labeled_at</code>: ISO-Zeitstempel der Benennung.</li>
-<li><code>labeled_by</code>: Benutzer-/Archivarskennung (z. B. aus Request-Header oder Konfiguration).</li>
-<li><code>previous_labels</code>: Historie bisheriger Zuweisungen.</li>
+<li>[x] Umstellung von <code>metric='cosine'</code> auf <code>metric='euclidean'</code> mit $\varepsilon_{\text{euclid}} = \sqrt{2 \cdot \varepsilon_{\text{cosine}}}$.</li>
+<li>[x] Nutzung von raumteilenden Bäumen (<code>algorithm='ball_tree'</code> oder <code>'kd_tree'</code>) für $O(N \log N)$ Laufzeit und minimalen Speicherbedarf.</li>
+<li>[x] Chunking / Batching bei sehr großen Porträtsammlungen (&gt; 50.000 Gesichter):<ul>
+<li>Adaptiver BallTree mit hardwaregesteuerter <code>leaf_size</code> und dynamischer Multithread-Parallelisierung (<code>n_jobs</code>).</li>
 </ul>
 </li>
-<li>[ ] Anzeige der Benennungs-Historie und des Bearbeiters in der Personen-Detailansicht des Web-Frontends.</li>
+</ul>
+<hr />
+<h2 id="7-nachvollziehbarkeit-human-in-the-loop-provenienz-bei-personen-labels">7. Nachvollziehbarkeit, Human-in-the-Loop &amp; Provenienz bei Personen-Labels</h2>
+<ul>
+<li><strong>Ziel:</strong> Wissenschaftliche Nachvollziehbarkeit, ethische Kennzeichnung von KI-Zuweisungen und Schutz vor Fehlklassifikationen.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Status-Flags für Personen-Metadaten:</strong><ul>
+<li>Jede Personenzuweisung im Payload erhält einen definierten Herkunftsstatus:</li>
+<li><code>KI_AUTO</code>: Vom Algorithmus vorgeschlagen (z. B. 82 % Ähnlichkeit mit <em>Bischof Müller</em>).</li>
+<li><code>VERIFIED</code>: Von einer Archivkraft im Prüf-Modus begutachtet und verbindlich bestätigt.</li>
+<li><code>REJECTED</code>: Falsch-positiver Treffer (sorgt dauerhaft dafür, dass dieses Gesicht bei Neuberechnungen nicht wieder in dieses Cluster wandert).</li>
+</ul>
+</li>
+<li>[ ] <strong>Konfigurierbarer Konfidenz-Schwellenwert im UI:</strong><ul>
+<li>Schieberegler in der Cluster- und Gesichts-Ansicht („Nur Gesichter mit Konfidenz &gt; X % anzeigen“), um Rauschen und Fehl-Detektionen bei kontrastarmen oder beschädigten historischen Schwarz-Weiß-Aufnahmen auszublenden.</li>
+</ul>
+</li>
+<li>[ ] <strong>Revisionsdaten &amp; Historie:</strong><ul>
+<li>Speichern von <code>labeled_at</code> (Zeitstempel), <code>labeled_by</code> (Bearbeiter) und <code>previous_labels</code> im Qdrant-Payload.</li>
+<li>Anzeige des Prüfstatus und der Benennungs-Historie in der Detailansicht.</li>
+</ul>
+</li>
 </ul>
 <hr />
 <h2 id="8-end-to-end-praxistest-benchmark-mit-echtdaten">8. End-to-End-Praxistest &amp; Benchmark mit Echtdaten</h2>
@@ -325,9 +337,393 @@
 <li><strong>Ziel:</strong> Validierung der Performanz und Benutzerfreundlichkeit unter realen Archivbedingungen.</li>
 <li><strong>Aufgaben:</strong></li>
 <li>[ ] Testbestand historischer Scans (z. B. Glasplattennegative, Repros, Porträtkarten) in <code>./data</code> einspielen.</li>
-<li>[ ] Inferenz-Geschwindigkeit (Sekunden pro 100 Scans) auf CPU und GPU messen.</li>
+<li>[x] Inferenz-Geschwindigkeit (Sekunden pro 100 Scans) auf CPU und GPU messen (<code>benchmark.py</code>).</li>
 <li>[ ] Visuelle Begutachtung der Bounding-Box-Positionierung und Ähnlichkeitstreffer im Web-Frontend.</li>
 <li>[ ] Dokumentation optimaler Batch-Größen für Standard-Bürorechner ohne dedizierte GPU.</li>
+</ul>
+<hr />
+<h2 id="9-optimierung-der-freitext-personensuche-treffer-vollstandigkeit-relevanz-paginierung">9. Optimierung der Freitext- &amp; Personensuche (Treffer-Vollständigkeit, Relevanz &amp; Paginierung)</h2>
+<ul>
+<li><strong>Ziel:</strong> 100 % verlässliche Auffindbarkeit aller Bilder namentlich bekannter Personen, Beseitigung unpassender CLIP-Zufallstreffer bei Namenssuche und flexible Durchsicht großer Bestände.</li>
+</ul>
+<h3 id="prioritat-1-kritisch-hohe-notwendigkeit-vollstandigkeit-korrektheit">Priorität 1: Kritisch / Hohe Notwendigkeit (Vollständigkeit &amp; Korrektheit)</h3>
+<ul>
+<li>[x] <strong>Beseitigung des 5.000er-Scroll-Flaschenhalses bei der Namenssuche (<code>app/api/search.py</code>):</strong></li>
+<li><em>Ist-Zustand:</em> Bei der Suche nach Namen scrollt das Backend ungefiltert maximal 5.000 Gesichter aus <code>archive_faces</code> (bei aktuell &gt; 80.000 Gesichtern werden ~94 % ignoriert). Bei Personen mit z. B. 28 gelabelten Gesichtern werden rein zufällig nur die 2 gefunden, die unter den ersten 5.000 IDs liegen.</li>
+<li><em>Soll-Zustand:</em> Gezielte Qdrant-Filterabfrage mit <code>must_not=[IsEmptyCondition("label")]</code> und Match auf den Namen oder direktes Nachschlagen über die lokale SQLite-Metadatenbank.</li>
+<li><em>Nutzen:</em> Es werden ausnahmslos <strong>alle vorhandenen Bilder einer gesuchten Person</strong> sofort gefunden.</li>
+<li>[x] <strong>Saubere Trennung von Personen-Matches und CLIP-Zufallstreffern:</strong></li>
+<li><em>Ist-Zustand:</em> Bei Eingabe eines Namens (z. B. <em>„Sabine“</em>) findet die Suche die Person, füllt aber die restlichen Plätze der Trefferliste mit visuellen CLIP-Vektortreffern auf (z. B. zufällige historische Bilder mit Score 26–29 %).</li>
+<li><em>Soll-Zustand:</em> Wenn der Suchbegriff einem vergebenen Personennamen entspricht, werden primär exklusive Personen-Treffer angezeigt bzw. semantische Bild-Treffer optisch klar als „Ähnliche Motive (CLIP)“ abgegrenzt.</li>
+</ul>
+<h3 id="prioritat-2-mittlere-notwendigkeit-ergonomie-trefferanzahl">Priorität 2: Mittlere Notwendigkeit (Ergonomie &amp; Trefferanzahl)</h3>
+<ul>
+<li>[x] <strong>Paginierung &amp; „Mehr Ergebnisse laden“ (Infinite Scroll / Pagination):</strong></li>
+<li><em>Ist-Zustand:</em> Die Trefferanzahl ist fest auf 20 (bzw. im Dropdown maximal 80) begrenzt. Ein Nachladen weiterer Treffer ist nicht möglich.</li>
+<li><em>Soll-Zustand:</em> Einführung von <code>offset</code>/<code>page</code> im Backend-Endpunkt <code>/search/semantic</code> und eines „Mehr Ergebnisse laden“-Buttons (bzw. optionalem Infinite Scroll) im Suchgitter.</li>
+<li>[x] <strong>Dynamischer Relevanz-Schwellenwert (Threshold-Tuning):</strong></li>
+<li><em>Ist-Zustand:</em> Der Standard-Schwellenwert von <code>0.23</code> (23 %) schneidet bei CLIP oft viele valide Treffer mit Scores zwischen 0.20 und 0.22 hart ab, sodass scheinbar nur 1–2 Treffer existieren.</li>
+<li><em>Soll-Zustand:</em> Bei Personentreffern (Score 1.0) Schwellenwert-Logik komplett umgehen; bei Motivsuchen Standard-Schwellenwert auf 0.20 optimieren oder dynamisch anhand der Score-Verteilung staffeln.</li>
+</ul>
+<h3 id="prioritat-3-komfort-erweiterungsfunktionen-zukunft">Priorität 3: Komfort- &amp; Erweiterungsfunktionen (Zukunft)</h3>
+<ul>
+<li>[x] <strong>Volltextsuche in archivischen Metadatenfeldern (Hybrid Search):</strong></li>
+<li>Suchbegriff nicht nur in Gesichts-Labels und per CLIP suchen, sondern parallel in <code>title</code>, <code>signature</code>, <code>description</code> und <code>keywords</code> (in SQLite / Qdrant-Payload).</li>
+<li>[x] <strong>Konfigurierbares Standard-Trefferlimit:</strong></li>
+<li>Voreinstellung im Suchformular auf Wunsch auf 40 oder 60 Treffer anpassen.</li>
+</ul>
+<hr />
+<h2 id="10-robustheit-im-datei-handling-historische-scans-sonderformate">10. Robustheit im Datei-Handling (Historische Scans &amp; Sonderformate)</h2>
+<ul>
+<li><strong>Ziel:</strong> Absturzsichere Ingest-Pipeline für unberechenbare historische Digitalisate (Glasplatten, Großformate, Altdaten).</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[x] <strong>Farbprofile &amp; Farbraum-Konvertierung (CMYK, 16-Bit Grayscale):</strong><ul>
+<li>Sicheres Abfangen von CMYK-TIFFs via <code>ImageCms</code> unter Erhalt des ICC-Farbprofils sowie lineare 16-Bit-Normalisierung zu 8-Bit sRGB vor Weitergabe an KI &amp; Hashing (<code>safe_normalize_image_to_rgb</code>).</li>
+</ul>
+</li>
+<li>[x] <strong>Decompression-Bomb-Schutz konfigurieren:</strong><ul>
+<li>Adaptives Anheben von <code>Image.MAX_IMAGE_PIXELS</code> anhand der erkannten Systemressourcen (bis zu 500 Megapixel), verhindert <code>DecompressionBombError</code> bei historischen Riesen-Scans.</li>
+</ul>
+</li>
+<li>[x] <strong>Skalierung vor KI-Inferenz (VRAM- &amp; RAM-Schonung):</strong><ul>
+<li>Vor der Übergabe an CLIP und InsightFace hochauflösende Scans im Speicher auf max. 1.600–2.000 Pixel lange Kante herunterskalieren.</li>
+<li>Verhindert Out-of-Memory-Crashes (OOM), spart bis zu 90 % Inferenzzeit und bewahrt die volle Erkennungsgenauigkeit.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="11-effizientes-caching-thumbnail-management-proaktive-pipeline">11. Effizientes Caching &amp; Thumbnail-Management (Proaktive Pipeline)</h2>
+<ul>
+<li><strong>Ziel:</strong> Blitzschneller Seitenaufbau ohne Netzwerklast beim Durchsuchen zehntausender Bestände.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[x] <strong>Proaktive Thumbnail-Generierung beim Erst-Indexieren:</strong><ul>
+<li>Direkt beim Indexieren Ablage eines standardisierten Web-Thumbnails (WebP, max. 400–800 px) sowie quadratischer 160 px-Gesichtscrops im Cache-Verzeichnis (<code>./.cache/thumbnails</code>).</li>
+<li>Beseitigt Verzögerungen durch On-the-fly-Konvertierung bei großen Trefferlisten.</li>
+</ul>
+</li>
+<li>[x] <strong>Konsequenter Verzicht auf Originale im Galerie-Betrieb:</strong><ul>
+<li>Galerien, Suchlisten und Leuchttisch laden ausschließlich die leichten WebP-Derivate (<code>max_dim=400/600</code>); das hochauflösende Master-Original wird erst beim Hineinzoomen / Deep Zoom via IIIF oder im Download geladen.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="12-logging-fehler-reporting-reject-management-batch-robustheit">12. Logging, Fehler-Reporting &amp; Reject-Management (Batch-Robustheit)</h2>
+<ul>
+<li><strong>Ziel:</strong> Unterbrechungsfreie Massenverarbeitung und volle Transparenz für die Archivleitung.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Strukturiertes Fehlerprotokoll (<code>failed_files.jsonl</code>):</strong><ul>
+<li>Treten bei beschädigten Dateien, Dateisystemfehlern oder Rechten Problemen Ausnahmen auf, bricht der Indexer nicht ab, sondern führt die Datei mit Zeitstempel, Pfad und Fehlerursache in einer JSONL-Logdatei.</li>
+</ul>
+</li>
+<li>[ ] <strong>Status-Dashboard &amp; Reject-Übersicht:</strong><ul>
+<li>Übersichtsanzeige im Admin-/Import-Tab mit Kennzahlen:</li>
+<li>Anzahl indexierter Master-Bilder</li>
+<li>Anzahl detektierter Gesichter &amp; Cluster</li>
+<li>Fehlgeschlagene / korrupte Dateien mit Detailansicht zur manuellen Nachprüfung.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="13-archivische-schutzfristen-zugriffstrennung-kdg-dsgvo">13. Archivische Schutzfristen &amp; Zugriffstrennung (KDG / DSGVO)</h2>
+<ul>
+<li><strong>Ziel:</strong> Rechtssicherer Betrieb in Lesesaal und Verwaltung unter Einhaltung gesetzlicher und kirchlicher Sperrfristen.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Bestandsfilterung per Ordner-Mapping:</strong><ul>
+<li>Kennzeichnung ganzer Teilverzeichnisse mit Schutzfristen-Tags (z. B. <code>sperrfrist_aktiv</code>, <code>intern_leitung</code>).</li>
+</ul>
+</li>
+<li>[ ] <strong>Mandanten- / Rollen-Filterung in der Suche:</strong><ul>
+<li>Gesperrte Bestände werden standardmäßig in Lesesaal-Recherchen ausgeblendet und erfordern eine explizite Berechtigungsfreigabe.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="14-kontextuelle-verknupfung-von-vorder-und-ruckseite-zweiblatt-logik-recto-verso">14. Kontextuelle Verknüpfung von Vorder- und Rückseite (Zweiblatt-Logik: Recto / Verso)</h2>
+<ul>
+<li><strong>Ziel:</strong> Das Vorderseiten-Foto ist das visuelle Hauptobjekt; die beschriftete Rückseite (Fotografenstempel, Datierungen, handschriftliche Widmungen) fungiert als verknüpfter Text- und Belegträger.</li>
+<li><strong>Archivischer Mehrwert gegenüber Standard-Software:</strong></li>
+<li>Kommerzielle Tools behandeln Scans von Vorder- und Rückseite als zwei isolierte, zusammenhanglose Dateien.</li>
+<li>Hier erkennt das System anhand von Dateinamenskonventionen (<code>_r</code>/<code>_v</code>, <code>_recto</code>/<code>_verso</code>, <code>_a</code>/<code>_b</code>, <code>_01</code>/<code>_02</code>) automatisch, dass zwei Scans physisch zusammengehören.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[x] <strong>Automatische Paar-Erkennung (Zweiblatt-Logik):</strong><ul>
+<li>Zusammenführen von <code>_r</code>/<code>_v</code>-Dateipaaren zu einem gemeinsamen archivischen Datensatz.</li>
+</ul>
+</li>
+<li>[x] <strong>Rückseiten-Notiz als Primär-Metadatum des Vorderseiten-Fotos:</strong><ul>
+<li>Der per OCR/VLM auf der Rückseite entzifferte handschriftliche Text (z. B. <em>„Fronleichnam 1928, Pfarrer Huber mit Kirchenchor“</em>) wird als Primär-Metadatum direkt mit dem Vorderseiten-Foto verknüpft und semantisch indexiert.</li>
+<li>Bei der Freitextsuche nach Begriffen auf der Rückseite wird direkt das Vorderseiten-Foto als Suchtreffer ausgegeben.</li>
+</ul>
+</li>
+<li>[x] <strong>Interaktiver 3D-Karten-Flip im Bild-Modal:</strong><ul>
+<li>Button „Rückseite ansehen / Umdrehen“ mit animiertem Karten-Wechsel zwischen Vorder- und Rückseite.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="15-iiif-image-api-30-deep-zoom-pyramidales-kacheln">15. IIIF Image API 3.0 &amp; Deep Zoom (Pyramidales Kacheln)</h2>
+<ul>
+<li><strong>Ziel:</strong> Flüssige Betrachtung gigapixel-großer Scans (Glasplatten, Repros &gt; 100 MB) im Webbrowser ohne RAM-Überlastung des Clients.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[x] <strong>Leichtgewichtiger IIIF-Kacheldienst:</strong><ul>
+<li>Implementierung eines lokalen IIIF-Image-API-konformen Endpunkts (<code>/iiif/{id}/...</code> und <code>/api/iiif/{id}/...</code>) auf Basis dynamischer Kachelung (Pillow / pyramidales WebP &amp; JPEG mit SSD-Caching in <code>.cache/iiif_tiles/</code>).</li>
+</ul>
+</li>
+<li>[x] <strong>Deep-Zoom-Integration (OpenSeadragon / Mirador):</strong><ul>
+<li>Flüssiges Hineinzoomen bis auf den Seidenfaden historischer Paramente oder Inschriften auf Kirchturm-Glocken via lokalem OpenSeadragon (100 % offline, datenschutzkonform ohne externe CDNs).</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="16-serien-stapel-metadatenbearbeitung-batch-cataloguing">16. Serien- &amp; Stapel-Metadatenbearbeitung (Batch Cataloguing)</h2>
+<ul>
+<li><strong>Ziel:</strong> Effiziente Massenerschließung ganzer Fotonachlässe, Alben oder Ereignisserien ohne redundante Einzeleingaben.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Mehrfachauswahl im Frontend:</strong><ul>
+<li>Checkboxen- und Gummiband-Auswahl im Suchgitter und Leuchttisch.</li>
+</ul>
+</li>
+<li>[ ] <strong>Batch-Editor Dialog:</strong><ul>
+<li>Gleichzeitiges Zuweisen von Datierung, Urheber/Fotograf, Provenienz/Bestand, Ort und Schlagworten auf alle markierten Bilder.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="17-konservatorische-schadens-kartierung-erhaltungszustand">17. Konservatorische Schadens-Kartierung &amp; Erhaltungszustand</h2>
+<ul>
+<li><strong>Ziel:</strong> Fachgerechte Zustandsdokumentation für Restaurierung, Konservierung und Versicherung nach ICOM-Standard.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Schadens-Annotationslayer im Bild-Modal:</strong><ul>
+<li>Grafisches Markieren von Schäden (<em>Silberspiegelung, Stockflecken/Schimmel, Risse, Fehlstellen, Glasbruch, chemischer Essig-Zerfall</em>).</li>
+</ul>
+</li>
+<li>[ ] <strong>Klassifikation des Erhaltungszustands:</strong><ul>
+<li>Dokumentation von Erhaltungsstufen (Stufe I: Sehr gut bis Stufe IV: Akut gefährdet / restaurierungsbedürftig) im Metadaten-Payload.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="18-visuelle-georeferenzierung-pfarr-topographie">18. Visuelle Georeferenzierung &amp; Pfarr-Topographie</h2>
+<ul>
+<li><strong>Ziel:</strong> Räumliche Erschließung und territoriale Verknüpfung historischer Aufnahmen ohne Abhängigkeit von modernen GPS-EXIF-Daten.</li>
+<li><strong>Archivischer Mehrwert gegenüber Standard-Software:</strong></li>
+<li>Kommerzielle Tools verlassen sich stur auf GPS-Metadaten, die historische Glasplatten und analoge Fotoabzüge naturgemäß nicht besitzen.</li>
+<li>Historische kirchliche Bestände sind stattdessen streng territorial gegliedert (<em>Bistum → Dekanat → Pfarrei → Filialkirche</em>).</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Pfarreien-Kataster &amp; territoriale Hierarchie:</strong><ul>
+<li>Verknüpfung der semantischen Suche mit einem Pfarreien- und Ortskataster.</li>
+<li>Wer nach Kirchtürmen, Altären oder Prozessionsaufnahmen sucht, kann die Suche flexibel auf bestimmte Pfarreien, Dekanate oder Bistumsregionen eingrenzen.</li>
+</ul>
+</li>
+<li>[ ] <strong>Gebäude- &amp; Architektur-Ähnlichkeitssuche:</strong><ul>
+<li>Wiedererkennung desselben Kirchturms, Hochaltars, Portals oder derselben Kirchenfassade aus verschiedenen Blickwinkeln und über historische Epochen hinweg (z. B. Vorher/Nachher-Vergleich vor und nach Kriegszerstörung, Barockisierung oder Restaurierung).</li>
+</ul>
+</li>
+<li>[ ] <strong>Interaktive Koordinatenzuweisung:</strong><ul>
+<li>OpenStreetMap / Leaflet-Kartenmodul zur schnellen manuellen Verortung per Mausklick.</li>
+</ul>
+</li>
+<li>[ ] <strong>Geografische Umkreissuche:</strong><ul>
+<li>Qdrant-Geo-Distanzfilter für Recherchen im Umkreis (z. B. <em>„Alle historischen Fotos im Umkreis von 2 km um Kloster Beuron“</em>).</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="19-kuratierte-mappen-publikations-druckerei-paketexport">19. Kuratierte Mappen &amp; Publikations-/Druckerei-Paketexport</h2>
+<ul>
+<li><strong>Ziel:</strong> Projektbezogene Bildzusammenstellungen für Ausstellungen, Heimatbücher und Leihanfragen mit druckfertigem Nachweis.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Persistente Kuratoren-Mappen:</strong><ul>
+<li>Dauerhaftes Speichern und Verwalten benannter Kollektionen (über den temporären Leuchttisch hinaus).</li>
+</ul>
+</li>
+<li>[ ] <strong>Publikations-Paket (Druckerei-ZIP):</strong><ul>
+<li>Automatisierter Download der Master-Originale inklusive druckreifem <strong>Bildnachweis-Verzeichnis (PDF &amp; CSV)</strong> mit korrekten Zitationen, Copyright-Vermerken und Bildunterschriften.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="20-kirchlicher-thesaurus-ikonographischer-standard-fur-die-freitextsuche-gnd-iconclass-aat">20. Kirchlicher Thesaurus &amp; Ikonographischer Standard für die Freitextsuche (GND, Iconclass, AAT)</h2>
+<ul>
+<li><strong>Ziel:</strong> Maximale Treffsicherheit bei der Recherche nach christlicher Kunst, Liturgie, Paramenten und Ordensleben durch semantische Begriffserweiterung und kontrolliertes Fachvokabular.</li>
+</ul>
+<h3 id="etablierte-fachstandards-klassifikationen">Etablierte Fachstandards &amp; Klassifikationen</h3>
+<ul>
+<li><strong>Iconclass:</strong> Internationaler kunsthistorischer Standard für christliche Ikonographie (z. B. Bibelszenen, Heiligenattribute, liturgische Riten; genutzt im <em>Bildarchiv Foto Marburg</em> und <em>Deutschen Dokumentationszentrum für Kunstgeschichte</em>).</li>
+<li><strong>GND (Gemeinsame Normdatei der DNB):</strong> Normierte Sachbegriffe für kirchliche Ämter, Orden, Festtage und Sakralgegenstände.</li>
+<li><strong>Getty AAT (Art &amp; Architecture Thesaurus, dt. Fassung):</strong> Normiertes Vokabular für Sakralarchitektur, Paramente und Vasa sacra.</li>
+</ul>
+<h3 id="fachspezifische-vokabular-kategorien">Fachspezifische Vokabular-Kategorien</h3>
+<ul>
+<li><strong>Vasa sacra (Liturgische Geräte):</strong> <em>Monstranz, Kelch, Ziborium, Patene, Weihrauchfass (Thuribulum), Weihrauchschiffchen, Vortragekreuz, Aspergill (Weihwassersprengel), Messkännchen, Reliquiar, Ciborium, Ostensorium</em>.</li>
+<li><strong>Paramente (Liturgische Gewänder):</strong> <em>Kasel (Messgewand), Dalmatik, Albe, Stola, Chormantel (Pluviale), Birett, Mitra, Pallium, Schultervelum, Zingulum, Talar</em>.</li>
+<li><strong>Sakrale Architektur &amp; Kirchenausstattung:</strong> <em>Hochaltar, Zelebrationsaltar, Tabernakel, Kanzel, Taufbecken/Taufstein, Chorgestühl, Beichtstuhl, Sakristei, Marienaltar, Pietà, Kreuzwegstation, Epitaph, Orgelprospekt, Glockenstuhl, Baldachin, Lettner</em>.</li>
+<li><strong>Liturgische Feiern &amp; Riten:</strong> <em>Fronleichnamsprozession, Primiz, Erstkommunion, Firmung, Priesterweihe, Bischofsweihe, Ewige Anbetung, Bittprozession, Maiandacht, Karfreitagsliturgie, Patrozinium, Pontifikalamt, Vesper</em>.</li>
+<li><strong>Klerus &amp; Ordenswesen:</strong> <em>Bischof, Weihbischof, Abt/Äbtissin, Pfarrer, Kaplan, Diakon, Ministrant, Ordensschwester/Nonne (Habit), Franziskaner, Benediktiner, Jesuiten, Dominikaner, Zisterzienser</em>.</li>
+</ul>
+<h3 id="technische-umsetzungsaufgaben">Technische Umsetzungsaufgaben</h3>
+<ul>
+<li>[x] <strong>Thesaurus-basierte Synonym-Erweiterung (Query Expansion):</strong></li>
+<li>Sucht ein Nutzer nach <em>„Messgewand“</em>, expandiert die Such-Engine im Hintergrund automatisch auf <em>„Kasel“</em>, <em>„Parament“</em>, <em>„Pluviale“</em> und <em>„Dalmatik“</em>.</li>
+<li>Sucht jemand nach <em>„Monstranz“</em>, werden auch <em>„Allerheiligstes“</em>, <em>„Ostensorium“</em> oder <em>„Aussetzung“</em> semantisch assoziiert.</li>
+<li>[x] <strong>Zero-Shot Prompt-Katalog für kirchliche Motive:</strong></li>
+<li>Vorberechnete OpenCLIP-Embeddings für die wichtigsten kirchlichen Begriffe (GND/Iconclass), um bei neu indexierten Bildern automatisch passende Schlagwort-Vorschläge zu generieren (ohne zusätzlichen VRAM-Bedarf).</li>
+<li>[x] <strong>Iconclass-Notationen im XMP-Sidecar:</strong></li>
+<li>Optionale Einbettung von Iconclass-Codes (z. B. <code>11Q714</code> für Messfeier/Liturgie) in die standardisierten <code>.xmp</code>-Metadaten.</li>
+</ul>
+<hr />
+<h2 id="21-archivische-findbuch-synchronisation-echtes-read-only-sync-uber-bestehenden-fileservern">21. Archivische Findbuch-Synchronisation (Echtes Read-Only-Sync über bestehenden Fileservern)</h2>
+<ul>
+<li><strong>Ziel:</strong> Das System fungiert als intelligenter Indexierungs- und Recherche-Layer über unveränderten Fileservern und bindet bestehende analoge oder digitale Findbücher nahtlos ein.</li>
+<li><strong>Archivischer Mehrwert gegenüber Standard-Software:</strong></li>
+<li>Kommerzielle Tools erzwingen häufig den Import in proprietäre Datenbankstrukturen oder das Umbenennen/Verschieben von Ordnern; Metadaten müssen mühsam doppelt gepflegt werden.</li>
+<li>Dieses System belässt den Fileserver 100 % unberührt (read-only) und synchronisiert externe Findbücher deklarativ.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Ingest externer Findbücher (CSV, Excel, XML/EAD):</strong><ul>
+<li>Einlesen bestehender Tabellen und Findbücher über eine intuitive Schnittstelle im Import-Tab.</li>
+</ul>
+</li>
+<li>[ ] <strong>Automatischer Signatur- &amp; Bestandsabgleich:</strong><ul>
+<li>Automatischer Match zwischen Findbuch-Datensätzen und Bilddateien anhand von Archivsignatur, Dateinamen oder Ordnerstrukturen.</li>
+</ul>
+</li>
+<li>[ ] <strong>Gemeinsame Verschmelzung in der Recherche:</strong><ul>
+<li>Findbuch-Metadaten (Provenienz, Aktentitel, Altsignatur, Sperrfrist, Enthält-Vermerke) und KI-Erkennungen (CLIP-Motive, Gesichter, OCR) verschmelzen in einer einheitlichen Detailansicht, ohne dass das originale Archivverzeichnis verändert werden muss.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="22-alters-zeitstrahl-mapping-fur-personen-age-invariant-face-tracking-uber-jahrzehnte">22. Alters- &amp; Zeitstrahl-Mapping für Personen (Age-Invariant Face Tracking über Jahrzehnte)</h2>
+<ul>
+<li><strong>Ziel:</strong> Zuverlässige Identifikation und Zusammenführung derselben historischen Persönlichkeit über eine Lebensspanne von 30 bis 60 Jahren hinweg.</li>
+<li><strong>Archivischer Mehrwert gegenüber Standard-Software:</strong></li>
+<li>Kommerzielle Consumer-Tools (Apple Photos, Google Photos, Standard-ArcFace) erkennen dieselbe Person oft nicht mehr wieder, wenn zwischen den Aufnahmen 30 oder 50 Jahre liegen (z. B. der Neupriester mit 25 Jahren vs. derselbe Mann als Weihbischof mit 70 Jahren).</li>
+<li>Durch Altersmerkmale (Falten, graue Haare/Kahlheit, Brillen, veränderte Gesichtsform) sinkt die biometrische Vektordistanz unter den üblichen Schwellenwert.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[ ] <strong>Biografische Lebensdaten-Verknüpfung:</strong><ul>
+<li>Hinterlegung von Lebensdaten (Geburtsjahr, Weihe-/Amtsantrittsjahr, Sterbejahr) direkt am Personen-Cluster.</li>
+<li>Automatische chronologische Sortierung der Cluster-Fotos entlang eines visuellen Lebens-Zeitstrahls.</li>
+</ul>
+</li>
+<li>[ ] <strong>Adaptive Ähnlichkeits-Schwellenwerte für Altersübergänge:</strong><ul>
+<li>Dynamische Anpassung des mathematischen Schwellenwerts: Liegen zwei Aufnahmen zeitlich weit auseinander (z. B. 1935 vs. 1970), nutzt das System adaptive Toleranzen und fokussiert unveränderliche skelettäre Gesichtsmerkmale (Augenabstand, Nasenwurzel, Ohr- und Kinnproportionen).</li>
+</ul>
+</li>
+<li>[ ] <strong>Vorschlagssystem für „Mögliche Identitäten über Jahrzehnte“:</strong><ul>
+<li>Intelligenter Prüf-Vorschlag im Cluster-Detail: <em>„Könnte dieser Alumnus von 1935 derselbe Domkapitular auf dem Foto von 1968 sein?“</em></li>
+<li>Ermöglicht Archivaren das Zusammenführen von „Jung-“ und „Alt-Clustern“ mit einem Klick (Merge) unter Erhalt der biometrischen Altersspanne.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="23-personen-netzwerke-co-occurrence-navigation-graph-erkundung-beziehungsanalyse">23. Personen-Netzwerke &amp; Co-Occurrence-Navigation (Graph-Erkundung &amp; Beziehungsanalyse)</h2>
+<ul>
+<li><strong>Ziel:</strong> Aufdecken verborgener historischer Beziehungen, Cliquen und Netzwerke durch gemeinsame Bildauftritte (Co-Occurrences) und nahtlose Navigation von Person zu Person („Wikipedia-Prinzip“).</li>
+<li><strong>Archivischer Mehrwert:</strong></li>
+<li><strong>Historische Deduktion:</strong> Unbenannte Personen im Umfeld prominenter Persönlichkeiten (z. B. <em>„Wer ist der unbekannte Geistliche, der auf 6 verschiedenen Fotos neben Bischof Müller steht?“</em>) können über Co-Occurrence-Muster und Aktenabgleich in Minuten identifiziert werden.</li>
+<li><strong>Serendipity &amp; freies Erkunden:</strong> Archivare und Historiker können sich von Foto zu Foto durch das soziale Geflecht einer Stadt oder Pfarrei hangeln, ohne die Recherche abbrechen zu müssen.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[x] <strong>Direktsprung zum Cluster jeder abgebildeten Person (Cross-Cluster-Navigation):</strong><ul>
+<li>Im Bild-Detailmodal und in den Gesichts-Tags: Klick auf eine Person B auf dem Foto von Person A führt mit einem Klick direkt zu allen Bildern von Person B (<code>jumpToCluster</code>).</li>
+</ul>
+</li>
+<li>[x] <strong>Schnittmengen-Filter (Gemeinsame Aufnahmen zweier Personen):</strong><ul>
+<li>Schnellfilter-Aktion: <em>„Zeige alle Fotos, auf denen Person A und Person B gemeinsam abgebildet sind“</em> (Qdrant-Schnittmenge der Elternbilder zweier Cluster über <code>/network/shared-images</code>).</li>
+</ul>
+</li>
+<li>[x] <strong>Häufigkeits-Rangliste der Begleitpersonen (Co-Occurrence Ranking):</strong><ul>
+<li>Statistische Auswertung im Personen-Profil: <em>„Wird oft gesehen mit: ...“</em> mit Profil-Chips, gemeinsamen Fotoanzahlen und 1-Klick-Filter (<code>/network/person/{cluster_id}/co-occurrences</code>).</li>
+</ul>
+</li>
+<li>[x] <strong>Interaktiver Beziehungs-Graph (Netzwerk-Visualisierung):</strong><ul>
+<li>Neuer Tab „Netzwerk“ mit interaktiver Force-Directed Graph-Darstellung via lokal gebündeltem vis-network (Knoten = Personen-Crops, Kanten = gemeinsame Fotos; Kantendicke = Häufigkeit, Tiefenstufen 1 &amp; 2, Schwellenwert-Filter, Klick-Zentrierung &amp; Profil-Sprung).</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="24-performanz-skalierungsarchitektur-fur-massen-imports-universelle-ingest-pipeline">24. Performanz- &amp; Skalierungsarchitektur für Massen-Imports (Universelle Ingest-Pipeline)</h2>
+<ul>
+<li><strong>Ziel:</strong> Universeller, hardware-agnostischer und robuster Massen-Import, der auch bei großen Beständen (&gt; 50.000 Bilder), über Netzwerkfreigaben (NAS/SMB) und auf variierender Hardware (starke GPU-Workstations bis Standard-Büro-Server ohne dedizierte GPU) dauerhaft performant bleibt und nicht mit wachsender Bildzahl einbricht.</li>
+<li><strong>Problemstellung &amp; Flaschenhals-Analyse:</strong></li>
+<li>Mit wachsender Collection-Größe (&gt; 50.000 Bilder, &gt; 160.000 Gesichter) wachsen die Kosten synchroner Einzel-Schreibvorgänge (<code>wait=true</code>) in Qdrant drastisch, da HNSW-Segmente im Hintergrund ständig reorganisiert werden.</li>
+<li>Synchrone Netzwerk-Latenzen über FUSE/GVFS-Shares blockieren die KI-Inferenz; I/O und Compute laufen strikt nacheinander statt überlappend.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[x] <strong>Batch-Upserts in Qdrant:</strong><ul>
+<li>Vektoren nicht bildweise einzeln schreiben, sondern in konfigurierbaren Batches (z. B. 50–100 Bilder auf einmal) sammeln und gebündelt übertragen.</li>
+<li>Reduziert den Qdrant-Lock- und WAL-Overhead um ca. 70–80 % und verhindert ständiges Einbremsen durch Segment-Flushes.</li>
+</ul>
+</li>
+<li>[x] <strong>Asynchrones Prefetching &amp; Pipelining (I/O- und Compute-Entkopplung):</strong><ul>
+<li>Entkopplung über Produzent-Konsument-Architektur (Worker-Queue): Das nächste Bild wird im Hintergrund über das Netzwerk gestreamt, validiert und vorbereitet, während die GPU/CPU noch an der Inferenz (CLIP / InsightFace) des aktuellen Bildes rechnet.</li>
+<li>Beseitigt Leerlaufzeiten von Netzwerk und Recheneinheiten vollständig.</li>
+</ul>
+</li>
+<li>[x] <strong>Echtes Kernel-CIFS-Mount &amp; Netzwerk-I/O-Optimierung:</strong><ul>
+<li>NAS-Ordner fest über nativer Kernel-Treiber (<code>mount -t cifs</code>) einbinden statt über die träge, single-threaded GVFS-Desktop-Emulation (<code>/run/user/1000/gvfs/...</code>).</li>
+<li>Dokumentation und Prüf-Routine im System, die bei GVFS-Pfaden warnt und CIFS-Optionen vorschlägt.</li>
+</ul>
+</li>
+<li>[x] <strong>Universeller, hardware-agnostischer Lösungsansatz:</strong><ul>
+<li><em>Dynamische Ressourcen-Adaption:</em> Automatische Erkennung der Systemressourcen (CUDA-VRAM, CPU-Kerne, RAM) und adaptive Anpassung von Batch-Größen und Worker-Threads (<code>app/core/system_profile.py</code>).</li>
+<li><em>Temporäres Deferral der HNSW-Indexierung bei Massen-Imports:</em> Automatisches Aussetzen des HNSW-Indexbaus (<code>indexing_threshold=0</code>) bei großen Bulk-Imports (&gt;= 500 Bilder) und optimierter Wiederaufbau nach Abschluss.</li>
+<li><em>Stabile I/O-Pufferung:</em> Sicheres Zwischenspeichern im lokalen Cache und begrenzte Queue.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="25-ui-responsivitat-entkopplung-von-lese-schreiblast-wahrend-aktiver-hintergrund-imports">25. UI-Responsivität &amp; Entkopplung von Lese-/Schreiblast während aktiver Hintergrund-Imports</h2>
+<ul>
+<li><strong>Ziel:</strong> Das Web-Frontend (Personen-Cluster, Detailansichten, Suchanfragen, Bildbetrachtung) muss sich auch während eines laufenden massiven Hintergrund-Imports mit maximaler Geschwindigkeit (&lt; 50 ms) bedienen lassen, ohne durch Datenbank-Sperren oder Netzwerk-I/O ausgebremst zu werden.</li>
+<li><strong>Problemstellung &amp; Analyse:</strong></li>
+<li>Bisher scrollt <code>get_clusters()</code> bei jedem Aufruf über 80 HTTP-Requests hinweg sämtliche 160.000 Gesichter aus Qdrant (Dauer: ~13,5 s), während der Import mit <code>wait=true</code> im Sekundentakt Schreib-Locks auf dieselbe Collection setzt.</li>
+<li>Beim Klick auf ein Cluster versucht der Webserver ad-hoc über die überlastete SMB/GVFS-Netzwerkverbindung Vorschaubilder vom NAS zu generieren, während der Import dieselbe Leitung belegt.</li>
+<li>Webserver und Import teilen sich im selben Python-Prozess den Global Interpreter Lock (GIL) und CPU-Ressourcen ohne Vorrangsteuerung.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[x] <strong>SQLite als primärer Index für Cluster-Metadaten (Aggregationen entkoppeln):</strong><ul>
+<li>Anlage einer relationalen Tabelle <code>clusters (id TEXT PRIMARY KEY, name TEXT, face_count INTEGER, preview_image TEXT, last_updated TIMESTAMP)</code> in der lokalen SQLite-Datenbank (<code>app/services/metadata_db.py</code>).</li>
+<li><code>get_clusters()</code> liest die Liste in &lt; 1 ms direkt aus SQLite, anstatt 160.000 Vektorpunkte über HTTP aus Qdrant zu scrollen. Qdrant wird ausschließlich für Vektorähnlichkeit genutzt, nicht für relationale <code>GROUP BY</code>-Abfragen.</li>
+</ul>
+</li>
+<li>[x] <strong>Proaktives Thumbnail-Caching direkt beim Import:</strong><ul>
+<li>Der Import-Job schneidet die 160-Pixel-Gesichtsausschnitte und WebP-Thumbnails direkt während des Lesens auf die lokale SSD (<code>.cache/thumbnails/</code>), da das Bild und die Bounding-Box ohnehin im RAM liegen.</li>
+<li>Beim Klick auf ein Cluster im UI muss kein einziges Byte mehr über das NAS übertragen werden – 100 % der Porträts laden sofort von der lokalen SSD.</li>
+</ul>
+</li>
+<li>[x] <strong>Nicht-blockierende Schreibvorgänge (<code>wait=False</code>) in Qdrant:</strong><ul>
+<li>Umstellung der Upsert-Aufrufe beim Import von synchron (<code>wait=True</code>) auf asynchron (<code>wait=False</code>) in Kombination mit Batches.</li>
+<li>Qdrant nimmt Schreib-Batches sofort entgegen und glättet das Schreiben im Hintergrund, sodass Lese-Abfragen für die Benutzeroberfläche nicht blockiert werden.</li>
+</ul>
+</li>
+<li>[x] <strong>Priorisierung für Web-Anfragen (Quality of Service / QoS &amp; Prozess-Entkopplung):</strong><ul>
+<li>Ausführung rechenintensiver Import-Aufgaben mit niedrigerer CPU-Priorität (<code>os.nice(10)</code>).</li>
+<li>Interaktive Benutzer-Requests (Cluster laden, Bilder betrachten, Freitextsuche) erhalten im Betriebssystem sofort Vorrang vor dem Hintergrund-Import.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="26-umfassende-performance-stellschrauben-fur-grobestande-100000-bilder">26. Umfassende Performance-Stellschrauben für Großbestände (&gt; 100.000 Bilder)</h2>
+<ul>
+<li><strong>Ziel:</strong> Maximale System-Performance, Speichereffizienz und Reaktionsgeschwindigkeit über alle Ebenen hinweg (KI-Inferenz, Vektordatenbank, Relationale Datenbank, Browser-DOM).</li>
+<li><strong>Priorisierte Handlungsfelder &amp; Aufgaben:</strong></li>
+<li>[x] <strong>Vektordatenbank &amp; Qdrant-Engine:</strong><ul>
+<li><em>Skalare Quantisierung (INT8):</em> Aktivierung von Qdrants <code>ScalarQuantization(int8)</code> für <code>archive_images</code> und <code>archive_faces</code>. Reduziert den RAM-Verbrauch um 75 % und beschleunigt Distanzberechnungen über AVX2/AVX-512 bzw. Tensor Cores um das 3- bis 4-fache bei &gt; 99 % identischer Treffergüte.</li>
+<li><em>gRPC-Protokoll statt HTTP-REST:</em> Aktivierung von <code>prefer_grpc = True</code> (<code>QDRANT_GRPC_PORT = 6334</code>). Beseitigt den massiven JSON-Serialisierungs-Overhead für 512-dimensionale Float-Arrays zugunsten von binären Protobuf-Streams.</li>
+</ul>
+</li>
+<li>[x] <strong>KI-Inferenz &amp; GPU-Beschleunigung (OpenCLIP &amp; InsightFace):</strong><ul>
+<li><em>Mixed Precision Inferenz (FP16 / Tensor Cores):</em> Ausführung von OpenCLIP via <code>torch.cuda.amp.autocast(dtype=torch.float16)</code> zur vollen Ausnutzung der NVIDIA Tensor Cores. Verdoppelt bis verdreifacht die Inferenzrate bei halbiertem VRAM-Bedarf.</li>
+<li><em>Intelligentes Vorab-Downsampling vor KI &amp; Hashing:</em> Herunterskalieren sehr großer Masterscans (15–50 Megapixel) auf max. 1.600–2.000 Pixel vor der Übergabe an CLIP ($224 \times 224$), InsightFace ($640 \times 640$) und pHash/dHash. Spart bis zu 60 % CPU-Dekompressionszeit und verhindert RAM-Spitzen.</li>
+<li><em>Batching bei der Feature-Extraktion:</em> Vorbereitung von <code>embed_images_batch()</code> zur effizienten GPU-Auslastung.</li>
+</ul>
+</li>
+<li>[x] <strong>Frontend &amp; Browser-DOM:</strong><ul>
+<li><em>Paginierung oder Virtual Scrolling für Personen-Cluster:</em> Einführung von Seitenblöcken (60 Karten/Seite) und „Weitere Personen laden“-Funktion in <code>#clusters-grid</code>. Verhindert Browser-Speicherüberlastung, Layout-Thrashing und träges Scrollen.</li>
+<li><em>WebP-Thumbnails statt JPEG:</em> Umstellung der dynamischen Thumbnail-Erzeugung (<code>/images/serve</code> und Vorschaubilder) auf WebP. Reduziert die Bild-Payloads um 30–50 % bei identischer visueller Schärfe.</li>
+</ul>
+</li>
+<li>[x] <strong>Relationale Datenbank &amp; Metadaten (SQLite):</strong><ul>
+<li><em>Aktivierung des WAL-Modus (Write-Ahead Logging):</em> Konfiguration von <code>PRAGMA journal_mode = WAL;</code>, <code>PRAGMA synchronous = NORMAL;</code> und 64 MB RAM-Cache (<code>PRAGMA cache_size = -64000;</code>). Stellt sicher, dass Lese- und Schreibzugriffe vollständig entkoppelt sind und sich niemals gegenseitig blockieren.</li>
+</ul>
+</li>
 </ul>
     </article>
     <footer>
