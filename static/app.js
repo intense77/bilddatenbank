@@ -1723,12 +1723,16 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
     }
   }
 
-  const backToClusterBtn = document.getElementById('modal-back-to-cluster-btn');
-  if (backToClusterBtn) {
-    if (currentModalTargetFaceContext) {
-      backToClusterBtn.classList.remove('hidden');
-    } else {
-      backToClusterBtn.classList.add('hidden');
+  const backToOverviewBtn = document.getElementById('modal-back-to-overview-btn') || document.getElementById('modal-back-to-cluster-btn');
+  const backToOverviewLabel = document.getElementById('modal-back-to-overview-label');
+  if (backToOverviewBtn) {
+    backToOverviewBtn.classList.remove('hidden');
+    if (backToOverviewLabel) {
+      if (currentModalTargetFaceContext || (typeof activeCluster !== 'undefined' && activeCluster)) {
+        backToOverviewLabel.textContent = 'Zurück zum Cluster';
+      } else {
+        backToOverviewLabel.textContent = 'Zurück zur Übersicht';
+      }
     }
   }
 
@@ -2065,7 +2069,6 @@ function closeImageModal() {
   currentModalTargetFaceContext = null;
   targetFaceBoxCoords = null;
   document.getElementById('modal-cluster-verify-banner')?.classList.add('hidden');
-  document.getElementById('modal-back-to-cluster-btn')?.classList.add('hidden');
   if (cropperInstance) {
     cropperInstance.destroy();
     cropperInstance = null;
