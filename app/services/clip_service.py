@@ -95,14 +95,22 @@ class ClipService:
     def embed_image(self, image_path: Union[str, Path, Image.Image]) -> List[float]:
         """
         Lädt ein Bild via PIL, normalisiert es und gibt einen L2-normalisierten 512-dim Vektor zurück.
-        Fängt beschädigte Scans sowie CMYK/TIFF-Formate sauber ab.
+        Nutzt Vorab-Downsampling (> 1600 px) und FP16 Mixed Precision (CUDA) für maximale Performanz.
         """
         img = load_image_rgb(image_path)
+        # Vorab-Downsampling: Extrem hochauflösende Scans im Speicher verkleinern
+        if max(img.width, img.height) > 1600:
+            img.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+
         tensor = self.preprocess(img).unsqueeze(0).to(self.device)
-        image_features = self.model.encode_image(tensor)
-        # L2-Normalisierung für Cosine-Ähnlichkeitssuche
+        if self.device == "cuda":
+            with torch.cuda.amp.autocast(dtype=torch.float16):
+                image_features = self.model.encode_image(tensor)
+        else:
+            image_features = self.model.encode_image(tensor)
+
         image_features /= image_features.norm(dim=-1, keepdim=True)
-        return image_features.squeeze(0).cpu().numpy().tolist()
+        return image_features.squeeze(0).cpu().float().numpy().tolist()
 
     @torch.no_grad()
     def embed_text(self, query: str) -> List[float]:
@@ -111,10 +119,36 @@ class ClipService:
             raise ValueError("Der Suchtext darf nicht leer sein.")
 
         tokens = self.tokenizer([query.strip()]).to(self.device)
-        text_features = self.model.encode_text(tokens)
-        # L2-Normalisierung für Cosine-Ähnlichkeitssuche
+        if self.device == "cuda":
+            with torch.cuda.amp.autocast(dtype=torch.float16):
+                text_features = self.model.encode_text(tokens)
+        else:
+            text_features = self.model.encode_text(tokens)
+
         text_features /= text_features.norm(dim=-1, keepdim=True)
-        return text_features.squeeze(0).cpu().numpy().tolist()
+        return text_features.squeeze(0).cpu().float().numpy().tolist()
+
+    @torch.no_grad()
+    def embed_images_batch(self, images: List[Union[str, Path, Image.Image]]) -> List[List[float]]:
+        """Extrahiert Embeddings für einen Batch von Bildern mit GPU-Parallelisierung."""
+        if not images:
+            return []
+        processed_tensors = []
+        for img_input in images:
+            img = load_image_rgb(img_input)
+            if max(img.width, img.height) > 1600:
+                img.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+            processed_tensors.append(self.preprocess(img))
+
+        batch_tensor = torch.stack(processed_tensors).to(self.device)
+        if self.device == "cuda":
+            with torch.cuda.amp.autocast(dtype=torch.float16):
+                features = self.model.encode_image(batch_tensor)
+        else:
+            features = self.model.encode_image(batch_tensor)
+
+        features /= features.norm(dim=-1, keepdim=True)
+        return features.cpu().float().numpy().tolist()
 
     # Alias-Methoden für Kompatibilität mit bestehenden Aufrufen
     def encode_image(self, image: Union[str, Path, Image.Image]) -> List[float]:

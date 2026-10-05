@@ -4,6 +4,8 @@
 
 let activeCluster = null;
 let currentModalImageDetails = null;
+let osdViewer = null;
+let isDeepZoomActive = false;
 let systemConfig = {
   faceRecognitionEnabled: false,
   status: 'unknown',
@@ -886,10 +888,29 @@ function updateClusterCounts() {
   if (countUnnamed) countUnnamed.textContent = unnamedCount;
 }
 
-function applyClusterFilters() {
+let clusterPageSize = 60;
+let clusterCurrentLimit = 60;
+
+function resetClusterPagination() {
+  clusterCurrentLimit = clusterPageSize;
+}
+
+window.loadMoreClusters = function() {
+  clusterCurrentLimit += clusterPageSize;
+  applyClusterFilters(false);
+};
+
+function applyClusterFilters(resetLimit = true) {
   const grid = document.getElementById('clusters-grid');
   const empty = document.getElementById('clusters-empty');
+  const paginContainer = document.getElementById('clusters-pagination-container');
+  const pageInfo = document.getElementById('clusters-page-info');
+  const loadMoreCount = document.getElementById('clusters-load-more-count');
   if (!grid || !empty) return;
+
+  if (resetLimit) {
+    clusterCurrentLimit = clusterPageSize;
+  }
 
   updateClusterCounts();
 
@@ -913,6 +934,7 @@ function applyClusterFilters() {
   grid.innerHTML = '';
 
   if (filtered.length === 0) {
+    if (paginContainer) paginContainer.classList.add('hidden');
     empty.classList.remove('hidden');
     if (clusterSearchQuery || clusterCategoryFilter !== 'all') {
       empty.innerHTML = `
@@ -935,7 +957,10 @@ function applyClusterFilters() {
 
   empty.classList.add('hidden');
 
-  filtered.forEach(c => {
+  const totalCount = filtered.length;
+  const toRender = filtered.slice(0, clusterCurrentLimit);
+
+  toRender.forEach(c => {
     const card = document.createElement('div');
     card.className = 'group bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-xl overflow-hidden p-4 shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex flex-col items-center text-center relative';
 
@@ -972,6 +997,18 @@ function applyClusterFilters() {
     card.addEventListener('click', () => openClusterDetail(c));
     grid.appendChild(card);
   });
+
+  if (paginContainer) {
+    if (clusterCurrentLimit < totalCount) {
+      paginContainer.classList.remove('hidden');
+      const remaining = totalCount - clusterCurrentLimit;
+      const nextBatch = Math.min(clusterPageSize, remaining);
+      if (pageInfo) pageInfo.textContent = `Zeige ${toRender.length} von ${totalCount} Personen-Clustern`;
+      if (loadMoreCount) loadMoreCount.textContent = `+${nextBatch}`;
+    } else {
+      paginContainer.classList.add('hidden');
+    }
+  }
 }
 
 async function loadClusters() {
@@ -1663,6 +1700,7 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
 
   toggleCropMode(false);
   toggleSplitSlider(false);
+  toggleDeepZoomMode(false);
   resetModalZoom();
 
   // Cluster-Personen-Kontrollleiste im Modal steuern
@@ -2004,6 +2042,7 @@ function closeImageModal() {
   toggleModalFullscreen(false);
   toggleCropMode(false);
   toggleSplitSlider(false);
+  toggleDeepZoomMode(false);
   resetModalZoom();
   closeModalXmpMenu();
   currentModalTargetFaceContext = null;
@@ -2026,6 +2065,120 @@ document.getElementById('image-modal')?.addEventListener('click', (e) => {
     closeImageModal();
   }
 });
+
+// ================= IIIF IMAGE API 3.0 & OPEN SEADRAGON DEEP ZOOM =================
+
+function encodeBase64Url(str) {
+  try {
+    return btoa(unescape(encodeURIComponent(str)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  } catch (e) {
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+}
+
+function toggleDeepZoomMode(forceState = null) {
+  const wrapper = document.getElementById('modal-deepzoom-wrapper');
+  const bboxWrapper = document.getElementById('modal-bbox-wrapper');
+  const btn = document.getElementById('modal-deepzoom-btn');
+  const btnText = document.getElementById('modal-deepzoom-btn-text');
+  if (!wrapper || !bboxWrapper) return;
+
+  const nextState = forceState !== null ? forceState : !isDeepZoomActive;
+  isDeepZoomActive = nextState;
+
+  if (isDeepZoomActive) {
+    // Falls Crop oder Split aktiv war, ausschalten
+    toggleCropMode(false);
+    toggleSplitSlider(false);
+
+    bboxWrapper.classList.add('hidden');
+    wrapper.classList.remove('hidden');
+
+    if (btn) {
+      btn.classList.add('bg-cyan-950', 'border-cyan-500/60', 'text-cyan-300');
+      btn.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+    }
+    if (btnText) btnText.textContent = 'Standard-Ansicht';
+
+    const filePath = currentModalImageDetails?.filePath;
+    if (!filePath) return;
+
+    const iiifId = encodeBase64Url(filePath);
+    const infoUrl = `/api/iiif/${iiifId}/info.json`;
+
+    if (typeof OpenSeadragon === 'undefined') {
+      console.warn("OpenSeadragon ist nicht geladen.");
+      return;
+    }
+
+    if (!osdViewer) {
+      osdViewer = OpenSeadragon({
+        id: "openseadragon-viewer",
+        prefixUrl: "",
+        showNavigationControl: false,
+        animationTime: 0.3,
+        blendTime: 0.1,
+        constrainDuringPan: true,
+        maxZoomPixelRatio: 4,
+        minZoomImageRatio: 0.8,
+        visibilityRatio: 0.9,
+        wrapHorizontal: false,
+        wrapVertical: false,
+        tileSources: infoUrl,
+      });
+
+      // Floating Toolbar Buttons verdrahten
+      document.getElementById('osd-zoom-in')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (osdViewer?.viewport) osdViewer.viewport.zoomBy(1.4);
+      });
+      document.getElementById('osd-zoom-out')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (osdViewer?.viewport) osdViewer.viewport.zoomBy(0.7);
+      });
+      document.getElementById('osd-home')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (osdViewer?.viewport) osdViewer.viewport.goHome();
+      });
+      document.getElementById('osd-actual-size')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (osdViewer?.viewport) {
+          const imageZoom = osdViewer.viewport.imageToViewportZoom(1);
+          osdViewer.viewport.zoomTo(imageZoom);
+        }
+      });
+      document.getElementById('osd-rotate')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (osdViewer?.viewport) {
+          const curRot = osdViewer.viewport.getRotation();
+          osdViewer.viewport.setRotation((curRot + 90) % 360);
+        }
+      });
+    } else {
+      osdViewer.open(infoUrl);
+    }
+  } else {
+    wrapper.classList.add('hidden');
+    bboxWrapper.classList.remove('hidden');
+
+    if (btn) {
+      btn.classList.remove('bg-cyan-950', 'border-cyan-500/60', 'text-cyan-300');
+      btn.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+    }
+    if (btnText) btnText.textContent = 'Deep Zoom';
+
+    if (osdViewer) {
+      try {
+        osdViewer.close();
+      } catch (err) {
+        console.debug("OSD close:", err);
+      }
+    }
+  }
+}
 
 // ================= VOLLBILD LEINWAND & TASTATUR-HILFE =================
 

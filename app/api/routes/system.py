@@ -58,6 +58,8 @@ def health_check(qdrant: QdrantService = Depends(get_qdrant_service)):
     is_qdrant_healthy = qdrant.check_health()
     status_str = "healthy" if is_qdrant_healthy else "degraded"
 
+    from app.core.system_profile import current_hardware_profile
+
     return {
         "status": status_str,
         "device": settings.effective_device,
@@ -65,6 +67,7 @@ def health_check(qdrant: QdrantService = Depends(get_qdrant_service)):
         "qdrant_reachable": is_qdrant_healthy,
         "face_recognition_enabled": settings.ENABLE_FACE_RECOGNITION,
         "version": settings.VERSION,
+        "hardware_profile": current_hardware_profile.to_dict(),
     }
 
 

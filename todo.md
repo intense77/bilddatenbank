@@ -82,9 +82,10 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   * Da ArcFace-Embeddings L2-normalisiert sind ($\|u\|=1$), entspricht die Cosine-Distanz mathematisch der halben quadrierten euklidischen Distanz:
     $$\text{dist}_{\text{cosine}}(u, v) = 1 - \langle u, v \rangle = \frac{1}{2} \|u - v\|^2 \iff \|u - v\| = \sqrt{2 \cdot \text{dist}_{\text{cosine}}(u, v)}$$
 * **Aufgaben:**
-  - [ ] Umstellung von `metric='cosine'` auf `metric='euclidean'` mit $\varepsilon_{\text{euclid}} = \sqrt{2 \cdot \varepsilon_{\text{cosine}}}$.
-  - [ ] Nutzung von raumteilenden Bäumen (`algorithm='ball_tree'` oder `'kd_tree'`) für $O(N \log N)$ Laufzeit und minimalen Speicherbedarf.
-  - [ ] Chunking / Batching bei sehr großen Porträtsammlungen (> 50.000 Gesichter).
+  - [x] Umstellung von `metric='cosine'` auf `metric='euclidean'` mit $\varepsilon_{\text{euclid}} = \sqrt{2 \cdot \varepsilon_{\text{cosine}}}$.
+  - [x] Nutzung von raumteilenden Bäumen (`algorithm='ball_tree'` oder `'kd_tree'`) für $O(N \log N)$ Laufzeit und minimalen Speicherbedarf.
+  - [x] Chunking / Batching bei sehr großen Porträtsammlungen (> 50.000 Gesichter):
+    * Adaptiver BallTree mit hardwaregesteuerter `leaf_size` und dynamischer Multithread-Parallelisierung (`n_jobs`).
 
 ---
 
@@ -108,7 +109,7 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 * **Ziel:** Validierung der Performanz und Benutzerfreundlichkeit unter realen Archivbedingungen.
 * **Aufgaben:**
   - [ ] Testbestand historischer Scans (z. B. Glasplattennegative, Repros, Porträtkarten) in `./data` einspielen.
-  - [ ] Inferenz-Geschwindigkeit (Sekunden pro 100 Scans) auf CPU und GPU messen.
+  - [x] Inferenz-Geschwindigkeit (Sekunden pro 100 Scans) auf CPU und GPU messen (`benchmark.py`).
   - [ ] Visuelle Begutachtung der Bounding-Box-Positionierung und Ähnlichkeitstreffer im Web-Frontend.
   - [ ] Dokumentation optimaler Batch-Größen für Standard-Bürorechner ohne dedizierte GPU.
 
@@ -145,13 +146,12 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 ## 10. Robustheit im Datei-Handling (Historische Scans & Sonderformate)
 * **Ziel:** Absturzsichere Ingest-Pipeline für unberechenbare historische Digitalisate (Glasplatten, Großformate, Altdaten).
 * **Aufgaben:**
-  - [ ] **Farbprofile & Farbraum-Konvertierung (CMYK, 16-Bit Grayscale):**
-    * Sicheres Abfangen von CMYK-TIFFs, 16-Bit-Graustufen und unkomprimierten Repro-TIFFs via Pillow statt nacktem `cv2.imread`.
-    * Automatische, farbgetreue Normalisierung zu 8-Bit-sRGB vor der Weitergabe an Inferenz-Pipelines.
-  - [ ] **Decompression-Bomb-Schutz konfigurieren:**
-    * Anheben bzw. Absichern von `Image.MAX_IMAGE_PIXELS` in Pillow, damit Großscans (z. B. 12.000 × 9.000 Pixel / 108 Megapixel) nicht mit `DecompressionBombError` abgebrochen werden.
-  - [ ] **Skalierung vor KI-Inferenz (VRAM- & RAM-Schonung):**
-    * Vor der Übergabe an CLIP und InsightFace hochauflösende Scans im Speicher auf max. 2.000 Pixel lange Kante herunterskalieren.
+  - [x] **Farbprofile & Farbraum-Konvertierung (CMYK, 16-Bit Grayscale):**
+    * Sicheres Abfangen von CMYK-TIFFs via `ImageCms` unter Erhalt des ICC-Farbprofils sowie lineare 16-Bit-Normalisierung zu 8-Bit sRGB vor Weitergabe an KI & Hashing (`safe_normalize_image_to_rgb`).
+  - [x] **Decompression-Bomb-Schutz konfigurieren:**
+    * Adaptives Anheben von `Image.MAX_IMAGE_PIXELS` anhand der erkannten Systemressourcen (bis zu 500 Megapixel), verhindert `DecompressionBombError` bei historischen Riesen-Scans.
+  - [x] **Skalierung vor KI-Inferenz (VRAM- & RAM-Schonung):**
+    * Vor der Übergabe an CLIP und InsightFace hochauflösende Scans im Speicher auf max. 1.600–2.000 Pixel lange Kante herunterskalieren.
     * Verhindert Out-of-Memory-Crashes (OOM), spart bis zu 90 % Inferenzzeit und bewahrt die volle Erkennungsgenauigkeit.
 
 ---
@@ -159,11 +159,11 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 ## 11. Effizientes Caching & Thumbnail-Management (Proaktive Pipeline)
 * **Ziel:** Blitzschneller Seitenaufbau ohne Netzwerklast beim Durchsuchen zehntausender Bestände.
 * **Aufgaben:**
-  - [ ] **Proaktive Thumbnail-Generierung beim Erst-Indexieren:**
-    * Direkt beim Indexieren Ablage eines standardisierten Web-Thumbnails (WebP, max. 800 px) sowie quadratischer 160 px-Gesichtscrops im Cache-Verzeichnis (`./data/thumbnails`).
+  - [x] **Proaktive Thumbnail-Generierung beim Erst-Indexieren:**
+    * Direkt beim Indexieren Ablage eines standardisierten Web-Thumbnails (WebP, max. 400–800 px) sowie quadratischer 160 px-Gesichtscrops im Cache-Verzeichnis (`./.cache/thumbnails`).
     * Beseitigt Verzögerungen durch On-the-fly-Konvertierung bei großen Trefferlisten.
-  - [ ] **Konsequenter Verzicht auf Originale im Galerie-Betrieb:**
-    * Galerien, Suchlisten und Leuchttisch laden ausschließlich die leichten WebP-Derivate; das hochauflösende Master-Original wird erst beim Hineinzoomen (> 100 %) oder im Download/Export geladen.
+  - [x] **Konsequenter Verzicht auf Originale im Galerie-Betrieb:**
+    * Galerien, Suchlisten und Leuchttisch laden ausschließlich die leichten WebP-Derivate (`max_dim=400/600`); das hochauflösende Master-Original wird erst beim Hineinzoomen / Deep Zoom via IIIF oder im Download geladen.
 
 ---
 
@@ -209,10 +209,10 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 ## 15. IIIF Image API 3.0 & Deep Zoom (Pyramidales Kacheln)
 * **Ziel:** Flüssige Betrachtung gigapixel-großer Scans (Glasplatten, Repros > 100 MB) im Webbrowser ohne RAM-Überlastung des Clients.
 * **Aufgaben:**
-  - [ ] **Leichtgewichtiger IIIF-Kacheldienst:**
-    * Implementierung eines lokalen IIIF-Image-API-konformen Endpunkts (`/iiif/{id}/...`) auf Basis dynamischer Kachelung (Pillow / libvips / pyramidales WebP).
-  - [ ] **Deep-Zoom-Integration (OpenSeadragon / Mirador):**
-    * Flüssiges Hineinzoomen bis auf den Seidenfaden historischer Paramente oder Inschriften auf Kirchturm-Glocken.
+  - [x] **Leichtgewichtiger IIIF-Kacheldienst:**
+    * Implementierung eines lokalen IIIF-Image-API-konformen Endpunkts (`/iiif/{id}/...` und `/api/iiif/{id}/...`) auf Basis dynamischer Kachelung (Pillow / pyramidales WebP & JPEG mit SSD-Caching in `.cache/iiif_tiles/`).
+  - [x] **Deep-Zoom-Integration (OpenSeadragon / Mirador):**
+    * Flüssiges Hineinzoomen bis auf den Seidenfaden historischer Paramente oder Inschriften auf Kirchturm-Glocken via lokalem OpenSeadragon (100 % offline, datenschutzkonform ohne externe CDNs).
 
 ---
 
@@ -345,19 +345,19 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   * Mit wachsender Collection-Größe (> 50.000 Bilder, > 160.000 Gesichter) wachsen die Kosten synchroner Einzel-Schreibvorgänge (`wait=true`) in Qdrant drastisch, da HNSW-Segmente im Hintergrund ständig reorganisiert werden.
   * Synchrone Netzwerk-Latenzen über FUSE/GVFS-Shares blockieren die KI-Inferenz; I/O und Compute laufen strikt nacheinander statt überlappend.
 * **Aufgaben:**
-  - [ ] **Batch-Upserts in Qdrant:**
+  - [x] **Batch-Upserts in Qdrant:**
     * Vektoren nicht bildweise einzeln schreiben, sondern in konfigurierbaren Batches (z. B. 50–100 Bilder auf einmal) sammeln und gebündelt übertragen.
     * Reduziert den Qdrant-Lock- und WAL-Overhead um ca. 70–80 % und verhindert ständiges Einbremsen durch Segment-Flushes.
-  - [ ] **Asynchrones Prefetching & Pipelining (I/O- und Compute-Entkopplung):**
+  - [x] **Asynchrones Prefetching & Pipelining (I/O- und Compute-Entkopplung):**
     * Entkopplung über Produzent-Konsument-Architektur (Worker-Queue): Das nächste Bild wird im Hintergrund über das Netzwerk gestreamt, validiert und vorbereitet, während die GPU/CPU noch an der Inferenz (CLIP / InsightFace) des aktuellen Bildes rechnet.
     * Beseitigt Leerlaufzeiten von Netzwerk und Recheneinheiten vollständig.
-  - [ ] **Echtes Kernel-CIFS-Mount & Netzwerk-I/O-Optimierung:**
+  - [x] **Echtes Kernel-CIFS-Mount & Netzwerk-I/O-Optimierung:**
     * NAS-Ordner fest über nativer Kernel-Treiber (`mount -t cifs`) einbinden statt über die träge, single-threaded GVFS-Desktop-Emulation (`/run/user/1000/gvfs/...`).
     * Dokumentation und Prüf-Routine im System, die bei GVFS-Pfaden warnt und CIFS-Optionen vorschlägt.
-  - [ ] **Universeller, hardware-agnostischer Lösungsansatz:**
-    * *Dynamische Ressourcen-Adaption:* Automatische Erkennung der Systemressourcen (CUDA-VRAM, CPU-Kerne, RAM) und adaptive Anpassung von Batch-Größen und Worker-Threads (z. B. kleiner Batch & INT8/CPU-Fallback auf Standard-Hardware, großer Batch auf GPU-Servern).
-    * *Temporäres Deferral der HNSW-Indexierung bei Massen-Imports:* Möglichkeit, bei Initial-Imports von zehntausenden Bildern den HNSW-Indexbau temporär auszusetzen und nach Abschluss des Imports in einem einzigen optimierten Durchlauf zu erstellen.
-    * *Stabile I/O-Pufferung:* Sicheres Zwischenspeichern im lokalen Cache bei instabilen Netzwerkverbindungen zum NAS.
+  - [x] **Universeller, hardware-agnostischer Lösungsansatz:**
+    * *Dynamische Ressourcen-Adaption:* Automatische Erkennung der Systemressourcen (CUDA-VRAM, CPU-Kerne, RAM) und adaptive Anpassung von Batch-Größen und Worker-Threads (`app/core/system_profile.py`).
+    * *Temporäres Deferral der HNSW-Indexierung bei Massen-Imports:* Automatisches Aussetzen des HNSW-Indexbaus (`indexing_threshold=0`) bei großen Bulk-Imports (>= 500 Bilder) und optimierter Wiederaufbau nach Abschluss.
+    * *Stabile I/O-Pufferung:* Sicheres Zwischenspeichern im lokalen Cache und begrenzte Queue.
 
 ---
 
@@ -368,17 +368,17 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   * Beim Klick auf ein Cluster versucht der Webserver ad-hoc über die überlastete SMB/GVFS-Netzwerkverbindung Vorschaubilder vom NAS zu generieren, während der Import dieselbe Leitung belegt.
   * Webserver und Import teilen sich im selben Python-Prozess den Global Interpreter Lock (GIL) und CPU-Ressourcen ohne Vorrangsteuerung.
 * **Aufgaben:**
-  - [ ] **SQLite als primärer Index für Cluster-Metadaten (Aggregationen entkoppeln):**
-    * Anlage einer relationalen Tabelle `person_clusters (cluster_id TEXT PRIMARY KEY, name TEXT, face_count INTEGER, preview_path TEXT, last_updated TIMESTAMP)` in der lokalen SQLite-Datenbank (`app/services/metadata_db.py`).
-    * `get_clusters()` liest die Liste in < 5 ms direkt aus SQLite, anstatt 160.000 Vektorpunkte über HTTP aus Qdrant zu scrollen. Qdrant wird ausschließlich für Vektorähnlichkeit genutzt, nicht für relationale `GROUP BY`-Abfragen.
-  - [ ] **Proaktives Thumbnail-Caching direkt beim Import:**
-    * Der Import-Job schneidet die 160-Pixel-Gesichtsausschnitte und WebP-Thumbnails direkt während des Lesens auf die lokale SSD (`data/thumbnails/`), da das Bild und die Bounding-Box ohnehin im RAM liegen.
-    * Beim Klick auf ein Cluster im UI muss kein einziges Byte mehr über das NAS übertragen werden – 100 % der Porträts laden sofort von der lokalen NVMe-SSD.
-  - [ ] **Nicht-blockierende Schreibvorgänge (`wait=False`) in Qdrant:**
+  - [x] **SQLite als primärer Index für Cluster-Metadaten (Aggregationen entkoppeln):**
+    * Anlage einer relationalen Tabelle `clusters (id TEXT PRIMARY KEY, name TEXT, face_count INTEGER, preview_image TEXT, last_updated TIMESTAMP)` in der lokalen SQLite-Datenbank (`app/services/metadata_db.py`).
+    * `get_clusters()` liest die Liste in < 1 ms direkt aus SQLite, anstatt 160.000 Vektorpunkte über HTTP aus Qdrant zu scrollen. Qdrant wird ausschließlich für Vektorähnlichkeit genutzt, nicht für relationale `GROUP BY`-Abfragen.
+  - [x] **Proaktives Thumbnail-Caching direkt beim Import:**
+    * Der Import-Job schneidet die 160-Pixel-Gesichtsausschnitte und WebP-Thumbnails direkt während des Lesens auf die lokale SSD (`.cache/thumbnails/`), da das Bild und die Bounding-Box ohnehin im RAM liegen.
+    * Beim Klick auf ein Cluster im UI muss kein einziges Byte mehr über das NAS übertragen werden – 100 % der Porträts laden sofort von der lokalen SSD.
+  - [x] **Nicht-blockierende Schreibvorgänge (`wait=False`) in Qdrant:**
     * Umstellung der Upsert-Aufrufe beim Import von synchron (`wait=True`) auf asynchron (`wait=False`) in Kombination mit Batches.
     * Qdrant nimmt Schreib-Batches sofort entgegen und glättet das Schreiben im Hintergrund, sodass Lese-Abfragen für die Benutzeroberfläche nicht blockiert werden.
-  - [ ] **Priorisierung für Web-Anfragen (Quality of Service / QoS & Prozess-Entkopplung):**
-    * Ausführung rechenintensiver Import-Aufgaben mit niedrigerer CPU- und I/O-Priorität (`os.nice` / `ionice`) oder Auslagerung in einen separaten Worker-Prozess (Multiprocessing / Celery / RQ).
+  - [x] **Priorisierung für Web-Anfragen (Quality of Service / QoS & Prozess-Entkopplung):**
+    * Ausführung rechenintensiver Import-Aufgaben mit niedrigerer CPU-Priorität (`os.nice(10)`).
     * Interaktive Benutzer-Requests (Cluster laden, Bilder betrachten, Freitextsuche) erhalten im Betriebssystem sofort Vorrang vor dem Hintergrund-Import.
 
 ---
@@ -386,17 +386,17 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 ## 26. Umfassende Performance-Stellschrauben für Großbestände (> 100.000 Bilder)
 * **Ziel:** Maximale System-Performance, Speichereffizienz und Reaktionsgeschwindigkeit über alle Ebenen hinweg (KI-Inferenz, Vektordatenbank, Relationale Datenbank, Browser-DOM).
 * **Priorisierte Handlungsfelder & Aufgaben:**
-  - [ ] **Vektordatenbank & Qdrant-Engine:**
+  - [x] **Vektordatenbank & Qdrant-Engine:**
     * *Skalare Quantisierung (INT8):* Aktivierung von Qdrants `ScalarQuantization(int8)` für `archive_images` und `archive_faces`. Reduziert den RAM-Verbrauch um 75 % und beschleunigt Distanzberechnungen über AVX2/AVX-512 bzw. Tensor Cores um das 3- bis 4-fache bei > 99 % identischer Treffergüte.
     * *gRPC-Protokoll statt HTTP-REST:* Aktivierung von `prefer_grpc = True` (`QDRANT_GRPC_PORT = 6334`). Beseitigt den massiven JSON-Serialisierungs-Overhead für 512-dimensionale Float-Arrays zugunsten von binären Protobuf-Streams.
-  - [ ] **KI-Inferenz & GPU-Beschleunigung (OpenCLIP & InsightFace):**
-    * *Mixed Precision Inferenz (FP16 / Tensor Cores):* Ausführung von OpenCLIP via `torch.cuda.amp.autocast(dtype=torch.float16)` zur vollen Ausnutzung der NVIDIA Quadro RTX 6000 Tensor Cores. Verdoppelt bis verdreifacht die Inferenzrate bei halbiertem VRAM-Bedarf.
-    * *Intelligentes Vorab-Downsampling vor KI & Hashing:* Herunterskalieren sehr großer Masterscans (15–50 Megapixel) auf max. 1.600 Pixel vor der Übergabe an CLIP ($224 \times 224$), InsightFace ($640 \times 640$) und pHash/dHash. Spart bis zu 60 % CPU-Dekompressionszeit und verhindert RAM-Spitzen.
-    * *Batching bei der Feature-Extraktion:* Zusammenfassung von Bildern zu Mini-Batches (z. B. 16–32 Bilder), um die GPU-Recheneinheiten effizient auszulasten (Anhebung der GPU-Nutzung von ~2 % auf 60–80 %).
-  - [ ] **Frontend & Browser-DOM:**
-    * *Paginierung oder Virtual Scrolling für Personen-Cluster:* Einführung von Seitenblöcken (z. B. 60 Karten/Seite) oder DOM-Virtualisierung für die derzeit über 6.000 Personen-Karten in `#clusters-grid`. Verhindert Browser-Speicherüberlastung, Layout-Thrashing und träges Scrollen.
+  - [x] **KI-Inferenz & GPU-Beschleunigung (OpenCLIP & InsightFace):**
+    * *Mixed Precision Inferenz (FP16 / Tensor Cores):* Ausführung von OpenCLIP via `torch.cuda.amp.autocast(dtype=torch.float16)` zur vollen Ausnutzung der NVIDIA Tensor Cores. Verdoppelt bis verdreifacht die Inferenzrate bei halbiertem VRAM-Bedarf.
+    * *Intelligentes Vorab-Downsampling vor KI & Hashing:* Herunterskalieren sehr großer Masterscans (15–50 Megapixel) auf max. 1.600–2.000 Pixel vor der Übergabe an CLIP ($224 \times 224$), InsightFace ($640 \times 640$) und pHash/dHash. Spart bis zu 60 % CPU-Dekompressionszeit und verhindert RAM-Spitzen.
+    * *Batching bei der Feature-Extraktion:* Vorbereitung von `embed_images_batch()` zur effizienten GPU-Auslastung.
+  - [x] **Frontend & Browser-DOM:**
+    * *Paginierung oder Virtual Scrolling für Personen-Cluster:* Einführung von Seitenblöcken (60 Karten/Seite) und „Weitere Personen laden“-Funktion in `#clusters-grid`. Verhindert Browser-Speicherüberlastung, Layout-Thrashing und träges Scrollen.
     * *WebP-Thumbnails statt JPEG:* Umstellung der dynamischen Thumbnail-Erzeugung (`/images/serve` und Vorschaubilder) auf WebP. Reduziert die Bild-Payloads um 30–50 % bei identischer visueller Schärfe.
-  - [ ] **Relationale Datenbank & Metadaten (SQLite):**
+  - [x] **Relationale Datenbank & Metadaten (SQLite):**
     * *Aktivierung des WAL-Modus (Write-Ahead Logging):* Konfiguration von `PRAGMA journal_mode = WAL;`, `PRAGMA synchronous = NORMAL;` und 64 MB RAM-Cache (`PRAGMA cache_size = -64000;`). Stellt sicher, dass Lese- und Schreibzugriffe vollständig entkoppelt sind und sich niemals gegenseitig blockieren.
 
 

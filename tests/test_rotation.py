@@ -1,6 +1,6 @@
 import shutil
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageOps
 from app.services.image_rotation_service import ImageRotationService
 from app.services.thumbnail_service import ThumbnailService
 
@@ -29,7 +29,7 @@ def test_jpeg_rotation():
         assert "lossless" in res90["rotation_method"]
 
         with Image.open(test_file) as r90:
-            assert r90.size == (200, 100)
+            assert ImageOps.exif_transpose(r90).size == (200, 100)
 
         # 2. Rotate -90 deg (270 deg CW) -> back to 100x200
         res_back = rot_svc.rotate_image(test_file, angle=-90)
@@ -38,7 +38,7 @@ def test_jpeg_rotation():
         assert res_back["height"] == 200
 
         with Image.open(test_file) as r_back:
-            assert r_back.size == (100, 200)
+            assert ImageOps.exif_transpose(r_back).size == (100, 200)
 
         print("✓ JPEG lossless rotation test passed successfully!")
 

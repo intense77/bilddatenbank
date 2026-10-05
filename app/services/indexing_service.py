@@ -1,6 +1,8 @@
 import os
 import uuid
 import logging
+import queue
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -8,6 +10,7 @@ from PIL import Image, ImageOps
 from qdrant_client.http import models as rest_models
 
 from app.core.config import settings
+from app.core.system_profile import current_hardware_profile, safe_normalize_image_to_rgb
 from app.services.qdrant_service import QdrantService
 from app.services.clip_service import ClipService
 from app.services.face_service import FaceService
@@ -49,6 +52,174 @@ class IndexingService:
         self.clip = clip_service
         self.face = face_service
 
+    def prepare_image_data(
+        self,
+        file_path: Path,
+        base_dir: Optional[Path] = None,
+        forced_rel_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        I/O- und EXIF-Phase (kann im Hintergrund-Thread ausgeführt werden):
+        1. Datei von Platte/Netzwerk lesen und ins RAM laden
+        2. EXIF/IPTC/XMP-Metadaten extrahieren
+        3. EXIF-Ausrichtung anwenden und RGB-Pixel dekodieren
+        4. Perceptual Hashes (dHash/pHash) berechnen
+        """
+        abs_path = file_path.resolve()
+        path_str = str(abs_path)
+
+        if forced_rel_path:
+            rel_path = forced_rel_path
+        else:
+            resolved_base = (base_dir or Path(settings.ARCHIVE_DATA_DIR)).resolve()
+            try:
+                rel_path = abs_path.relative_to(resolved_base).as_posix()
+            except ValueError:
+                rel_path = file_path.name
+
+        file_size = os.path.getsize(abs_path)
+        with Image.open(abs_path) as raw_img:
+            meta = metadata_service.extract_metadata(file_path, img=raw_img)
+            raw_transposed = ImageOps.exif_transpose(raw_img)
+            pil_img = safe_normalize_image_to_rgb(raw_transposed)
+            pil_img.load()
+            width, height = pil_img.size
+
+        from app.services.variant_service import compute_image_hashes
+        hashes = compute_image_hashes(pil_img)
+
+        return {
+            "file_path": file_path,
+            "abs_path": abs_path,
+            "path_str": path_str,
+            "rel_path": rel_path,
+            "file_size": file_size,
+            "pil_img": pil_img,
+            "width": width,
+            "height": height,
+            "meta": meta,
+            "hashes": hashes,
+        }
+
+    def process_prepared_image(
+        self,
+        prepared: Dict[str, Any],
+        cluster_id_mapping: Optional[dict[str, str]] = None,
+        upsert: bool = True,
+    ) -> Tuple[bool, int, Optional[rest_models.PointStruct], List[rest_models.PointStruct]]:
+        """
+        Inferenz- & Vektorphase (auf GPU/CPU):
+        1. CLIP-Embedding berechnen
+        2. Gesichter erkennen & ArcFace-Embeddings berechnen
+        3. WebP-Thumbnails & Face-Crops direkt aus dem RAM cachen
+        4. PointStructs erzeugen und optional sofort upserten
+        """
+        file_path: Path = prepared["file_path"]
+        path_str: str = prepared["path_str"]
+        rel_path: str = prepared["rel_path"]
+        file_size: int = prepared["file_size"]
+        pil_img: Image.Image = prepared["pil_img"]
+        width: int = prepared["width"]
+        height: int = prepared["height"]
+        meta: Dict[str, Any] = prepared["meta"]
+        hashes: Dict[str, Any] = prepared["hashes"]
+
+        # 1. CLIP Embedding (512-dim)
+        clip_vector = self.clip.embed_image(pil_img)
+
+        # 2. Optionale Gesichtserkennung & ArcFace Embeddings (512-dim)
+        if self.face is not None:
+            faces_data = self.face.extract_faces(pil_img)
+        else:
+            faces_data = []
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        image_id = str(uuid.uuid5(UUID_NAMESPACE, rel_path))
+
+        # 3. Proaktives Thumbnail- & Gesichtscrop-Caching (WebP) direkt aus dem RAM
+        try:
+            from app.services.thumbnail_service import thumbnail_service
+            bboxes = [f["bbox"] for f in faces_data if f.get("bbox")]
+            thumbnail_service.cache_image_derivatives(file_path, pil_img, face_bboxes=bboxes)
+        except Exception as cache_err:
+            logger.debug("Proaktives Caching übersprungen für %s: %s", path_str, cache_err)
+
+        # 4. Bild-Point für archive_images
+        image_point = rest_models.PointStruct(
+            id=image_id,
+            vector=clip_vector,
+            payload={
+                "file_path": path_str,
+                "relative_path": rel_path,
+                "file_name": file_path.name,
+                "image_path": path_str,
+                "filename": file_path.name,
+                "width": width,
+                "height": height,
+                "file_size": file_size,
+                "phash": hashes.get("phash"),
+                "dhash": hashes.get("dhash"),
+                "faces_count": len(faces_data),
+                "indexed_at": now_iso,
+                "title": meta.get("title"),
+                "creator": meta.get("creator"),
+                "date": meta.get("date"),
+                "description": meta.get("description"),
+                "signature": meta.get("signature"),
+                "copyright": meta.get("copyright"),
+                "keywords": meta.get("keywords", []),
+                "metadata": meta,
+            },
+        )
+
+        # 5. Gesichts-Points für archive_faces
+        face_points: List[rest_models.PointStruct] = []
+        for idx, face_info in enumerate(faces_data):
+            face_id = str(uuid.uuid5(UUID_NAMESPACE, f"{rel_path}#face_{idx}"))
+            cluster_id = None
+            if cluster_id_mapping and face_id in cluster_id_mapping:
+                cluster_id = cluster_id_mapping[face_id]
+
+            orig_w = face_info.get("orig_width") or width
+            orig_h = face_info.get("orig_height") or height
+            bbox_pct = face_info.get("bbox_percent")
+            if not bbox_pct and orig_w and orig_h and face_info.get("bbox") and len(face_info["bbox"]) == 4:
+                x1, y1, x2, y2 = face_info["bbox"]
+                bbox_pct = {
+                    "left": round((x1 / orig_w) * 100, 4),
+                    "top": round((y1 / orig_h) * 100, 4),
+                    "width": round(((x2 - x1) / orig_w) * 100, 4),
+                    "height": round(((y2 - y1) / orig_h) * 100, 4),
+                }
+
+            face_point = rest_models.PointStruct(
+                id=face_id,
+                vector=face_info["embedding"],
+                payload={
+                    "file_path": path_str,
+                    "relative_path": rel_path,
+                    "image_path": path_str,
+                    "bbox": face_info["bbox"],
+                    "bbox_percent": bbox_pct,
+                    "orig_width": orig_w,
+                    "orig_height": orig_h,
+                    "face_id": face_id,
+                    "cluster_id": cluster_id,
+                    "det_score": face_info["det_score"],
+                    "face_index": idx,
+                    "parent_image_id": image_id,
+                    "indexed_at": now_iso,
+                },
+            )
+            face_points.append(face_point)
+
+        if upsert:
+            self.qdrant.upsert_images([image_point], wait=False)
+            if face_points:
+                self.qdrant.upsert_faces(face_points, wait=False)
+
+        return True, len(faces_data), image_point, face_points
+
     def index_image_file(
         self,
         file_path: Path,
@@ -64,124 +235,14 @@ class IndexingService:
 
         Gibt (Erfolg, Anzahl erkannter Gesichter) zurück.
         """
-        abs_path = file_path.resolve()
-        path_str = str(abs_path)
-
         try:
-            # Relativen Pfad bestimmen (für stabile UUIDv5-Identifikation)
-            if forced_rel_path:
-                rel_path = forced_rel_path
-            else:
-                resolved_base = (base_dir or Path(settings.ARCHIVE_DATA_DIR)).resolve()
-                try:
-                    rel_path = abs_path.relative_to(resolved_base).as_posix()
-                except ValueError:
-                    rel_path = file_path.name
-
-            file_size = os.path.getsize(abs_path)
-            with Image.open(abs_path) as raw_img:
-                # Metadaten aus dem geöffneten Rohbild extrahieren
-                meta = metadata_service.extract_metadata(file_path, img=raw_img)
-                # EXIF-Ausrichtung anwenden und Pixel im RAM sichern
-                pil_img = ImageOps.exif_transpose(raw_img).convert("RGB")
-                pil_img.load()
-                width, height = pil_img.size
-
-            # 1. CLIP Embedding (512-dim) - direkt aus RAM
-            clip_vector = self.clip.embed_image(pil_img)
-
-            # 2. Optionale Gesichtserkennung & ArcFace Embeddings (512-dim) - direkt aus RAM
-            if self.face is not None:
-                faces_data = self.face.extract_faces(pil_img)
-            else:
-                faces_data = []
-
-            # 3. Perceptual Hashing (dHash / pHash) zur Duplikats- & Varianten-Erkennung
-            from app.services.variant_service import compute_image_hashes
-            hashes = compute_image_hashes(pil_img)
-
-            now_iso = datetime.now(timezone.utc).isoformat()
-
-            # Bild-ID deterministisch aus relativem Pfad bilden (Idempotenz analog indexer.py)
-            image_id = str(uuid.uuid5(UUID_NAMESPACE, rel_path))
-
-            # 4. Bild-Point für archive_images mit einheitlichem Payload-Schema
-            image_point = rest_models.PointStruct(
-                id=image_id,
-                vector=clip_vector,
-                payload={
-                    "file_path": path_str,
-                    "relative_path": rel_path,
-                    "file_name": file_path.name,
-                    "image_path": path_str,
-                    "filename": file_path.name,
-                    "width": width,
-                    "height": height,
-                    "file_size": file_size,
-                    "phash": hashes.get("phash"),
-                    "dhash": hashes.get("dhash"),
-                    "faces_count": len(faces_data),
-                    "indexed_at": now_iso,
-                    "title": meta.get("title"),
-                    "creator": meta.get("creator"),
-                    "date": meta.get("date"),
-                    "description": meta.get("description"),
-                    "signature": meta.get("signature"),
-                    "copyright": meta.get("copyright"),
-                    "keywords": meta.get("keywords", []),
-                    "metadata": meta,
-                },
+            prepared = self.prepare_image_data(file_path, base_dir=base_dir, forced_rel_path=forced_rel_path)
+            success, num_faces, _, _ = self.process_prepared_image(
+                prepared, cluster_id_mapping=cluster_id_mapping, upsert=True
             )
-            self.qdrant.upsert_images([image_point])
-
-            # 4. Gesichts-Points für archive_faces
-            face_points = []
-            for idx, face_info in enumerate(faces_data):
-                face_id = str(uuid.uuid5(UUID_NAMESPACE, f"{rel_path}#face_{idx}"))
-                cluster_id = None
-                if cluster_id_mapping and face_id in cluster_id_mapping:
-                    cluster_id = cluster_id_mapping[face_id]
-
-                orig_w = face_info.get("orig_width") or width
-                orig_h = face_info.get("orig_height") or height
-                bbox_pct = face_info.get("bbox_percent")
-                if not bbox_pct and orig_w and orig_h and face_info.get("bbox") and len(face_info["bbox"]) == 4:
-                    x1, y1, x2, y2 = face_info["bbox"]
-                    bbox_pct = {
-                        "left": round((x1 / orig_w) * 100, 4),
-                        "top": round((y1 / orig_h) * 100, 4),
-                        "width": round(((x2 - x1) / orig_w) * 100, 4),
-                        "height": round(((y2 - y1) / orig_h) * 100, 4),
-                    }
-
-                face_point = rest_models.PointStruct(
-                    id=face_id,
-                    vector=face_info["embedding"],
-                    payload={
-                        "file_path": path_str,
-                        "relative_path": rel_path,
-                        "image_path": path_str,
-                        "bbox": face_info["bbox"],
-                        "bbox_percent": bbox_pct,
-                        "orig_width": orig_w,
-                        "orig_height": orig_h,
-                        "face_id": face_id,
-                        "cluster_id": cluster_id,
-                        "det_score": face_info["det_score"],
-                        "face_index": idx,
-                        "parent_image_id": image_id,
-                        "indexed_at": now_iso,
-                    },
-                )
-                face_points.append(face_point)
-
-            if face_points:
-                self.qdrant.upsert_faces(face_points)
-
-            return True, len(faces_data)
-
+            return success, num_faces
         except Exception as e:
-            logger.error("Fehler bei der Indizierung von '%s': %s", path_str, e, exc_info=True)
+            logger.error("Fehler bei der Indizierung von '%s': %s", file_path, e, exc_info=True)
             return False, 0
 
     def reindex_single_image(self, file_path: Path) -> Tuple[bool, int]:
@@ -240,11 +301,20 @@ class IndexingService:
         force: bool = False,
     ) -> dict[str, Any]:
         """
-        Scannt ein Verzeichnis nach Bilddateien und indexiert neue Dateien inkrementell.
+        Scannt ein Verzeichnis nach Bilddateien und indexiert neue Dateien inkrementell
+        mittels asynchronem Producer-Consumer-Pipelining (I/O & GPU entkoppelt)
+        und gebatchten Qdrant-Upserts.
         """
         abs_folder = folder_path.resolve()
         if not abs_folder.is_dir():
             raise ValueError(f"'{folder_path}' ist kein gültiges Verzeichnis.")
+
+        # Prozess-Priorität für den Hintergrund-Import herabsetzen (QoS),
+        # damit interaktive Web- und Suchanfragen des Benutzers Vorrang erhalten
+        try:
+            os.nice(10)
+        except Exception:
+            pass
 
         extensions = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
         files = []
@@ -303,17 +373,9 @@ class IndexingService:
                 except Exception as e:
                     logger.debug("Konnte existierende IDs nicht vorab abrufen: %s", e)
 
+            # Liste der zu verarbeitenden Dateien zusammenstellen (Übersprungene direkt zählen)
+            items_to_index: List[Tuple[int, Path]] = []
             for idx, file_path in enumerate(files):
-                INDEXING_PROGRESS.update({
-                    "processed_count": idx + 1,
-                    "current_file": file_path.name,
-                    "new_indexed": indexed_count,
-                    "skipped": skipped_count,
-                    "faces_detected": faces_count,
-                    "percent": int(((idx + 1) / max(total_found, 1)) * 100),
-                    "last_updated": datetime.now(timezone.utc).isoformat(),
-                })
-
                 try:
                     rel = file_path.relative_to(abs_folder).as_posix()
                 except ValueError:
@@ -322,18 +384,110 @@ class IndexingService:
 
                 if not force and point_id in existing_ids:
                     skipped_count += 1
-                    continue
+                else:
+                    items_to_index.append((idx, file_path))
+
+            # Falls Bilder verarbeitet werden müssen: Asynchrones Prefetching & Pipelining
+            if items_to_index:
+                is_bulk_import = len(items_to_index) >= 500
+                if is_bulk_import:
+                    logger.info(
+                        "Großer Massen-Import erkannt (%d Bilder): Deaktiviere temporär HNSW-Indexierung...",
+                        len(items_to_index),
+                    )
+                    self.qdrant.set_indexing_threshold(settings.COLLECTION_IMAGES, 0)
+                    self.qdrant.set_indexing_threshold(settings.COLLECTION_FACES, 0)
+
+                prefetch_queue: queue.Queue = queue.Queue(maxsize=current_hardware_profile.prefetch_queue_size)
+                abort_event = threading.Event()
+
+                def _prefetch_worker():
+                    for orig_idx, f_path in items_to_index:
+                        if abort_event.is_set():
+                            break
+                        try:
+                            prep = self.prepare_image_data(f_path, base_dir=abs_folder)
+                            prefetch_queue.put((orig_idx, f_path, prep, None))
+                        except Exception as prep_err:
+                            prefetch_queue.put((orig_idx, f_path, None, prep_err))
+                    prefetch_queue.put(None)
+
+                prefetch_thread = threading.Thread(
+                    target=_prefetch_worker,
+                    daemon=True,
+                    name="IndexingPrefetchWorker",
+                )
+                prefetch_thread.start()
+
+                batched_images: List[rest_models.PointStruct] = []
+                batched_faces: List[rest_models.PointStruct] = []
+                BATCH_SIZE = current_hardware_profile.batch_size
+
+                def _flush_batches():
+                    if batched_images:
+                        self.qdrant.upsert_images(batched_images, wait=False)
+                        batched_images.clear()
+                    if batched_faces:
+                        self.qdrant.upsert_faces(batched_faces, wait=False)
+                        batched_faces.clear()
 
                 try:
-                    success, num_faces = self.index_image_file(file_path, base_dir=abs_folder)
-                    if success:
-                        indexed_count += 1
-                        faces_count += num_faces
-                    else:
-                        errors.append(file_path.name)
-                except Exception as e:
-                    logger.error("Fehler beim Indexieren von %s: %s", file_path, e)
-                    errors.append(file_path.name)
+                    while True:
+                        item = prefetch_queue.get()
+                        if item is None:
+                            break
+
+                        orig_idx, f_path, prepared_data, prep_err = item
+
+                        INDEXING_PROGRESS.update({
+                            "processed_count": orig_idx + 1,
+                            "current_file": f_path.name,
+                            "new_indexed": indexed_count,
+                            "skipped": skipped_count,
+                            "faces_detected": faces_count,
+                            "percent": int(((orig_idx + 1) / max(total_found, 1)) * 100),
+                            "last_updated": datetime.now(timezone.utc).isoformat(),
+                        })
+
+                        if prep_err is not None:
+                            logger.error("Fehler beim Vorbereiten von %s: %s", f_path, prep_err)
+                            errors.append(f_path.name)
+                            continue
+
+                        try:
+                            success, num_faces, img_pt, fc_pts = self.process_prepared_image(
+                                prepared_data, upsert=False
+                            )
+                            if success and img_pt:
+                                batched_images.append(img_pt)
+                                if fc_pts:
+                                    batched_faces.extend(fc_pts)
+                                indexed_count += 1
+                                faces_count += num_faces
+
+                                if len(batched_images) >= BATCH_SIZE:
+                                    _flush_batches()
+                            else:
+                                errors.append(f_path.name)
+                        except Exception as e:
+                            logger.error("Fehler beim Verarbeiten von %s: %s", f_path, e)
+                            errors.append(f_path.name)
+
+                    _flush_batches()
+                finally:
+                    abort_event.set()
+                    prefetch_thread.join(timeout=2.0)
+                    if is_bulk_import:
+                        logger.info(
+                            "Massen-Import abgeschlossen: Reaktiviere HNSW-Indexierung (Schwellenwert: %d)...",
+                            current_hardware_profile.hnsw_indexing_threshold,
+                        )
+                        self.qdrant.set_indexing_threshold(
+                            settings.COLLECTION_IMAGES, current_hardware_profile.hnsw_indexing_threshold
+                        )
+                        self.qdrant.set_indexing_threshold(
+                            settings.COLLECTION_FACES, current_hardware_profile.hnsw_indexing_threshold
+                        )
 
             already_fully = (total_found > 0 and indexed_count == 0 and skipped_count == total_found)
             return {

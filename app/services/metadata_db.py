@@ -23,8 +23,13 @@ class MetadataDatabase:
 
     def _get_connection(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(self.db_path), timeout=10.0)
+        conn = sqlite3.connect(str(self.db_path), timeout=15.0)
         conn.row_factory = sqlite3.Row
+        # WAL-Modus und Performance-PRAGMAs für maximale Lese-/Schreib-Entkopplung
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
+        conn.execute("PRAGMA cache_size = -64000;")  # 64 MB RAM Cache
+        conn.execute("PRAGMA busy_timeout = 10000;") # 10s Timeout bei parallelen Zugriffen
         return conn
 
     def _init_db(self):
@@ -54,13 +59,27 @@ class MetadataDatabase:
                     CREATE TABLE IF NOT EXISTS clusters (
                         id TEXT PRIMARY KEY,
                         name TEXT,
+                        face_count INTEGER DEFAULT 0,
                         preview_image TEXT,
                         notes TEXT,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
+                # Migration: Falls face_count noch fehlt
+                try:
+                    conn.execute("ALTER TABLE clusters ADD COLUMN face_count INTEGER DEFAULT 0;")
+                except Exception:
+                    pass
+
+                # Performance-Indizes für schnelle Suche und Lookups
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_filename ON metadata(file_name);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_title ON metadata(title);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_signature ON metadata(signature);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_face_count ON clusters(face_count DESC);")
+
                 conn.commit()
-            logger.info("SQLite-Archivdatenbank erfolgreich initialisiert: %s", self.db_path)
+            logger.info("SQLite-Archivdatenbank erfolgreich initialisiert (WAL-Modus aktiv): %s", self.db_path)
         except Exception as e:
             logger.error("Fehler beim Initialisieren der SQLite-Datenbank: %s", e)
 
@@ -186,20 +205,22 @@ class MetadataDatabase:
         name: Optional[str] = None,
         preview_image: Optional[str] = None,
         notes: Optional[str] = None,
+        face_count: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Erstellt oder aktualisiert Cluster-Informationen."""
         now = datetime.now().isoformat()
         try:
             with self._get_connection() as conn:
                 conn.execute("""
-                    INSERT INTO clusters (id, name, preview_image, notes, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO clusters (id, name, preview_image, notes, face_count, updated_at)
+                    VALUES (?, ?, ?, ?, COALESCE(?, 0), ?)
                     ON CONFLICT(id) DO UPDATE SET
                         name = COALESCE(excluded.name, clusters.name),
                         preview_image = COALESCE(excluded.preview_image, clusters.preview_image),
                         notes = COALESCE(excluded.notes, clusters.notes),
+                        face_count = CASE WHEN ? IS NOT NULL THEN ? ELSE clusters.face_count END,
                         updated_at = excluded.updated_at
-                """, (str(cluster_id), name, preview_image, notes, now))
+                """, (str(cluster_id), name, preview_image, notes, face_count, now, face_count, face_count))
                 conn.commit()
 
             return {
@@ -207,11 +228,84 @@ class MetadataDatabase:
                 "name": name,
                 "preview_image": preview_image,
                 "notes": notes,
+                "face_count": face_count,
                 "updated_at": now,
             }
         except Exception as e:
             logger.error("Fehler beim Speichern des Clusters in SQLite: %s", e)
             raise e
+
+    def delete_cluster(self, cluster_id: str) -> bool:
+        """Löscht ein Cluster aus der SQLite-Datenbank (z. B. nach Cluster-Merge)."""
+        try:
+            with self._get_connection() as conn:
+                conn.execute("DELETE FROM clusters WHERE id = ?", (str(cluster_id),))
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error("Fehler beim Löschen des Clusters %s: %s", cluster_id, e)
+            return False
+
+    def bulk_sync_clusters(self, clusters: List[Dict[str, Any]]) -> None:
+        """
+        Synchronisiert eine Liste aggregierter Personen-Cluster atomar per Batch in SQLite.
+        Ermöglicht Sub-5ms Reaktionszeiten für get_clusters() im Frontend.
+        """
+        if not clusters:
+            return
+        now = datetime.now().isoformat()
+        rows = [
+            (
+                str(c["cluster_id"]),
+                c.get("label") or c.get("name"),
+                int(c.get("face_count", 0)),
+                c.get("preview_image"),
+                c.get("notes"),
+                now,
+            )
+            for c in clusters
+        ]
+        try:
+            with self._get_connection() as conn:
+                conn.executemany("""
+                    INSERT INTO clusters (id, name, face_count, preview_image, notes, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = COALESCE(excluded.name, clusters.name),
+                        face_count = excluded.face_count,
+                        preview_image = COALESCE(excluded.preview_image, clusters.preview_image),
+                        notes = COALESCE(excluded.notes, clusters.notes),
+                        updated_at = excluded.updated_at
+                """, rows)
+                conn.commit()
+            logger.info("Erfolgreich %d Cluster in SQLite synchronisiert.", len(rows))
+        except Exception as e:
+            logger.error("Fehler beim Bulk-Sync der Cluster in SQLite: %s", e)
+
+    def get_clusters_summary(self) -> List[Dict[str, Any]]:
+        """
+        Liefert alle Personen-Cluster sortiert nach Häufigkeit (face_count DESC)
+        blitzschnell aus der lokalen SQLite-Datenbank (< 5 ms statt 13 s Qdrant-Scroll).
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT id AS cluster_id, name AS label, face_count, preview_image, notes, updated_at
+                    FROM clusters
+                    WHERE face_count > 0 OR name IS NOT NULL
+                    ORDER BY face_count DESC, id ASC
+                """)
+                clusters = []
+                for r in cursor.fetchall():
+                    d = dict(r)
+                    d["faces"] = []
+                    if not d.get("preview_image"):
+                        d["preview_image"] = f"/faces/clusters/{d['cluster_id']}/preview"
+                    clusters.append(d)
+                return clusters
+        except Exception as e:
+            logger.error("Fehler beim Abrufen der Cluster-Übersicht aus SQLite: %s", e)
+            return []
 
     def list_all_clusters(self) -> List[Dict[str, Any]]:
         """Liefert alle gespeicherten Cluster mit Notizen und Namen."""

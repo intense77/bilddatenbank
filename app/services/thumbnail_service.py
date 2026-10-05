@@ -55,28 +55,34 @@ class ThumbnailService:
         max_dim: int = 400,
         quality: int = 80,
     ) -> bytes:
-        """Liefert die komprimierten JPEG-Bytes für ein Thumbnail aus dem Cache oder erzeugt sie."""
+        """Liefert komprimierte WebP-Bytes für ein Thumbnail aus dem Cache oder erzeugt sie."""
         cache_key = self._get_cache_key(file_path, max_dim=max_dim)
-        cache_file = self.cache_dir / f"thumb_{cache_key}_{max_dim}.jpg"
+        webp_file = self.cache_dir / f"thumb_{cache_key}_{max_dim}.webp"
+        legacy_jpg_file = self.cache_dir / f"thumb_{cache_key}_{max_dim}.jpg"
 
-        if cache_file.is_file():
+        if webp_file.is_file():
             try:
-                return cache_file.read_bytes()
+                return webp_file.read_bytes()
+            except Exception:
+                pass
+        elif legacy_jpg_file.is_file():
+            try:
+                return legacy_jpg_file.read_bytes()
             except Exception:
                 pass
 
-        # Neu erzeugen
+        # Neu erzeugen als ressourcenschonendes WebP
         with Image.open(file_path) as raw_img:
             img = load_image_rgb(raw_img)
             if img.width > max_dim or img.height > max_dim:
                 img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
             buffer = io.BytesIO()
-            img.save(buffer, format="JPEG", quality=quality, optimize=True)
+            img.save(buffer, format="WEBP", quality=quality, method=4)
             data = buffer.getvalue()
 
         # In Cache ablegen
         try:
-            cache_file.write_bytes(data)
+            webp_file.write_bytes(data)
         except Exception as e:
             logger.warning("Thumbnail konnte nicht gecacht werden: %s", e)
 
@@ -92,17 +98,23 @@ class ThumbnailService:
     ) -> Optional[bytes]:
         """
         Schneidet ein Gesicht aus dem Master-Bild aus, skaliert es und speichert es im Cache.
-        Gibt JPEG-Bytes zurück.
+        Gibt WebP-Bytes zurück.
         """
         if not file_path.is_file() or len(bbox) != 4:
             return None
 
         cache_key = self._get_cache_key(file_path, bbox=bbox, max_dim=target_size)
-        cache_file = self.cache_dir / f"crop_{cache_key}.jpg"
+        webp_file = self.cache_dir / f"crop_{cache_key}.webp"
+        legacy_jpg_file = self.cache_dir / f"crop_{cache_key}.jpg"
 
-        if cache_file.is_file():
+        if webp_file.is_file():
             try:
-                return cache_file.read_bytes()
+                return webp_file.read_bytes()
+            except Exception:
+                pass
+        elif legacy_jpg_file.is_file():
+            try:
+                return legacy_jpg_file.read_bytes()
             except Exception:
                 pass
 
@@ -130,11 +142,11 @@ class ThumbnailService:
                 crop.thumbnail((target_size, target_size), Image.Resampling.LANCZOS)
 
                 buffer = io.BytesIO()
-                crop.save(buffer, format="JPEG", quality=quality, optimize=True)
+                crop.save(buffer, format="WEBP", quality=quality, method=4)
                 data = buffer.getvalue()
 
             try:
-                cache_file.write_bytes(data)
+                webp_file.write_bytes(data)
             except Exception as e:
                 logger.warning("Face-Crop konnte nicht gecacht werden: %s", e)
 
@@ -143,6 +155,62 @@ class ThumbnailService:
         except Exception as e:
             logger.warning("Fehler beim Erzeugen des Gesichts-Crops (%s, bbox=%s): %s", file_path, bbox, e)
             return None
+
+    def cache_image_derivatives(
+        self,
+        file_path: Path,
+        pil_img: Image.Image,
+        face_bboxes: Optional[List[List[int]]] = None,
+        max_dim: int = 400,
+        target_size: int = 160,
+    ) -> None:
+        """
+        Erzeugt WebP-Thumbnail und alle Gesichts-Crops direkt aus dem im RAM liegenden Bild.
+        Beseitigt redundante Lesezugriffe über NAS/Festplatte beim Galerie- und Cluster-Aufruf.
+        """
+        try:
+            # 1. WebP Thumbnail
+            cache_key = self._get_cache_key(file_path, max_dim=max_dim)
+            webp_file = self.cache_dir / f"thumb_{cache_key}_{max_dim}.webp"
+            if not webp_file.is_file():
+                thumb_copy = pil_img.copy()
+                if thumb_copy.width > max_dim or thumb_copy.height > max_dim:
+                    thumb_copy.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                thumb_copy.save(buf, format="WEBP", quality=80, method=4)
+                webp_file.write_bytes(buf.getvalue())
+
+            # 2. WebP Gesichts-Crops
+            if face_bboxes:
+                w, h = pil_img.size
+                padding_pct = 0.15
+                for bbox in face_bboxes:
+                    if len(bbox) != 4:
+                        continue
+                    crop_key = self._get_cache_key(file_path, bbox=bbox, max_dim=target_size)
+                    crop_file = self.cache_dir / f"crop_{crop_key}.webp"
+                    if crop_file.is_file():
+                        continue
+
+                    x1, y1, x2, y2 = bbox
+                    pad_x = int((x2 - x1) * padding_pct)
+                    pad_y = int((y2 - y1) * padding_pct)
+
+                    crop_x1 = max(0, x1 - pad_x)
+                    crop_y1 = max(0, y1 - pad_y)
+                    crop_x2 = min(w, x2 + pad_x)
+                    crop_y2 = min(h, y2 + pad_y)
+
+                    if crop_x2 <= crop_x1 or crop_y2 <= crop_y1:
+                        continue
+
+                    face_crop = pil_img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+                    face_crop.thumbnail((target_size, target_size), Image.Resampling.LANCZOS)
+                    cbuf = io.BytesIO()
+                    face_crop.save(cbuf, format="WEBP", quality=85, method=4)
+                    crop_file.write_bytes(cbuf.getvalue())
+        except Exception as e:
+            logger.debug("Proaktives Caching der Bildderivate fehlgeschlagen (%s): %s", file_path, e)
 
 
 thumbnail_service = ThumbnailService()

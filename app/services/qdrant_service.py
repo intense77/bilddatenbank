@@ -12,15 +12,32 @@ class QdrantService:
     """Service zur Verwaltung und Abfrage der lokalen Qdrant-Vektordatenbank."""
 
     def __init__(self):
-        self.client = QdrantClient(
-            host=settings.QDRANT_HOST,
-            port=settings.QDRANT_PORT,
-            grpc_port=settings.QDRANT_GRPC_PORT,
-            prefer_grpc=settings.QDRANT_PREFER_GRPC,
-            https=settings.QDRANT_HTTPS,
-            api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None,
-            timeout=10.0,
-        )
+        try:
+            self.client = QdrantClient(
+                host=settings.QDRANT_HOST,
+                port=settings.QDRANT_PORT,
+                grpc_port=settings.QDRANT_GRPC_PORT,
+                prefer_grpc=settings.QDRANT_PREFER_GRPC,
+                https=settings.QDRANT_HTTPS,
+                api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None,
+                timeout=10.0,
+            )
+            if settings.QDRANT_PREFER_GRPC:
+                logger.info("QdrantClient mit prefer_grpc=True initialisiert (Host: %s, Port: %s, gRPC: %s).",
+                            settings.QDRANT_HOST, settings.QDRANT_PORT, settings.QDRANT_GRPC_PORT)
+        except Exception as e:
+            if settings.QDRANT_PREFER_GRPC:
+                logger.warning("gRPC-Initialisierung für Qdrant fehlgeschlagen (%s), falle auf HTTP-REST zurück...", e)
+                self.client = QdrantClient(
+                    host=settings.QDRANT_HOST,
+                    port=settings.QDRANT_PORT,
+                    prefer_grpc=False,
+                    https=settings.QDRANT_HTTPS,
+                    api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None,
+                    timeout=10.0,
+                )
+            else:
+                raise
 
     def init_collections(self) -> None:
         """
@@ -32,12 +49,19 @@ class QdrantService:
 
         # 1. Image Collection
         if settings.COLLECTION_IMAGES not in existing_collections:
-            logger.info("Erstelle Collection '%s'...", settings.COLLECTION_IMAGES)
+            logger.info("Erstelle Collection '%s' mit skalarer INT8-Quantisierung...", settings.COLLECTION_IMAGES)
             self.client.create_collection(
                 collection_name=settings.COLLECTION_IMAGES,
                 vectors_config=rest_models.VectorParams(
                     size=settings.CLIP_VECTOR_SIZE,
                     distance=rest_models.Distance.COSINE,
+                ),
+                quantization_config=rest_models.ScalarQuantization(
+                    scalar=rest_models.ScalarQuantizationConfig(
+                        type=rest_models.ScalarType.INT8,
+                        quantile=0.99,
+                        always_ram=True,
+                    )
                 ),
             )
             # Payload Index für schnelle Pfad-Suchen und Metadaten-Filter
@@ -49,16 +73,24 @@ class QdrantService:
                 )
             logger.info("Collection '%s' erfolgreich erstellt.", settings.COLLECTION_IMAGES)
         else:
-            logger.info("Collection '%s' existiert bereits.", settings.COLLECTION_IMAGES)
+            logger.info("Collection '%s' existiert bereits. Aktiviere INT8-Quantisierung falls nötig...", settings.COLLECTION_IMAGES)
+            self.enable_scalar_quantization(settings.COLLECTION_IMAGES)
 
         # 2. Face Collection
         if settings.COLLECTION_FACES not in existing_collections:
-            logger.info("Erstelle Collection '%s'...", settings.COLLECTION_FACES)
+            logger.info("Erstelle Collection '%s' mit skalarer INT8-Quantisierung...", settings.COLLECTION_FACES)
             self.client.create_collection(
                 collection_name=settings.COLLECTION_FACES,
                 vectors_config=rest_models.VectorParams(
                     size=settings.FACE_VECTOR_SIZE,
                     distance=rest_models.Distance.COSINE,
+                ),
+                quantization_config=rest_models.ScalarQuantization(
+                    scalar=rest_models.ScalarQuantizationConfig(
+                        type=rest_models.ScalarType.INT8,
+                        quantile=0.99,
+                        always_ram=True,
+                    )
                 ),
             )
             # Payload Indizes für Metadaten: file_path, image_path, relative_path, face_id, cluster_id, label
@@ -70,24 +102,66 @@ class QdrantService:
                 )
             logger.info("Collection '%s' erfolgreich erstellt.", settings.COLLECTION_FACES)
         else:
-            logger.info("Collection '%s' existiert bereits.", settings.COLLECTION_FACES)
+            logger.info("Collection '%s' existiert bereits. Aktiviere INT8-Quantisierung falls nötig...", settings.COLLECTION_FACES)
+            self.enable_scalar_quantization(settings.COLLECTION_FACES)
 
-    def upsert_images(self, points: List[rest_models.PointStruct]) -> None:
-        """Fügt Bild-Embeddings in archive_images ein oder aktualisiert diese."""
+    def enable_scalar_quantization(self, collection_name: str) -> bool:
+        """Aktiviert skalare INT8-Quantisierung (75% RAM-Ersparnis, 3-4x schnellere Distanzsuche)."""
+        try:
+            self.client.update_collection(
+                collection_name=collection_name,
+                quantization_config=rest_models.ScalarQuantization(
+                    scalar=rest_models.ScalarQuantizationConfig(
+                        type=rest_models.ScalarType.INT8,
+                        quantile=0.99,
+                        always_ram=True,
+                    )
+                ),
+            )
+            return True
+        except Exception as e:
+            logger.debug("Skalare Quantisierung für '%s' konnte nicht aktualisiert werden: %s", collection_name, e)
+            return False
+
+    def set_indexing_threshold(self, collection_name: str, threshold: int) -> bool:
+        """
+        Steuert den HNSW-Indexbau-Schwellenwert (OptimizersConfigDiff.indexing_threshold):
+        - threshold = 0: Deaktiviert den HNSW-Indexbau während großer Massen-Imports vollständig
+          (spart bis zu 70 % Rechenzeit und verhindert ständiges Reorganisieren von HNSW-Segmenten).
+        - threshold > 0 (z.B. 20000): Reaktiviert die automatische Hintergrund-Indexierung und startet
+          den einmaligen optimierten Aufbau des Vektor-Index.
+        """
+        try:
+            self.client.update_collection(
+                collection_name=collection_name,
+                optimizer_config=rest_models.OptimizersConfigDiff(
+                    indexing_threshold=threshold
+                ),
+            )
+            logger.info("HNSW-Indexierungsschwellenwert für '%s' auf %d gesetzt.", collection_name, threshold)
+            return True
+        except Exception as e:
+            logger.warning("Konnte Indexierungs-Schwellenwert für '%s' nicht anpassen: %s", collection_name, e)
+            return False
+
+    def upsert_images(self, points: List[rest_models.PointStruct], wait: bool = False) -> None:
+        """Fügt Bild-Embeddings in archive_images ein (asynchron/nicht-blockierend via wait=False)."""
         if not points:
             return
         self.client.upsert(
             collection_name=settings.COLLECTION_IMAGES,
             points=points,
+            wait=wait,
         )
 
-    def upsert_faces(self, points: List[rest_models.PointStruct]) -> None:
-        """Fügt Gesichts-Embeddings in archive_faces ein oder aktualisiert diese."""
+    def upsert_faces(self, points: List[rest_models.PointStruct], wait: bool = False) -> None:
+        """Fügt Gesichts-Embeddings in archive_faces ein (asynchron/nicht-blockierend via wait=False)."""
         if not points:
             return
         self.client.upsert(
             collection_name=settings.COLLECTION_FACES,
             points=points,
+            wait=wait,
         )
 
     def delete_images(self, image_ids: List[str]) -> None:

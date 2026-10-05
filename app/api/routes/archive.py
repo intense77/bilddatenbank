@@ -147,6 +147,14 @@ def browse_folders(path: Optional[str] = None):
             break
         curr = curr.parent
 
+    is_gvfs = "gvfs" in str(target_path).lower() or str(target_path).startswith("/run/user/")
+    gvfs_warning = (
+        "Hinweis zur Ingest-Performance: Dieser Ordner liegt auf einer GVFS/FUSE-Freigabe. "
+        "Für maximale Einlesegeschwindigkeit bei großen Beständen empfiehlt sich ein nativer Linux Kernel-Mount "
+        "via CIFS/SMB (z. B. 'sudo mount -t cifs ...')."
+        if is_gvfs else None
+    )
+
     return {
         "status": "success",
         "current_path": str(target_path),
@@ -155,6 +163,8 @@ def browse_folders(path: Optional[str] = None):
         "subdirectories": subdirs,
         "direct_images_count": direct_images_count,
         "quick_links": quick_links,
+        "is_gvfs": is_gvfs,
+        "gvfs_warning": gvfs_warning,
     }
 
 

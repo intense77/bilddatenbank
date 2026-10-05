@@ -118,8 +118,21 @@ class FaceService:
 
         orig_w, orig_h = img.size
 
+        # Vorab-Downsampling für InsightFace:
+        # Falls die Kantenlänge 2000 px übersteigt, für die Inferenz herunterskalieren.
+        # Spart bis zu 90 % Inferenzzeit und RAM. Bounding Boxes werden exakt auf Originalmaße zurückgerechnet.
+        max_edge = max(orig_w, orig_h)
+        if max_edge > 2000:
+            scale_factor = 2000.0 / max_edge
+            scaled_w = int(round(orig_w * scale_factor))
+            scaled_h = int(round(orig_h * scale_factor))
+            infer_img = img.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
+        else:
+            scale_factor = 1.0
+            infer_img = img
+
         # InsightFace erwartet BGR numpy-Array (OpenCV / numpy)
-        rgb_array = np.array(img)
+        rgb_array = np.array(infer_img)
         bgr_array = rgb_array[:, :, ::-1]
 
         try:
@@ -136,12 +149,20 @@ class FaceService:
                 norm = np.linalg.norm(face.embedding)
                 emb = face.embedding / norm if norm > 0 else face.embedding
 
-            # bbox als Ganzzahlen [x1, y1, x2, y2]
-            bbox_coords = [int(round(coord)) for coord in face.bbox.tolist()]
-            x1, y1, x2, y2 = bbox_coords
+            # Bei herunterskaliertem Bild Bounding-Box auf Originalmaße zurückskalieren
+            raw_bbox = face.bbox.tolist()
+            if scale_factor != 1.0:
+                inv_scale = 1.0 / scale_factor
+                x1 = int(round(raw_bbox[0] * inv_scale))
+                y1 = int(round(raw_bbox[1] * inv_scale))
+                x2 = int(round(raw_bbox[2] * inv_scale))
+                y2 = int(round(raw_bbox[3] * inv_scale))
+            else:
+                x1, y1, x2, y2 = [int(round(coord)) for coord in raw_bbox]
+
+            bbox_coords = [x1, y1, x2, y2]
 
             # Normalisierte Prozentwerte für Browser-Overlay berechnen:
-            # bbox_percent = { left: x1/orig_w * 100, top: y1/orig_h * 100, width: (x2-x1)/orig_w * 100, height: (y2-y1)/orig_h * 100 }
             left_pct = (x1 / orig_w) * 100 if orig_w > 0 else 0.0
             top_pct = (y1 / orig_h) * 100 if orig_h > 0 else 0.0
             width_pct = ((x2 - x1) / orig_w) * 100 if orig_w > 0 else 0.0

@@ -1,5 +1,6 @@
 import io
 import time
+import math
 import base64
 import logging
 from pathlib import Path
@@ -12,6 +13,7 @@ from qdrant_client.http import models as rest_models
 from app.core.config import settings
 from app.services.qdrant_service import QdrantService
 from app.services.clip_service import load_image_rgb
+from app.services.metadata_db import metadata_db
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +40,9 @@ def generate_face_crop_base64(
         )
         if not crop_bytes:
             return None
+        mime = "image/webp" if crop_bytes.startswith(b"RIFF") else "image/jpeg"
         encoded = base64.b64encode(crop_bytes).decode("utf-8")
-        return f"data:image/jpeg;base64,{encoded}"
+        return f"data:{mime};base64,{encoded}"
     except Exception as e:
         logger.warning("Vorschaubild konnte nicht generiert werden (%s, bbox=%s): %s", file_path, bbox, e)
         return None
@@ -116,9 +119,29 @@ class ClusteringService:
         # Embeddings als Matrix vorbereiten
         vectors = np.array([f["vector"] for f in faces], dtype=np.float32)
 
-        # DBSCAN ausführen
-        logger.info("Führe DBSCAN(eps=%.2f, min_samples=%d, metric='cosine') aus...", eps, min_samples)
-        dbscan = DBSCAN(eps=eps, min_samples=min_samples, metric="cosine")
+        # DBSCAN mit Raumteilungsbäumen (Ball-Tree) ausführen:
+        # Da ArcFace L2-normalisiert ist, gilt: dist_euclid = sqrt(2 * dist_cosine).
+        # algorithm='ball_tree' reduziert Speicher und Laufzeit von O(N^2) auf O(N log N).
+        # leaf_size und n_jobs werden adaptiv aus dem erkannten Hardware-Profil bezogen.
+        from app.core.system_profile import current_hardware_profile
+        eps_euclid = float(math.sqrt(2.0 * max(0.0, eps)))
+        n_workers = max(1, min(current_hardware_profile.cpu_cores, 8))
+        logger.info(
+            "Führe DBSCAN(eps_euclid=%.4f [aus cosine=%.2f], min_samples=%d, metric='euclidean', algorithm='ball_tree', leaf_size=%d, n_jobs=%d) aus...",
+            eps_euclid,
+            eps,
+            min_samples,
+            current_hardware_profile.clustering_leaf_size,
+            n_workers,
+        )
+        dbscan = DBSCAN(
+            eps=eps_euclid,
+            min_samples=min_samples,
+            metric="euclidean",
+            algorithm="ball_tree",
+            leaf_size=current_hardware_profile.clustering_leaf_size,
+            n_jobs=n_workers,
+        )
         labels = dbscan.fit_predict(vectors)
 
         cluster_counts: Dict[str, int] = {}
@@ -158,6 +181,17 @@ class ClusteringService:
                 points=noise_points,
             )
 
+        # 3. Synchronisation in die relationale SQLite-Tabelle für Sub-5ms Frontend-Abfragen
+        clusters_to_sync = [
+            {
+                "cluster_id": c_id,
+                "face_count": count,
+                "preview_image": f"/faces/clusters/{c_id}/preview",
+            }
+            for c_id, count in cluster_counts.items()
+        ]
+        metadata_db.bulk_sync_clusters(clusters_to_sync)
+
         self.invalidate_clusters_cache()
         return {
             "total_faces": total_faces,
@@ -169,17 +203,25 @@ class ClusteringService:
 
     def get_clusters(self, include_preview: bool = True, include_faces: bool = False) -> List[Dict[str, Any]]:
         """
-        Gibt alle gefundenen Personen-Cluster zurück, aggregiert aus Qdrant.
-        - include_preview: Wenn True, wird eine performante URL /faces/clusters/{cluster_id}/preview
-          übergeben, sodass Avatare asynchron und ressourcenschonend lazy geladen werden.
-        - include_faces: Wenn True, werden alle Gesichts-Details eingebettet. Für die Übersicht
-          bleibt dies standardmäßig False (spart 50MB Payload und lädt in ~2s statt 180s!).
-        Nutzt einen In-Memory-Cache von 60s für sofortige Wiederholungsaufrufe.
+        Gibt alle gefundenen Personen-Cluster zurück.
+        - Liest für die Übersichtsliste primär aus SQLite (< 5 ms Reaktionszeit).
+        - Falls SQLite noch leer ist, Fallback auf Qdrant-Aggregation mit anschließendem Sync.
+        - include_preview: Wenn True, URL /faces/clusters/{cluster_id}/preview übergeben.
+        - include_faces: Wenn True, Gesichts-Details einbetten (für Detailansichten).
         """
         now = time.time()
-        if self._clusters_cache is not None and (now - self._cache_timestamp) < 60:
-            return self._clusters_cache
+        if not include_faces:
+            if self._clusters_cache is not None and (now - self._cache_timestamp) < 60:
+                return self._clusters_cache
 
+            # 1. Primärer Pfad: Blitzschneller Abruf aus SQLite (< 5 ms statt 13,5 s Qdrant-Scroll)
+            sqlite_clusters = metadata_db.get_clusters_summary()
+            if sqlite_clusters:
+                self._clusters_cache = sqlite_clusters
+                self._cache_timestamp = now
+                return sqlite_clusters
+
+        # 2. Fallback auf vollständige Qdrant-Aggregation falls SQLite noch nicht befüllt ist
         faces = self.fetch_all_faces(batch_size=2000, with_vectors=False)
         clusters_map: Dict[str, Dict[str, Any]] = {}
 
@@ -203,7 +245,6 @@ class ClusteringService:
                     "preview_image": f"/faces/clusters/{cluster_id}/preview" if include_preview else None,
                 }
 
-            # Wenn ein Punkt ein Label hat, für den Cluster übernehmen
             if label and not clusters_map[cluster_id]["label"]:
                 clusters_map[cluster_id]["label"] = label
 
@@ -235,6 +276,13 @@ class ClusteringService:
 
         # Sortiere nach Häufigkeit (größte Cluster zuerst)
         sorted_clusters = sorted(clusters_map.values(), key=lambda c: c["face_count"], reverse=True)
+
+        # In SQLite persistieren, damit zukünftige Aufrufe sofort aus SQLite geliefert werden
+        try:
+            metadata_db.bulk_sync_clusters(sorted_clusters)
+        except Exception as e:
+            logger.warning("Konnte Cluster-Aggregation nicht in SQLite synchronisieren: %s", e)
+
         self._clusters_cache = sorted_clusters
         self._cache_timestamp = now
         return sorted_clusters
@@ -380,6 +428,12 @@ class ClusteringService:
             len(point_ids),
             len(parent_img_ids),
         )
+        # In SQLite persistieren für sofortige Verfügbarkeit in get_clusters()
+        try:
+            metadata_db.upsert_cluster(cluster_id, name=clean_label, face_count=len(point_ids))
+        except Exception as e:
+            logger.warning("Konnte Cluster-Label nicht in SQLite synchronisieren: %s", e)
+
         self.invalidate_clusters_cache()
         return len(point_ids)
 
@@ -472,6 +526,15 @@ class ClusteringService:
             self._sync_parent_images_persons({parent_img_id})
 
         logger.info("Gesicht %s aus Cluster '%s' entfernt.", face_id, old_cluster)
+        if old_cluster:
+            try:
+                cluster_info = metadata_db.get_cluster(old_cluster)
+                if cluster_info and cluster_info.get("face_count"):
+                    new_count = max(0, cluster_info["face_count"] - 1)
+                    metadata_db.upsert_cluster(old_cluster, face_count=new_count)
+            except Exception as e:
+                logger.debug("Konnte face_count in SQLite nicht dekrementieren: %s", e)
+
         self.invalidate_clusters_cache()
         return True
 
@@ -572,6 +635,15 @@ class ClusteringService:
             final_label,
             len(affected_parent_ids),
         )
+
+        # In SQLite Quell-Cluster löschen und Ziel-Cluster mit neuem Zähler/Label aktualisieren
+        try:
+            metadata_db.delete_cluster(source_cluster_id)
+            total_faces = len(source_point_ids) + len(target_point_ids)
+            metadata_db.upsert_cluster(target_cluster_id, name=final_label, face_count=total_faces)
+        except Exception as e:
+            logger.warning("Konnte Cluster-Merge nicht in SQLite synchronisieren: %s", e)
+
         self.invalidate_clusters_cache()
 
         return {

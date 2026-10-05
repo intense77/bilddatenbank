@@ -626,9 +626,10 @@ def get_cluster_preview(
     if not image_bytes:
         raise HTTPException(status_code=404, detail=f"Kein Vorschaubild für Cluster '{cluster_id}' gefunden.")
     
+    media_type = "image/webp" if image_bytes.startswith(b"RIFF") else "image/jpeg"
     return Response(
         content=image_bytes,
-        media_type="image/jpeg",
+        media_type=media_type,
         headers={
             "Cache-Control": "public, max-age=86400, immutable",
         },
@@ -808,9 +809,10 @@ def serve_image(
         dim = max_dim if max_dim is not None else 1600
         try:
             thumb_bytes = thumbnail_service.get_or_create_thumbnail(file_path, max_dim=dim)
+            media_type = "image/webp" if thumb_bytes.startswith(b"RIFF") else "image/jpeg"
             return Response(
                 content=thumb_bytes,
-                media_type="image/jpeg",
+                media_type=media_type,
                 headers={"Cache-Control": "public, max-age=86400"},
             )
         except Exception as e:

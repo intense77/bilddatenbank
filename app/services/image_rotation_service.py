@@ -94,9 +94,10 @@ class ImageRotationService:
             # Atomares oder sicheres Ersetzen der Originaldatei
             self._safe_replace(temp_file, path)
 
-            # Prüfen der neuen Dimensionen
+            # Prüfen der neuen Dimensionen (inkl. EXIF-Orientierung)
             with Image.open(path) as img:
-                new_w, new_h = img.size
+                transposed = ImageOps.exif_transpose(img)
+                new_w, new_h = transposed.size
 
             # Thumbnail-Cache für dieses Bild invalidieren
             self.thumbnails.invalidate_cache_for_file(path)
