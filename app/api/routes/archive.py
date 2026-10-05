@@ -281,7 +281,31 @@ async def index_existing_folder(
     registered_path = register_allowed_archive_dir(path, persist=True)
     logger.info("Ordner '%s' für Bildzugriff registriert.", registered_path)
 
-    # 2. Asynchrone Indexierung im Hintergrund starten
+    # 2. Status SOFORT synchron initialisieren, BEVOR der Thread gestartet wird!
+    # Verhindert jede Race Condition beim unmittelbaren Frontend-Polling.
+    import uuid
+    from datetime import datetime, timezone
+    new_job_id = uuid.uuid4().hex[:12]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    INDEXING_PROGRESS.update({
+        "job_id": new_job_id,
+        "is_running": True,
+        "finished": False,
+        "folder_path": str(registered_path),
+        "total_found": 0,
+        "processed_count": 0,
+        "current_file": "Scanne Ordner nach Bilddateien...",
+        "new_indexed": 0,
+        "skipped": 0,
+        "faces_detected": 0,
+        "already_fully_indexed": False,
+        "percent": 0,
+        "error": None,
+        "started_at": now_iso,
+        "last_updated": now_iso,
+    })
+
+    # 3. Asynchrone Indexierung im Hintergrund starten
     def run_indexing_job():
         try:
             stats = indexing_service.index_folder(
@@ -307,6 +331,7 @@ async def index_existing_folder(
 
     return {
         "status": "started",
+        "job_id": new_job_id,
         "folder_path": str(registered_path),
         "message": "Indexierung wurde erfolgreich im Hintergrund gestartet.",
     }

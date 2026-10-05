@@ -23,6 +23,7 @@ UUID_NAMESPACE = uuid.UUID("3d4b6845-816b-4e45-8b3c-9ad51b5bbfcb")
 
 # Globaler Status für Live-Fortschritt im Frontend
 INDEXING_PROGRESS: Dict[str, Any] = {
+    "job_id": None,
     "is_running": False,
     "finished": False,
     "folder_path": "",
@@ -35,6 +36,7 @@ INDEXING_PROGRESS: Dict[str, Any] = {
     "already_fully_indexed": False,
     "percent": 0,
     "error": None,
+    "started_at": None,
     "last_updated": None,
 }
 
@@ -331,7 +333,9 @@ class IndexingService:
         errors = []
 
         global INDEXING_PROGRESS
+        current_job_id = INDEXING_PROGRESS.get("job_id") or uuid.uuid4().hex[:12]
         INDEXING_PROGRESS.update({
+            "job_id": current_job_id,
             "is_running": True,
             "finished": False,
             "folder_path": str(abs_folder),

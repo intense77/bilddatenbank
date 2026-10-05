@@ -3069,6 +3069,10 @@ function forceReindexFolder() {
 }
 
 let progressPollTimer = null;
+let activeIndexingJobId = null;
+let lastHandledFinishedJobId = null;
+let isActivelyTrackingIndexing = false;
+let indexingInitialCheckDone = false;
 
 const DEFAULT_FOLDER_INDEX_BTN_HTML = `
   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3090,6 +3094,19 @@ function resetFolderIndexButton() {
   }
 }
 
+function startProgressPolling() {
+  if (!progressPollTimer) {
+    progressPollTimer = setInterval(checkIndexingProgress, 800);
+  }
+}
+
+function stopProgressPolling() {
+  if (progressPollTimer) {
+    clearInterval(progressPollTimer);
+    progressPollTimer = null;
+  }
+}
+
 async function checkIndexingProgress() {
   try {
     const res = await fetch('/api/archive/index-progress');
@@ -3105,8 +3122,24 @@ async function checkIndexingProgress() {
     const curFileSpan = document.getElementById('flp-current-file');
     const btn = document.getElementById('start-folder-index-btn');
     const status = document.getElementById('folder-index-status');
+    const runningBadge = document.getElementById('tab-import-running-indicator');
+    const healthStatus = document.getElementById('health-status');
+
+    // Erster Check bei Initialisierung (z. B. Page Load): Altes 'finished' merken, um keinen veralteten Toast zu feuern
+    if (!indexingInitialCheckDone) {
+      indexingInitialCheckDone = true;
+      if (!data.is_running && data.finished && data.job_id) {
+        lastHandledFinishedJobId = data.job_id;
+      }
+    }
 
     if (data.is_running) {
+      isActivelyTrackingIndexing = true;
+      if (data.job_id) {
+        activeIndexingJobId = data.job_id;
+      }
+
+      if (runningBadge) runningBadge.classList.remove('hidden');
       if (liveBox) liveBox.classList.remove('hidden');
       if (preview) preview.classList.add('hidden');
       if (percentSpan) percentSpan.textContent = `${data.percent}%`;
@@ -3131,21 +3164,32 @@ async function checkIndexingProgress() {
         }
       }
       if (status) status.textContent = `Indexierung läuft (${data.percent}%)...`;
-
-      if (!progressPollTimer) {
-        progressPollTimer = setInterval(checkIndexingProgress, 1000);
+      if (healthStatus && !healthStatus.textContent.startsWith('Indexierung')) {
+        healthStatus.textContent = `Indexierung (${data.percent}%)`;
       }
+
+      startProgressPolling();
     } else {
-      // Indexierung läuft nicht (mehr): Button zwingend zurücksetzen!
-      resetFolderIndexButton();
+      if (runningBadge) runningBadge.classList.add('hidden');
 
-      if (progressPollTimer) {
-        clearInterval(progressPollTimer);
-        progressPollTimer = null;
-      }
+      // Prüfen, ob dieser Job gerade neu abgeschlossen wurde
+      const isNewCompletion = data.finished && (
+        isActivelyTrackingIndexing ||
+        (data.job_id && data.job_id !== lastHandledFinishedJobId)
+      );
 
-      if (data.finished) {
+      if (isNewCompletion) {
+        isActivelyTrackingIndexing = false;
+        if (data.job_id) {
+          lastHandledFinishedJobId = data.job_id;
+        }
+
+        stopProgressPolling();
+        resetFolderIndexButton();
         if (liveBox) liveBox.classList.add('hidden');
+        if (healthStatus && healthStatus.textContent.startsWith('Indexierung')) {
+          healthStatus.textContent = 'Qdrant bereit';
+        }
 
         if (data.error) {
           if (status) status.textContent = 'Indexierung fehlgeschlagen';
@@ -3161,6 +3205,7 @@ async function checkIndexingProgress() {
               </div>
             `;
           }
+          showToast(`Indexierung fehlgeschlagen: ${data.error}`, true);
         } else if (data.already_fully_indexed || (data.total_found > 0 && data.new_indexed === 0 && data.skipped > 0)) {
           // Explizite Rückmeldung: Bereits vollständig vorhanden!
           if (status) status.textContent = 'Bereits vollständig vorhanden (0 neue Bilder)';
@@ -3191,7 +3236,7 @@ async function checkIndexingProgress() {
             preview.innerHTML = `
               <div class="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 space-y-2.5 shadow-lg animate-fadeIn">
                 <div class="text-emerald-400 font-bold flex items-center gap-2 text-sm">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                  <svg class="w-4 h-4 fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                   <span>Inkrementeller Import erfolgreich abgeschlossen!</span>
                 </div>
                 <div class="text-[11px] text-slate-300 font-mono space-y-1">
@@ -3210,7 +3255,7 @@ async function checkIndexingProgress() {
             preview.innerHTML = `
               <div class="rounded-xl border border-emerald-500/50 bg-emerald-950/30 p-4 space-y-2.5 shadow-lg animate-fadeIn">
                 <div class="text-emerald-400 font-bold flex items-center gap-2 text-sm">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                  <svg class="w-4 h-4 fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                   <span>Indexierung erfolgreich abgeschlossen!</span>
                 </div>
                 <div class="text-[11px] text-slate-300 font-mono space-y-1">
@@ -3223,6 +3268,9 @@ async function checkIndexingProgress() {
           showToast(`Indexierung erfolgreich: ${data.processed_count || data.new_indexed || 0} Bilder erfasst.`);
         }
         loadRegisteredFolders();
+      } else {
+        stopProgressPolling();
+        resetFolderIndexButton();
       }
     }
   } catch (err) {
@@ -3241,6 +3289,11 @@ async function startFolderIndexing(forceExplicit = false) {
   const status = document.getElementById('folder-index-status');
   const preview = document.getElementById('folder-scan-preview');
   const liveBox = document.getElementById('folder-live-progress');
+  const percentSpan = document.getElementById('flp-percentage');
+  const bar = document.getElementById('flp-bar');
+  const countsSpan = document.getElementById('flp-counts');
+  const facesSpan = document.getElementById('flp-faces');
+  const curFileSpan = document.getElementById('flp-current-file');
 
   const folderPath = input.value.trim();
   if (!folderPath) {
@@ -3264,6 +3317,7 @@ async function startFolderIndexing(forceExplicit = false) {
     if (skipCheckbox) skipCheckbox.checked = false;
   }
 
+  // UI sofort in den aktiven Indexierungsmodus versetzen
   btn.disabled = true;
   btn.classList.add('opacity-50');
   btn.innerHTML = `
@@ -3276,6 +3330,14 @@ async function startFolderIndexing(forceExplicit = false) {
 
   if (status) status.textContent = 'Indexierung startet...';
   if (liveBox) liveBox.classList.remove('hidden');
+  if (preview) preview.classList.add('hidden');
+  if (percentSpan) percentSpan.textContent = '0%';
+  if (bar) bar.style.width = '0%';
+  if (countsSpan) countsSpan.textContent = 'Vorbereitung...';
+  if (facesSpan) facesSpan.textContent = '0 Gesichter';
+  if (curFileSpan) curFileSpan.textContent = 'Scanne Ordner nach Bilddateien...';
+
+  isActivelyTrackingIndexing = true;
 
   try {
     const res = await fetch('/api/archive/index-folder', {
@@ -3289,39 +3351,39 @@ async function startFolderIndexing(forceExplicit = false) {
       }),
     });
 
+    const resData = await res.json().catch(() => ({}));
+
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
       // Falls bereits ein Import im Hintergrund läuft (HTTP 409):
       // Nicht abbrechen, sondern Live-Fortschrittsanzeige sofort aktivieren und verbinden!
-      if (res.status === 409 || (err.detail && err.detail.includes('bereits eine Indexierung'))) {
+      if (res.status === 409 || (resData.detail && resData.detail.includes('bereits eine Indexierung'))) {
         showToast('Ein Hintergrund-Import läuft bereits – Live-Fortschrittsanzeige aktiviert.', false);
         if (liveBox) liveBox.classList.remove('hidden');
         if (status) status.textContent = 'Hintergrund-Indexierung aktiv...';
+        startProgressPolling();
         checkIndexingProgress();
-        if (!progressPollTimer) {
-          progressPollTimer = setInterval(checkIndexingProgress, 1000);
-        }
         return;
       }
-      throw new Error(err.detail || `HTTP ${res.status}`);
+      throw new Error(resData.detail || `HTTP ${res.status}`);
     }
 
-    showToast('Indexierung im Hintergrund gestartet.');
-    loadRegisteredFolders();
-    // Erst NACH erfolgreicher Bestätigung das Polling aktivieren, damit keine veralteten 'finished'-Stati gelesen werden
-    checkIndexingProgress();
-    if (!progressPollTimer) {
-      progressPollTimer = setInterval(checkIndexingProgress, 1000);
+    if (resData.job_id) {
+      activeIndexingJobId = resData.job_id;
     }
+
+    showToast('Indexierung im Hintergrund gestartet.', false);
+    loadRegisteredFolders();
+
+    // Polling aktivieren und direkt prüfen
+    startProgressPolling();
+    checkIndexingProgress();
   } catch (err) {
     showToast(`Start fehlgeschlagen: ${err.message}`, true);
     if (status) status.textContent = 'Fehlgeschlagen';
     if (liveBox) liveBox.classList.add('hidden');
-    if (progressPollTimer) {
-      clearInterval(progressPollTimer);
-      progressPollTimer = null;
-    }
+    stopProgressPolling();
     resetFolderIndexButton();
+    isActivelyTrackingIndexing = false;
   }
 }
 
