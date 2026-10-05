@@ -1723,6 +1723,15 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
     }
   }
 
+  const backToClusterBtn = document.getElementById('modal-back-to-cluster-btn');
+  if (backToClusterBtn) {
+    if (currentModalTargetFaceContext) {
+      backToClusterBtn.classList.remove('hidden');
+    } else {
+      backToClusterBtn.classList.add('hidden');
+    }
+  }
+
   title.textContent = fileName || filePath.split('/').pop();
   pathElem.textContent = filePath;
   const cbParam = cacheBuster ? `&t=${cacheBuster}` : '';
@@ -2055,6 +2064,7 @@ function closeImageModal() {
   currentModalTargetFaceContext = null;
   targetFaceBoxCoords = null;
   document.getElementById('modal-cluster-verify-banner')?.classList.add('hidden');
+  document.getElementById('modal-back-to-cluster-btn')?.classList.add('hidden');
   if (cropperInstance) {
     cropperInstance.destroy();
     cropperInstance = null;
