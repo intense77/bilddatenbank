@@ -1532,7 +1532,7 @@
                 <!-- Interaktiver Vorher/Nachher Split-Slider Button -->
                 <button type="button" id="btn-toggle-split" onclick="toggleSplitSlider()"
                   class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700 text-[11px] font-medium transition flex items-center gap-1 shadow-sm select-none"
-                  title="Interaktiven Vorher/Nachher Split-Schieberegler ein-/ausblenden">
+                  title="Interaktiven Vorher/Nachher Split-Schieberegler ein-/ausblenden (Taste: S)">
                   <span>↔</span> <span id="label-toggle-split-btn">Split</span>
                 </button>
                 <!-- Großansicht / Werkbank Toggle Button -->
@@ -1541,12 +1541,31 @@
                   title="Werkbank-Größe maximieren (Vorschau vergrößern)">
                   <span>⛶</span> <span id="label-wide-mode-btn">Groß</span>
                 </button>
-                <button type="button" onclick="resetAllImageAdjustments()"
-                  class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 text-[11px] font-mono transition"
-                  title="Alle Schieberegler und Transformationen auf neutralen Zustand zurücksetzen">
-                  ↺ Reset
+              </div>
+            </div>
+
+            <!-- Historie & Zurücksetzen Aktionsleiste: Rückgängig, Wiederholen, Alles auf Null -->
+            <div class="flex items-center justify-between gap-1.5 p-1.5 rounded-xl bg-slate-950/80 border border-slate-800 shadow-inner">
+              <div class="flex items-center gap-1.5">
+                <button type="button" id="btn-edit-undo" onclick="undoImageEdit()" disabled
+                  class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 text-xs font-medium transition flex items-center gap-1.5 shadow-sm opacity-40 cursor-not-allowed pointer-events-none"
+                  title="Letzte Bearbeitung rückgängig machen (Strg + Z)">
+                  <span class="text-amber-400 font-bold">↶</span>
+                  <span>Rückgängig</span>
+                </button>
+                <button type="button" id="btn-edit-redo" onclick="redoImageEdit()" disabled
+                  class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 text-xs font-medium transition flex items-center gap-1.5 shadow-sm opacity-40 cursor-not-allowed pointer-events-none"
+                  title="Rückgängig gemachte Bearbeitung wiederherstellen (Strg + Y)">
+                  <span class="text-amber-400 font-bold">↷</span>
+                  <span>Wiederholen</span>
                 </button>
               </div>
+              <button type="button" id="btn-edit-reset-all" onclick="resetAllImageAdjustments()"
+                class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 text-xs font-medium transition flex items-center gap-1.5 shadow-sm"
+                title="Alle Schieberegler, Filter und Transformationen auf 0 zurücksetzen (kann mit Rückgängig wiederhergestellt werden)">
+                <span class="text-xs">↺</span>
+                <span>Alles auf Null</span>
+              </button>
             </div>
 
             <!-- 1-Klick Archiv-Schnellfilter -->
@@ -1616,7 +1635,7 @@
                 </div>
                 <input type="range" id="edit-slider-brightness" min="-50" max="50" value="0" step="1"
                   class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
-                  oninput="onEditSliderChange()">
+                  oninput="onEditSliderChange()" onchange="onEditSliderCommit()">
                 <div class="flex justify-between text-[9px] text-slate-500 font-mono">
                   <span>-50%</span><span>0</span><span>+50%</span>
                 </div>
@@ -1630,7 +1649,7 @@
                 </div>
                 <input type="range" id="edit-slider-contrast" min="-50" max="50" value="0" step="1"
                   class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
-                  oninput="onEditSliderChange()">
+                  oninput="onEditSliderChange()" onchange="onEditSliderCommit()">
                 <div class="flex justify-between text-[9px] text-slate-500 font-mono">
                   <span>-50%</span><span>0</span><span>+50%</span>
                 </div>
@@ -1644,7 +1663,7 @@
                 </div>
                 <input type="range" id="edit-slider-gamma" min="0.5" max="2.0" value="1.0" step="0.05"
                   class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
-                  oninput="onEditSliderChange()">
+                  oninput="onEditSliderChange()" onchange="onEditSliderCommit()">
                 <div class="flex justify-between text-[9px] text-slate-500 font-mono">
                   <span>0.5 (dunkel)</span><span>1.0</span><span>2.0 (hell)</span>
                 </div>
@@ -1658,7 +1677,7 @@
                 </div>
                 <input type="range" id="edit-slider-sharpness" min="0" max="100" value="0" step="2"
                   class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
-                  oninput="onEditSliderChange()">
+                  oninput="onEditSliderChange()" onchange="onEditSliderCommit()">
                 <div class="flex justify-between text-[9px] text-slate-500 font-mono">
                   <span>0%</span><span>50%</span><span>100%</span>
                 </div>
@@ -1672,7 +1691,7 @@
                 </div>
                 <input type="range" id="edit-slider-fine-rotation" min="-10.0" max="10.0" value="0.0" step="0.1"
                   class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
-                  oninput="onEditSliderChange()">
+                  oninput="onEditSliderChange()" onchange="onEditSliderCommit()">
                 <div class="flex justify-between text-[9px] text-slate-500 font-mono">
                   <span>-10°</span><span>0°</span><span>+10°</span>
                 </div>
@@ -1686,7 +1705,7 @@
                 </div>
                 <input type="range" id="edit-slider-saturation" min="0" max="150" value="100" step="2"
                   class="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
-                  oninput="onEditSliderChange()">
+                  oninput="onEditSliderChange()" onchange="onEditSliderCommit()">
                 <div class="flex justify-between text-[9px] text-slate-500 font-mono">
                   <span>0% (S/W)</span><span>100%</span><span>150%</span>
                 </div>
@@ -1752,10 +1771,17 @@
 
             <!-- Speichern & Exportieren -->
             <div class="pt-2 border-t border-slate-800 space-y-2">
-              <button type="button" id="btn-save-edit-settings" onclick="saveEditSettingsToBackend()"
-                class="w-full px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition flex items-center justify-center gap-2 shadow-md">
-                <span>💾</span> <span>Parameter speichern (SQLite / Qdrant)</span>
-              </button>
+              <div class="flex items-center gap-2">
+                <button type="button" id="btn-edit-reset-bottom" onclick="resetAllImageAdjustments()"
+                  class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-500/30 text-xs font-medium transition flex items-center justify-center gap-1.5 shadow-sm"
+                  title="Alle Schieberegler und Filter auf 0 zurücksetzen (kann mit Rückgängig wiederhergestellt werden)">
+                  <span class="text-sm">↺</span> <span>Auf 0 zurücksetzen</span>
+                </button>
+                <button type="button" id="btn-save-edit-settings" onclick="saveEditSettingsToBackend()"
+                  class="flex-1 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition flex items-center justify-center gap-2 shadow-md">
+                  <span>💾</span> <span>Parameter speichern</span>
+                </button>
+              </div>
 
               <div class="flex items-center gap-2">
                 <button type="button" onclick="exportProcessedImage('jpg')"
@@ -2250,6 +2276,14 @@
             <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
               <span>Ansicht schließen</span>
               <kbd class="px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[11px]">Esc</kbd>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+              <span>Rückgängig (Undo)</span>
+              <kbd class="px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[11px]">Strg + Z</kbd>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+              <span>Wiederholen (Redo)</span>
+              <kbd class="px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[11px]">Strg + Y</kbd>
             </div>
           </div>
         </div>

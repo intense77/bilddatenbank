@@ -1799,6 +1799,7 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
     updateModalLightboxButtonState(filePath);
     toggleMetadataEditMode(false);
     switchModalSidebarTab('meta');
+    resetImageEditHistory();
     loadModalEditSettings(data.edit_settings || null);
 
     // Archivalische Metadaten Seitenleiste befüllen
@@ -2069,7 +2070,8 @@ function closeImageModal() {
     cropperInstance.destroy();
     cropperInstance = null;
   }
-  resetAllImageAdjustments();
+  resetAllImageAdjustments(true);
+  resetImageEditHistory();
   toggleWideEditMode(false);
   toggleMetadataEditMode(false);
   switchModalSidebarTab('meta');
@@ -3585,7 +3587,9 @@ function confirmFolderSelection() {
 // Tastatur-Shortcuts
 document.addEventListener('keydown', (e) => {
   // 1. Wenn ein Textfeld fokussiert ist, Shortcuts nicht auslösen
-  const isTyping = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+  const isTyping = ['TEXTAREA'].includes(document.activeElement?.tagName) || 
+    (document.activeElement?.tagName === 'INPUT' && !['range', 'button', 'checkbox', 'radio'].includes(document.activeElement?.type)) || 
+    document.activeElement?.isContentEditable;
 
   // ESC-Taste Behandlung
   if (e.key === 'Escape') {
@@ -3666,6 +3670,25 @@ document.addEventListener('keydown', (e) => {
   const isImgModalOpen = imgModal && !imgModal.classList.contains('hidden');
 
   if (isImgModalOpen) {
+    // Strg+Z / Cmd+Z: Rückgängig, Strg+Y / Strg+Shift+Z: Wiederholen
+    if (e.ctrlKey || e.metaKey) {
+      if ((e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault();
+        undoImageEdit();
+        return;
+      }
+      if (((e.key === 'z' || e.key === 'Z') && e.shiftKey) || e.key === 'y' || e.key === 'Y') {
+        e.preventDefault();
+        redoImageEdit();
+        return;
+      }
+      if (e.altKey && (e.key === '0' || e.key === 'Backspace')) {
+        e.preventDefault();
+        resetAllImageAdjustments();
+        return;
+      }
+    }
+
     // F: Vollbild-Leinwand ein/aus
     if (e.key === 'f' || e.key === 'F') {
       e.preventDefault();
@@ -4641,6 +4664,185 @@ let currentEditSettings = {
   crop: null
 };
 
+let editHistory = [];
+let editRedoHistory = [];
+let preSliderEditState = null;
+let sliderCommitTimeout = null;
+const MAX_EDIT_HISTORY = 40;
+
+function cloneEditSettings(settings) {
+  if (!settings) return null;
+  return {
+    brightness: Number(settings.brightness || 0),
+    contrast: Number(settings.contrast || 0),
+    gamma: Number(settings.gamma !== undefined ? settings.gamma : 1.0),
+    sharpness: Number(settings.sharpness || 0),
+    rotation: Number(settings.rotation || 0),
+    fine_rotation: Number(settings.fine_rotation || 0.0),
+    flip_h: Boolean(settings.flip_h),
+    saturation: Number(settings.saturation !== undefined ? settings.saturation : 100),
+    invert: Boolean(settings.invert),
+    crop: settings.crop ? { ...settings.crop } : null
+  };
+}
+
+function areEditSettingsEqual(a, b) {
+  if (!a || !b) return a === b;
+  if (a.brightness !== b.brightness) return false;
+  if (a.contrast !== b.contrast) return false;
+  if (Math.abs(a.gamma - b.gamma) > 0.001) return false;
+  if (a.sharpness !== b.sharpness) return false;
+  if (a.rotation !== b.rotation) return false;
+  if (Math.abs(a.fine_rotation - b.fine_rotation) > 0.01) return false;
+  if (a.flip_h !== b.flip_h) return false;
+  if (a.saturation !== b.saturation) return false;
+  if (a.invert !== b.invert) return false;
+
+  if (!a.crop && !b.crop) return true;
+  if (!a.crop || !b.crop) return false;
+  return a.crop.x === b.crop.x &&
+         a.crop.y === b.crop.y &&
+         a.crop.width === b.crop.width &&
+         a.crop.height === b.crop.height;
+}
+
+function isEditStateDefault(settings = currentEditSettings) {
+  if (!settings) return true;
+  return Number(settings.brightness || 0) === 0 &&
+         Number(settings.contrast || 0) === 0 &&
+         Math.abs(Number(settings.gamma !== undefined ? settings.gamma : 1.0) - 1.0) < 0.01 &&
+         Number(settings.sharpness || 0) === 0 &&
+         Number(settings.rotation || 0) === 0 &&
+         Math.abs(Number(settings.fine_rotation || 0.0)) < 0.01 &&
+         !settings.flip_h &&
+         Number(settings.saturation !== undefined ? settings.saturation : 100) === 100 &&
+         !settings.invert &&
+         !settings.crop;
+}
+
+function resetImageEditHistory() {
+  editHistory = [];
+  editRedoHistory = [];
+  preSliderEditState = null;
+  clearTimeout(sliderCommitTimeout);
+  updateUndoRedoButtonsState();
+}
+
+function recordEditStateForUndo(previousState = null) {
+  const stateToPush = cloneEditSettings(previousState || currentEditSettings);
+  if (!stateToPush) return;
+  if (editHistory.length > 0 && areEditSettingsEqual(editHistory[editHistory.length - 1], stateToPush)) {
+    return;
+  }
+  editHistory.push(stateToPush);
+  if (editHistory.length > MAX_EDIT_HISTORY) {
+    editHistory.shift();
+  }
+  editRedoHistory = [];
+  updateUndoRedoButtonsState();
+}
+
+function updateUndoRedoButtonsState() {
+  const undoBtn = document.getElementById('btn-edit-undo');
+  const redoBtn = document.getElementById('btn-edit-redo');
+  const resetBtn = document.getElementById('btn-edit-reset-all');
+  const resetBottomBtn = document.getElementById('btn-edit-reset-bottom');
+
+  const canUndo = editHistory.length > 0;
+  const canRedo = editRedoHistory.length > 0;
+  const isDefault = isEditStateDefault();
+
+  if (undoBtn) {
+    undoBtn.disabled = !canUndo;
+    if (canUndo) {
+      undoBtn.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+      undoBtn.classList.add('hover:text-amber-300', 'cursor-pointer');
+      undoBtn.title = `Letzte Bearbeitung rückgängig machen (${editHistory.length} Schritt${editHistory.length > 1 ? 'e' : ''} im Verlauf, Strg+Z)`;
+    } else {
+      undoBtn.classList.add('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+      undoBtn.classList.remove('hover:text-amber-300', 'cursor-pointer');
+      undoBtn.title = 'Keine weiteren Schritte zum Rückgängigmachen (Strg+Z)';
+    }
+  }
+
+  if (redoBtn) {
+    redoBtn.disabled = !canRedo;
+    if (canRedo) {
+      redoBtn.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+      redoBtn.classList.add('hover:text-amber-300', 'cursor-pointer');
+      redoBtn.title = `Rückgängig gemachte Bearbeitung wiederherstellen (${editRedoHistory.length} Schritt${editRedoHistory.length > 1 ? 'e' : ''}, Strg+Y)`;
+    } else {
+      redoBtn.classList.add('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+      redoBtn.classList.remove('hover:text-amber-300', 'cursor-pointer');
+      redoBtn.title = 'Keine Schritte zum Wiederherstellen (Strg+Y)';
+    }
+  }
+
+  if (resetBtn) {
+    if (!isDefault) {
+      resetBtn.classList.remove('opacity-50');
+      resetBtn.title = 'Alle Regler und Transformationen auf 0 zurücksetzen (kann mit Rückgängig wiederhergestellt werden)';
+    } else {
+      resetBtn.classList.add('opacity-50');
+      resetBtn.title = 'Bereits auf 0 (Urzustand)';
+    }
+  }
+
+  if (resetBottomBtn) {
+    if (!isDefault) {
+      resetBottomBtn.classList.remove('opacity-50');
+    } else {
+      resetBottomBtn.classList.add('opacity-50');
+    }
+  }
+}
+
+function undoImageEdit() {
+  if (preSliderEditState) {
+    preSliderEditState = null;
+  }
+  if (editHistory.length === 0) {
+    showToast('Keine weiteren Änderungen zum Rückgängigmachen.', false);
+    return;
+  }
+
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
+  }
+
+  editRedoHistory.push(cloneEditSettings(currentEditSettings));
+  const prevState = editHistory.pop();
+  currentEditSettings = cloneEditSettings(prevState);
+
+  loadModalEditSettings(currentEditSettings);
+  updateUndoRedoButtonsState();
+  showToast('↶ Änderung rückgängig gemacht.', false);
+}
+
+function redoImageEdit() {
+  if (preSliderEditState) {
+    preSliderEditState = null;
+  }
+  if (editRedoHistory.length === 0) {
+    showToast('Keine weiteren Schritte zum Wiederherstellen.', false);
+    return;
+  }
+
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
+  }
+
+  editHistory.push(cloneEditSettings(currentEditSettings));
+  const nextState = editRedoHistory.pop();
+  currentEditSettings = cloneEditSettings(nextState);
+
+  loadModalEditSettings(currentEditSettings);
+  updateUndoRedoButtonsState();
+  showToast('↷ Bearbeitung wiederhergestellt.', false);
+}
+
 let cropperInstance = null;
 let currentCropperRatio = NaN;
 let isWideEditMode = false;
@@ -4742,6 +4944,11 @@ function loadModalEditSettings(settings) {
       }
     }
   } else {
+    const img = document.getElementById('modal-img');
+    if (img && img.dataset.uncroppedSrc) {
+      img.src = img.dataset.uncroppedSrc;
+      delete img.dataset.uncroppedSrc;
+    }
     if (cropBadge) {
       cropBadge.textContent = 'inaktiv';
       cropBadge.className = 'text-[10px] text-slate-500 font-mono';
@@ -4754,9 +4961,14 @@ function loadModalEditSettings(settings) {
   }
 
   applyLiveImageTransformations();
+  updateUndoRedoButtonsState();
 }
 
 function onEditSliderChange() {
+  if (!preSliderEditState) {
+    preSliderEditState = cloneEditSettings(currentEditSettings);
+  }
+
   const bSlider = document.getElementById('edit-slider-brightness');
   const cSlider = document.getElementById('edit-slider-contrast');
   const gSlider = document.getElementById('edit-slider-gamma');
@@ -4786,6 +4998,21 @@ function onEditSliderChange() {
   if (satLabel) satLabel.textContent = `${currentEditSettings.saturation}%`;
 
   applyLiveImageTransformations();
+
+  clearTimeout(sliderCommitTimeout);
+  sliderCommitTimeout = setTimeout(() => {
+    onEditSliderCommit();
+  }, 600);
+}
+
+function onEditSliderCommit() {
+  clearTimeout(sliderCommitTimeout);
+  if (preSliderEditState) {
+    if (!areEditSettingsEqual(preSliderEditState, currentEditSettings)) {
+      recordEditStateForUndo(preSliderEditState);
+    }
+    preSliderEditState = null;
+  }
 }
 
 function applyLiveImageTransformations(isComparingOriginal = false) {
@@ -4910,6 +5137,12 @@ function toggleWideEditMode(forceState = null) {
 }
 
 function applyArchivalPreset(presetName) {
+  if (presetName === 'neutral') {
+    resetAllImageAdjustments();
+    return;
+  }
+  onEditSliderCommit();
+  recordEditStateForUndo();
   if (presetName === 'document') {
     currentEditSettings.brightness = 0;
     currentEditSettings.contrast = 30;
@@ -4932,19 +5165,22 @@ function applyArchivalPreset(presetName) {
     currentEditSettings.gamma = 1.1;
     loadModalEditSettings(currentEditSettings);
     showToast('Preset „Negativ-Invertierung“ angewendet.', false);
-  } else if (presetName === 'neutral') {
-    resetAllImageAdjustments();
   }
 }
 
 function rotateEditTransformation(delta = 90) {
+  onEditSliderCommit();
+  recordEditStateForUndo();
   currentEditSettings.rotation = (currentEditSettings.rotation + delta) % 360;
   const rotBtnLabel = document.getElementById('label-edit-rotation-btn');
   if (rotBtnLabel) rotBtnLabel.textContent = `${currentEditSettings.rotation}°`;
   applyLiveImageTransformations();
+  updateUndoRedoButtonsState();
 }
 
 function toggleEditFlipH() {
+  onEditSliderCommit();
+  recordEditStateForUndo();
   currentEditSettings.flip_h = !currentEditSettings.flip_h;
   const flipBtn = document.getElementById('edit-btn-flip-h');
   if (flipBtn) {
@@ -4955,9 +5191,12 @@ function toggleEditFlipH() {
     }
   }
   applyLiveImageTransformations();
+  updateUndoRedoButtonsState();
 }
 
 function toggleEditInvert() {
+  onEditSliderCommit();
+  recordEditStateForUndo();
   currentEditSettings.invert = !currentEditSettings.invert;
   const invBtn = document.getElementById('edit-btn-invert');
   if (invBtn) {
@@ -4968,9 +5207,10 @@ function toggleEditInvert() {
     }
   }
   applyLiveImageTransformations();
+  updateUndoRedoButtonsState();
 }
 
-function resetAllImageAdjustments() {
+function resetAllImageAdjustments(silent = false) {
   if (cropperInstance) {
     cropperInstance.destroy();
     cropperInstance = null;
@@ -4980,6 +5220,20 @@ function resetAllImageAdjustments() {
     img.src = img.dataset.uncroppedSrc;
     delete img.dataset.uncroppedSrc;
   }
+
+  if (!silent) {
+    if (isEditStateDefault()) {
+      showToast('Alle Bildparameter stehen bereits auf Null.', false);
+      return;
+    }
+    if (preSliderEditState) {
+      recordEditStateForUndo(preSliderEditState);
+      preSliderEditState = null;
+    } else {
+      recordEditStateForUndo();
+    }
+  }
+
   currentEditSettings = {
     brightness: 0,
     contrast: 0,
@@ -4997,7 +5251,9 @@ function resetAllImageAdjustments() {
     const origImg = document.getElementById('modal-split-original-img');
     if (origImg) origImg.src = img.src;
   }
-  showToast('Alle Bildparameter auf neutralen Zustand zurückgesetzt.', false);
+  if (!silent) {
+    showToast('↺ Alle Bildparameter auf Null zurückgesetzt.', false);
+  }
 }
 
 function setCropperRatio(ratio, btnElement) {
@@ -5038,6 +5294,8 @@ function toggleCropperMode() {
 
   if (cropperInstance) {
     // 1. ZUSCHNITT ANWENDEN
+    onEditSliderCommit();
+    recordEditStateForUndo();
     const data = cropperInstance.getData(true);
     currentEditSettings.crop = {
       x: Math.round(data.x),
@@ -5069,6 +5327,7 @@ function toggleCropperMode() {
     if (clearBtn) clearBtn.classList.remove('hidden');
 
     showToast(`Bildausschnitt (${currentEditSettings.crop.width}×${currentEditSettings.crop.height} px) übernommen. Original bleibt 100% unberührt.`, false);
+    updateUndoRedoButtonsState();
   } else {
     // 2. RAHMEN AUFZIEHEN
     if (typeof Cropper === 'undefined') {
@@ -5165,6 +5424,8 @@ function cancelCropping() {
 }
 
 function clearActiveCrop() {
+  onEditSliderCommit();
+  recordEditStateForUndo();
   const img = document.getElementById('modal-img');
   if (cropperInstance) {
     cropperInstance.destroy();
@@ -5195,6 +5456,7 @@ function clearActiveCrop() {
   if (clearBtn) clearBtn.classList.add('hidden');
 
   showToast('Zuschnitt aufgehoben (Vollbild wiederhergestellt).', false);
+  updateUndoRedoButtonsState();
 }
 
 function applyClientCropPreview(img, crop) {

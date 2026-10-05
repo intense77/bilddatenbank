@@ -185,8 +185,10 @@ Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:
 Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:
 * **Bild & Bounding Boxes:** Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter. Gesichtsrahmen lassen sich über den Button oben rechts jederzeit ein- oder ausblenden.
 * **Archiv-Metadaten & Bearbeitung (Rechte Seitenleiste):** 
-  * *Metadaten-Tab:* Strukturierte Übersicht mit Signatur, Titel, Datierung, Urheber, Abmessungen, Beschreibung, Iconclass und Lizenz. Metadaten können über den ✏️-Button direkt in SQLite editiert werden.
-  * *Bearbeiten-Tab (Non-destruktiv):* Feinjustierung von Helligkeit, Kontrast, Gamma, Schärfung und Negativ-Invertierung. Mit dem Button **„Original“** (gedrückt halten) oder dem **Split-Slider** (Taste `S`) lässt sich das Vorher/Nachher-Ergebnis stufenlos vergleichen.
+  * *Bearbeiten-Tab (Non-destruktiv):* Feinjustierung von Helligkeit, Kontrast, Gamma, Schärfung, Begradigung, Sättigung und Negativ-Invertierung.
+    * **↶ Rückgängig (Undo) & ↷ Wiederholen (Redo):** Jeder Bearbeitungsschritt (Schieberegler, Presets, Drehung, Spiegelung, Zuschnitt) wird in einem Verlaufspuffer gespeichert. Über die Buttons oder die Tastenkürzel **`Strg + Z`** (Rückgängig) und **`Strg + Y`** (Wiederholen) können Anpassungen schrittweise zurückgenommen oder wiederhergestellt werden.
+    * **↺ Alles auf Null:** Setzt alle Regler, Transformationen und Zuschnitte mit einem Klick auf den neutralen Urzustand zurück (wird ebenfalls im Verlauf gesichert und kann bei versehentlichem Klick sofort per Rückgängig restauriert werden).
+    * **Vorher/Nachher-Vergleich:** Mit dem Button **„Original“** (gedrückt halten) oder dem **Split-Slider** (Taste `S`) lässt sich das Ergebnis jederzeit stufenlos mit dem Original vergleichen.
 * **Zweiblatt-Logik & 3D-Karten-Flip (Recto / Verso):**
   * Handelt es sich um ein Vorder-/Rückseiten-Paar (z. B. `foto_01_r.jpg` und `foto_01_v.jpg` oder `_recto`/`_verso`, `_vorderseite`/`_rueckseite`, `_a`/`_b`), erkennt das System die Partnerdatei automatisch.
   * In der Menüleiste erscheint der Button **`🔁 Rückseite / Vorderseite`**. Durch Klick oder die Schnelltaste **`V`** bzw. **`U`** dreht sich das Bild in einer flüssigen 3D-Karten-Animation um 180° um.
@@ -225,6 +227,8 @@ Drücken Sie jederzeit die Taste **`?`** in der Web-Oberfläche, um die Tastatur
 | **`0`** | Zoom-Stufe auf 100 % zurücksetzen |
 | **`→`** / **`←`** | Nächstes bzw. vorheriges Bild der Suchergebnisse öffnen |
 | **`/`** | Suchfeld sofort fokussieren und Eingabe beginnen |
+| **`Strg` + `Z`** | Letzte Bildbearbeitung rückgängig machen (Undo) |
+| **`Strg` + `Y`** | Rückgängig gemachte Bildbearbeitung wiederherstellen (Redo) |
 | **`?`** | Tastaturkürzel-Übersicht anzeigen |
 
 ---

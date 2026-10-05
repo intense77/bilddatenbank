@@ -385,8 +385,10 @@
 <p>Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:<br />
 * <strong>Bild &amp; Bounding Boxes:</strong> Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter. Gesichtsrahmen lassen sich über den Button oben rechts jederzeit ein- oder ausblenden.<br />
 * <strong>Archiv-Metadaten &amp; Bearbeitung (Rechte Seitenleiste):</strong> <br />
-  * <em>Metadaten-Tab:</em> Strukturierte Übersicht mit Signatur, Titel, Datierung, Urheber, Abmessungen, Beschreibung, Iconclass und Lizenz. Metadaten können über den ✏️-Button direkt in SQLite editiert werden.<br />
-  * <em>Bearbeiten-Tab (Non-destruktiv):</em> Feinjustierung von Helligkeit, Kontrast, Gamma, Schärfung und Negativ-Invertierung. Mit dem Button <strong>„Original“</strong> (gedrückt halten) oder dem <strong>Split-Slider</strong> (Taste <code>S</code>) lässt sich das Vorher/Nachher-Ergebnis stufenlos vergleichen.<br />
+  * <em>Bearbeiten-Tab (Non-destruktiv):</em> Feinjustierung von Helligkeit, Kontrast, Gamma, Schärfung, Begradigung, Sättigung und Negativ-Invertierung.<br />
+    * <strong>↶ Rückgängig (Undo) &amp; ↷ Wiederholen (Redo):</strong> Jeder Bearbeitungsschritt (Schieberegler, Presets, Drehung, Spiegelung, Zuschnitt) wird in einem Verlaufspuffer gespeichert. Über die Buttons oder die Tastenkürzel <strong><code>Strg + Z</code></strong> (Rückgängig) und <strong><code>Strg + Y</code></strong> (Wiederholen) können Anpassungen schrittweise zurückgenommen oder wiederhergestellt werden.<br />
+    * <strong>↺ Alles auf Null:</strong> Setzt alle Regler, Transformationen und Zuschnitte mit einem Klick auf den neutralen Urzustand zurück (wird ebenfalls im Verlauf gesichert und kann bei versehentlichem Klick sofort per Rückgängig restauriert werden).<br />
+    * <strong>Vorher/Nachher-Vergleich:</strong> Mit dem Button <strong>„Original“</strong> (gedrückt halten) oder dem <strong>Split-Slider</strong> (Taste <code>S</code>) lässt sich das Ergebnis jederzeit stufenlos mit dem Original vergleichen.<br />
 * <strong>Zweiblatt-Logik &amp; 3D-Karten-Flip (Recto / Verso):</strong><br />
   * Handelt es sich um ein Vorder-/Rückseiten-Paar (z. B. <code>foto_01_r.jpg</code> und <code>foto_01_v.jpg</code> oder <code>_recto</code>/<code>_verso</code>, <code>_vorderseite</code>/<code>_rueckseite</code>, <code>_a</code>/<code>_b</code>), erkennt das System die Partnerdatei automatisch.<br />
   * In der Menüleiste erscheint der Button <strong><code>🔁 Rückseite / Vorderseite</code></strong>. Durch Klick oder die Schnelltaste <strong><code>V</code></strong> bzw. <strong><code>U</code></strong> dreht sich das Bild in einer flüssigen 3D-Karten-Animation um 180° um.<br />
@@ -459,6 +461,14 @@
 <tr>
 <td style="text-align: left;"><strong><code>/</code></strong></td>
 <td style="text-align: left;">Suchfeld sofort fokussieren und Eingabe beginnen</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>Strg</code> + <code>Z</code></strong></td>
+<td style="text-align: left;">Letzte Bildbearbeitung rückgängig machen (Undo)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>Strg</code> + <code>Y</code></strong></td>
+<td style="text-align: left;">Rückgängig gemachte Bildbearbeitung wiederherstellen (Redo)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong><code>?</code></strong></td>
