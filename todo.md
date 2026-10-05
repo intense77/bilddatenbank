@@ -196,12 +196,12 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   * Kommerzielle Tools behandeln Scans von Vorder- und Rückseite als zwei isolierte, zusammenhanglose Dateien.
   * Hier erkennt das System anhand von Dateinamenskonventionen (`_r`/`_v`, `_recto`/`_verso`, `_a`/`_b`, `_01`/`_02`) automatisch, dass zwei Scans physisch zusammengehören.
 * **Aufgaben:**
-  - [ ] **Automatische Paar-Erkennung (Zweiblatt-Logik):**
+  - [x] **Automatische Paar-Erkennung (Zweiblatt-Logik):**
     * Zusammenführen von `_r`/`_v`-Dateipaaren zu einem gemeinsamen archivischen Datensatz.
-  - [ ] **Rückseiten-Notiz als Primär-Metadatum des Vorderseiten-Fotos:**
+  - [x] **Rückseiten-Notiz als Primär-Metadatum des Vorderseiten-Fotos:**
     * Der per OCR/VLM auf der Rückseite entzifferte handschriftliche Text (z. B. *„Fronleichnam 1928, Pfarrer Huber mit Kirchenchor“*) wird als Primär-Metadatum direkt mit dem Vorderseiten-Foto verknüpft und semantisch indexiert.
     * Bei der Freitextsuche nach Begriffen auf der Rückseite wird direkt das Vorderseiten-Foto als Suchtreffer ausgegeben.
-  - [ ] **Interaktiver 3D-Karten-Flip im Bild-Modal:**
+  - [x] **Interaktiver 3D-Karten-Flip im Bild-Modal:**
     * Button „Rückseite ansehen / Umdrehen“ mit animiertem Karten-Wechsel zwischen Vorder- und Rückseite.
 
 ---

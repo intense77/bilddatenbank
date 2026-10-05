@@ -55,6 +55,13 @@ class MetadataDatabase:
                 except Exception:
                     pass
 
+                # Migration: Falls Zweiblatt-Spalten (companion_path, sheet_role, verso_notes) noch fehlen
+                for col in ["companion_path TEXT", "sheet_role TEXT", "verso_notes TEXT"]:
+                    try:
+                        conn.execute(f"ALTER TABLE metadata ADD COLUMN {col};")
+                    except Exception:
+                        pass
+
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS clusters (
                         id TEXT PRIMARY KEY,
@@ -75,6 +82,7 @@ class MetadataDatabase:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_filename ON metadata(file_name);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_title ON metadata(title);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_signature ON metadata(signature);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_companion ON metadata(companion_path);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_face_count ON clusters(face_count DESC);")
 
@@ -333,8 +341,54 @@ class MetadataDatabase:
             logger.error("Fehler bei der Clustersuche in SQLite: %s", e)
             return []
 
+    def update_verso_notes(
+        self,
+        file_path: str,
+        notes: str,
+        companion_path: Optional[str] = None,
+        sheet_role: Optional[str] = None,
+    ) -> bool:
+        """Speichert oder aktualisiert Rückseiten-Notizen / Transkriptionen und optionale Zweiblatt-Verknüpfungen."""
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute("SELECT file_path FROM metadata WHERE file_path = ?;", (file_path,)).fetchone()
+                if row:
+                    conn.execute(
+                        """UPDATE metadata SET 
+                            verso_notes = ?,
+                            companion_path = COALESCE(?, companion_path),
+                            sheet_role = COALESCE(?, sheet_role),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE file_path = ?;""",
+                        (notes, companion_path, sheet_role, file_path),
+                    )
+                else:
+                    file_name = Path(file_path).name
+                    conn.execute(
+                        """INSERT INTO metadata (file_path, file_name, verso_notes, companion_path, sheet_role, updated_at)
+                        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP);""",
+                        (file_path, file_name, notes, companion_path, sheet_role),
+                    )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error("Fehler beim Speichern der Verso-Notizen für %s: %s", file_path, e)
+            return False
+
+    def get_verso_notes(self, file_path: str) -> Optional[str]:
+        """Liest Rückseiten-Notizen aus der Datenbank."""
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute("SELECT verso_notes FROM metadata WHERE file_path = ?;", (file_path,)).fetchone()
+                if row and row["verso_notes"]:
+                    return row["verso_notes"]
+                return None
+        except Exception as e:
+            logger.debug("Fehler beim Lesen der Verso-Notizen: %s", e)
+            return None
+
     def search_metadata(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Sucht nach Bildmetadaten in title, signature, description, creator, file_name."""
+        """Sucht nach Bildmetadaten in title, signature, description, creator, file_name und verso_notes."""
         clean_q = query.strip()
         if not clean_q:
             return []
@@ -344,11 +398,11 @@ class MetadataDatabase:
                 cursor = conn.execute(
                     """
                     SELECT * FROM metadata 
-                    WHERE title LIKE ? OR signature LIKE ? OR description LIKE ? OR creator LIKE ? OR file_name LIKE ?
+                    WHERE title LIKE ? OR signature LIKE ? OR description LIKE ? OR creator LIKE ? OR file_name LIKE ? OR verso_notes LIKE ?
                     ORDER BY updated_at DESC
                     LIMIT ?
                     """,
-                    (pattern, pattern, pattern, pattern, pattern, limit)
+                    (pattern, pattern, pattern, pattern, pattern, pattern, limit)
                 )
                 return [dict(r) for r in cursor.fetchall()]
         except Exception as e:

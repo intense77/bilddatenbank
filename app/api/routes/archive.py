@@ -395,3 +395,44 @@ async def upload_archive_images(
         "faces_detected": total_faces,
         "items": results,
     }
+
+
+class TwoSidedNotesRequest(BaseModel):
+    path: str = Field(..., description="Dateipfad des Vorder- oder Rückseitenbildes")
+    notes: str = Field(..., description="Handschriftliche Notizen, Stempeltext oder Transkription")
+
+
+@router.get("/two-sided")
+def get_two_sided_info(path: str):
+    """
+    Liefert Zweiblatt-Informationen (Recto/Verso) für ein Archivbild:
+    Erkennt automatisch, ob eine zusammengehörige Rückseite existiert, und liefert
+    Metadaten sowie Notizen.
+    """
+    from app.core.security import validate_safe_image_path
+    from app.services.recto_verso_service import recto_verso_service
+
+    safe_path = validate_safe_image_path(path)
+    info = recto_verso_service.get_two_sided_info(safe_path)
+    return info
+
+
+@router.post("/two-sided/notes")
+def save_two_sided_notes(req: TwoSidedNotesRequest):
+    """
+    Speichert oder aktualisiert Notizen / Transkriptionen der Rückseite
+    und verknüpft sie mit beiden Blattseiten.
+    """
+    from app.core.security import validate_safe_image_path
+    from app.services.recto_verso_service import recto_verso_service
+
+    safe_path = validate_safe_image_path(req.path)
+    success = recto_verso_service.save_verso_notes(safe_path, req.notes)
+    if not success:
+        raise HTTPException(status_code=500, detail="Konnte Rückseiten-Notizen nicht speichern.")
+
+    return {
+        "success": True,
+        "path": str(safe_path),
+        "notes": req.notes,
+    }

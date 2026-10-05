@@ -6,6 +6,8 @@ let activeCluster = null;
 let currentModalImageDetails = null;
 let osdViewer = null;
 let isDeepZoomActive = false;
+let isModalCardFlipped = false;
+let currentTwoSidedInfo = null;
 let systemConfig = {
   faceRecognitionEnabled: false,
   status: 'unknown',
@@ -1701,6 +1703,8 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   toggleCropMode(false);
   toggleSplitSlider(false);
   toggleDeepZoomMode(false);
+  toggleModalCardFlip(false);
+  currentTwoSidedInfo = null;
   resetModalZoom();
 
   // Cluster-Personen-Kontrollleiste im Modal steuern
@@ -1746,6 +1750,9 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
 
   // Duplikats- & Variantenprüfung im Hintergrund
   checkModalImageVariants(filePath);
+
+  // Zweiblatt-Prüfung (Recto/Verso) & 3D-Karten-Flip vorbereiten
+  loadTwoSidedModalInfo(filePath);
 
   modal.classList.remove('hidden');
 
@@ -2056,6 +2063,12 @@ function closeImageModal() {
   toggleWideEditMode(false);
   toggleMetadataEditMode(false);
   switchModalSidebarTab('meta');
+  toggleModalCardFlip(false);
+  currentTwoSidedInfo = null;
+  document.getElementById('modal-flip-btn')?.classList.add('hidden');
+  document.getElementById('modal-verso-panel')?.classList.add('hidden');
+  const versoImg = document.getElementById('modal-verso-img');
+  if (versoImg) versoImg.src = '';
   currentModalImageDetails = null;
 }
 
@@ -2065,6 +2078,143 @@ document.getElementById('image-modal')?.addEventListener('click', (e) => {
     closeImageModal();
   }
 });
+
+// ================= ZWEIBLATT-LOGIK & 3D-KARTEN-FLIP (RECTO / VERSO) =================
+
+async function loadTwoSidedModalInfo(filePath) {
+  const flipBtn = document.getElementById('modal-flip-btn');
+  const versoPanel = document.getElementById('modal-verso-panel');
+  const versoImg = document.getElementById('modal-verso-img');
+  const flipBtnLabel = document.getElementById('modal-flip-btn-label');
+  const notesInput = document.getElementById('modal-verso-notes-input');
+  const badge = document.getElementById('modal-verso-companion-badge');
+  const panelTitle = document.getElementById('modal-verso-panel-title');
+
+  if (flipBtn) flipBtn.classList.add('hidden');
+  if (versoPanel) versoPanel.classList.add('hidden');
+  if (versoImg) versoImg.src = '';
+  toggleModalCardFlip(false);
+
+  try {
+    const res = await fetch(`/api/archive/two-sided?path=${encodeURIComponent(filePath)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    currentTwoSidedInfo = data;
+
+    if (data.is_two_sided && data.companion_exists) {
+      if (flipBtn) {
+        flipBtn.classList.remove('hidden');
+        if (flipBtnLabel) {
+          flipBtnLabel.textContent = data.role === 'recto' ? 'Rückseite' : 'Vorderseite';
+        }
+      }
+      if (versoImg && data.companion_serve_url) {
+        versoImg.src = data.companion_serve_url;
+      }
+      if (versoPanel) {
+        versoPanel.classList.remove('hidden');
+        if (notesInput) {
+          notesInput.value = data.verso_notes || '';
+        }
+        if (badge) {
+          badge.textContent = data.companion_name || 'Verknüpft';
+          badge.title = data.companion_path || '';
+          badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 border border-amber-500/30 text-amber-300 truncate max-w-[150px]';
+        }
+        if (panelTitle) {
+          panelTitle.textContent = data.role === 'recto' ? 'Rückseite & Notizen (Verso)' : 'Vorderseite & Notizen (Recto)';
+        }
+      }
+    } else if (data.is_two_sided && !data.companion_exists) {
+      // Wenn Dateimuster erkannt wurde, aber Partnerdatei fehlt
+      if (versoPanel) {
+        versoPanel.classList.remove('hidden');
+        if (notesInput) notesInput.value = data.verso_notes || '';
+        if (badge) {
+          badge.textContent = `Erwartet: ${data.companion_name}`;
+          badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-rose-500/10 border border-rose-500/30 text-rose-300 truncate max-w-[150px]';
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Fehler beim Laden der Zweiblatt-Informationen:', err);
+  }
+}
+
+function toggleModalCardFlip(forceState = null) {
+  const cardCube = document.getElementById('modal-card-cube');
+  const flipBtnLabel = document.getElementById('modal-flip-btn-label');
+  const panelFlipText = document.getElementById('modal-verso-panel-flip-text');
+
+  if (forceState !== null) {
+    isModalCardFlipped = !!forceState;
+  } else {
+    isModalCardFlipped = !isModalCardFlipped;
+  }
+
+  if (cardCube) {
+    if (isModalCardFlipped) {
+      cardCube.classList.add('is-flipped');
+    } else {
+      cardCube.classList.remove('is-flipped');
+    }
+  }
+
+  if (flipBtnLabel) {
+    if (currentTwoSidedInfo && currentTwoSidedInfo.role === 'verso') {
+      flipBtnLabel.textContent = isModalCardFlipped ? 'Rückseite' : 'Vorderseite';
+    } else {
+      flipBtnLabel.textContent = isModalCardFlipped ? 'Vorderseite' : 'Rückseite';
+    }
+  }
+
+  if (panelFlipText) {
+    panelFlipText.textContent = isModalCardFlipped ? 'Zurückdrehen' : 'Karte umdrehen';
+  }
+}
+
+async function saveModalVersoNotes() {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) return;
+  const input = document.getElementById('modal-verso-notes-input');
+  if (!input) return;
+
+  const notes = input.value.trim();
+  const saveBtn = document.getElementById('modal-verso-notes-save-btn');
+  const origText = saveBtn ? saveBtn.innerHTML : '';
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span>⏳</span> <span>Speichern...</span>';
+  }
+
+  try {
+    const res = await fetch('/api/archive/two-sided/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: currentModalImageDetails.filePath,
+        notes: notes
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Fehler beim Speichern');
+    }
+
+    if (currentTwoSidedInfo) {
+      currentTwoSidedInfo.verso_notes = notes;
+    }
+    showToast('Rückseiten-Notiz gespeichert & für Suche indexiert!', false);
+  } catch (err) {
+    console.error('Fehler beim Speichern der Rückseiten-Notiz:', err);
+    showToast(`Fehler: ${err.message}`, true);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = origText;
+    }
+  }
+}
 
 // ================= IIIF IMAGE API 3.0 & OPEN SEADRAGON DEEP ZOOM =================
 
@@ -3536,6 +3686,15 @@ document.addEventListener('keydown', (e) => {
         rotateCurrentModalImage(90);
       }
       return;
+    }
+
+    // V oder U: Zweiblatt 3D-Karten-Flip (Recto / Verso)
+    if (e.key === 'v' || e.key === 'V' || e.key === 'u' || e.key === 'U') {
+      if (currentTwoSidedInfo && currentTwoSidedInfo.companion_exists) {
+        e.preventDefault();
+        toggleModalCardFlip();
+        return;
+      }
     }
 
     // I: Negativ invertieren
