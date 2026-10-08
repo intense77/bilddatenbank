@@ -67,9 +67,22 @@ cd /pfad/zum/Bildersuche
 
 ## 3. Eigene Bildbestände einlesen (Indexierung)
 
-Das Einlesen neuer oder bestehender Bildordner erfolgt über das CLI-Skript `indexer.py`.
+### Methode A: Komfortables Einlesen über das Web-Frontend (Empfohlen)
 
-### Grundbefehle
+Sie können Bildbestände direkt im Webbrowser einbinden, ohne die Konsole öffnen zu müssen:
+1. Wechseln Sie im Web-Frontend in den Reiter **„Archiv / Ordner“** bzw. **„Bestand einbinden“**.
+2. Nutzen Sie den interaktiven Ordner-Browser, um zu Ihrem Bildverzeichnis zu navigieren.
+3. Klicken Sie auf **„Ordner prüfen“**: Das System analysiert blitzschnell die Dateianzahl, zeigt Stichproben an und gleicht ab, wie viele Bilder bereits in der Datenbank existieren.
+4. Klicken Sie auf **„Ordner indexieren“**:
+   * Der Import wird als **vollständig isolierter Betriebssystem-Prozess** im Hintergrund gestartet (`app.workers.indexing_worker`).
+   * Der Webserver bleibt vollständig reaktionsschnell und kann normal weitergenutzt werden.
+   * Ein Live-Fortschrittsbalken zeigt den aktuellen Verarbeitungsstand in Echtzeit an.
+   * Sämtliche Ausgaben des Workers werden in `.cache/indexing_worker.log` protokolliert.
+   * **100 % Speichersicherheit:** Nach Abschluss des Jobs gibt der Subprozess den gesamten Speicher (C-Heap, ONNX, PyTorch) restlos an das Betriebssystem zurück.
+
+### Methode B: Einlesen über die Konsole (CLI `indexer.py`)
+
+Für automatisierte Skripte oder Cron-Jobs steht das CLI-Tool `indexer.py` bereit:
 
 ```bash
 # 1. Standard: Nur semantische Bild- & Metadatensuche (ressourcenschonend, DSGVO-konform)
@@ -82,14 +95,14 @@ Das Einlesen neuer oder bestehender Bildordner erfolgt über das CLI-Skript `ind
 .venv/bin/python indexer.py --source-dir /pfad/zu/den/archivbildern --sync
 ```
 
-### Parameter-Übersicht
+### Parameter-Übersicht (CLI)
 
 | Parameter | Beschreibung |
 | :--- | :--- |
 | `--source-dir /pfad` | **(Pflicht)** Pfad zum Ordner mit Bilddateien. Durchsucht automatisch alle Unterordner rekursiv. |
 | `--enable-faces` | Erzwingt die biometrische Gesichtserkennung (InsightFace/ArcFace) für diesen Lauf. |
 | `--skip-faces` | Deaktiviert die Gesichtserkennung explizit (spart ~1,5–2 GB Arbeitsspeicher). |
-| `--cluster-faces` | Führt nach dem Einlesen automatisch das DBSCAN-Clustering durch, um erkannte Personen zusammenzufassen. |
+| `--cluster-faces` | Führt nach dem Einlesen das DBSCAN-Clustering durch, um erkannte Personen zusammenzufassen. |
 | `--prune` | **Bereinigung (Art. 17 DSGVO)**: Löscht Vektoren aus Qdrant, deren Bilddateien im Quellordner nicht mehr existieren. |
 | `--sync` | **Vollständige Synchronisation**: Führt erst `--prune` aus und liest anschließend neue Bilder ein. |
 | `--batch-size 32` | Anzahl der Bilder pro Rechenschritt (Standard: 32). |
@@ -103,7 +116,11 @@ Das Einlesen neuer oder bestehender Bildordner erfolgt über das CLI-Skript `ind
 * `.tif`, `.tiff` (auch historische Drucke, Großformate und CMYK-Scans)
 
 > [!NOTE]
-> **Inkrementelle Speicherung & Idempotenz:** Das Skript erzeugt für jeden relativen Dateipfad eine feste UUIDv5. Wenn Sie später neue Bilder in denselben Ordner ablegen und den Befehl erneut starten, werden **nur neu hinzugekommene Bilder** berechnet. Bereits vorhandene Bilder werden übersprungen.
+> **Inkrementelle Speicherung & Idempotenz:** Das System erzeugt für jeden relativen Dateipfad eine feste UUIDv5. Wenn Sie später neue Bilder in denselben Ordner ablegen und den Import erneut starten, werden **nur neu hinzugekommene Bilder** berechnet. Bereits vorhandene Bilder werden übersprungen.
+
+> [!TIP]
+> **Automatisches vs. manuelles Clustering bei Großbeständen:**
+> Bei Archiven mit mehr als 5.000 Gesichtern wird das automatische Clustering nach dem Import sicherheitshalber übersprungen, um lange Wartezeiten nach dem Import zu vermeiden. Sie können das Personen-Clustering jederzeit gezielt im Reiter **Personen** per Klick auf **„Personen jetzt gruppieren“** starten. Dank optimierter GPU-Tensor-Cores und speicherschonendem Streaming dauert das Clustering von 200.000 Gesichtern nur ca. 15–20 Sekunden und benötigt weniger als 1,5 GB RAM.
 
 ---
 
@@ -247,21 +264,32 @@ Ja. Webbrowser wie Firefox oder Chrome können TIFF-Dateien gewöhnlich nicht di
 ### Werden GPU / CUDA unterstützt?
 Ja. Das System prüft beim Start via PyTorch, ob eine kompatible NVIDIA-Grafikkarte verfügbar ist. Ist keine GPU vorhanden oder reicht der Videospeicher nicht aus, schaltet das System automatisch auf optimierte CPU-Inferenz um.
 
+### Wie verhält sich das System bei extrem großen Archiven (> 50.000 Bilder, > 200.000 Gesichter)?
+Das System ist speziell für wissenschaftliche Großbestände gehärtet und verfügt über einen mehrstufigen OOM- und Speicherschutz:
+* **Prozess-Isolation:** Der Import läuft als eigenständiger Hintergrund-Subprozess. Nach Abschluss gibt der Linux-Kernel den gesamten C-Heap (ONNX, PyTorch, PIL) frei; der Webserver bleibt dauerhaft schlank bei ~180 MB RAM.
+* **Periodischer Memory-Flush:** Alle 50 Bilder werden ungenutzte Bildpuffer und CUDA-Speicherbereiche zwangsweise geleert (`gc.collect()`, `empty_cache()`).
+* **Chunked-Clustering:** Das Personen-Clustering berechnet Distanzmatrizen blockweise in PyTorch FP16 und gruppiert Gesichter via Union-Find. Dadurch sinkt der Speicherbedarf von ehemals über 50 GB auf unter 1,5 GB RAM bei blitzschneller Ausführung.
+* **Docker-Container-Absicherung:** Der Qdrant-Container ist fest auf 16 GB RAM limitiert.
+
 ---
 
 ## 7. Wartung, Datensicherung & Fehlerbehebung
 
 ### Wo liegen die Daten?
-* **Die Vektoren und Metadaten:** Liegen im Ordner `./qdrant_storage` im Projektverzeichnis.
-* **Der Thumbnail-Cache:** Liegt im Ordner `.cache/thumbnails/` und kann bei Bedarf jederzeit gefahrlos gelöscht werden.
-* **Ihre Originalbilder:** Verbleiben immer an ihrem ursprünglichen Speicherort (z. B. im Archiv-Verzeichnis). Das System speichert in Qdrant lediglich relative/absolute Pfade und Merkmalsvektoren.
+* **Die Vektordatenbank:** Liegt im Ordner `./qdrant_storage` (Embeddings von Bildern und Gesichtern).
+* **Die Metadaten- & Personendatenbank:** Liegt in `data/archive_metadata.db` (SQLite im WAL-Modus: Klarnamen, Notizen, Recto/Verso-Verknüpfungen und System-Zustände).
+* **Der Thumbnail- & Kachel-Cache:** Liegt im Ordner `.cache/thumbnails/` bzw. `.cache/iiif_tiles/` und kann bei Bedarf jederzeit gefahrlos gelöscht werden (wird automatisch neu generiert).
+* **Ihre Originalbilder:** Verbleiben immer an ihrem ursprünglichen Speicherort (z. B. auf dem Archiv-Server oder NAS). Das System speichert lediglich Pfade und Merkmale.
 
 ### Backup erstellen
-Um alle indizierten Merkmale, erkannten Gesichter und vergebenen Personennamen zu sichern:
+Um alle indizierten Merkmale, erkannten Gesichter, Klarnamen und Metadaten-Ergänzungen vollständig zu sichern:
 1. Qdrant stoppen: `docker compose stop`
-2. Den Ordner kopieren:
+2. Die Datenbank-Verzeichnisse sichern:
    ```bash
+   # Vektordatenbank (Embeddings)
    cp -r ./qdrant_storage /pfad/zum/backup/
+   # SQLite-Metadaten & Personenzuweisungen
+   cp data/archive_metadata.db /pfad/zum/backup/
    ```
 3. Qdrant wieder starten: `docker compose start`
 

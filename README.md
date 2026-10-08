@@ -29,11 +29,13 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
   * Verlustfreie 90°-Drehung historischer JPEGs (JPEG DCT ohne Neukompression).
 * **Hardware-Profiling & System-Tuning:**
   * Automatische Erkennung der System-Hardware (CPU-Kerne, RAM, GPU/VRAM) und dynamische Anpassung von Worker-Threads und Batch-Größen.
-* **Personen-Kuratierung & Hybride Freitextsuche:**
-  * Automatisches DBSCAN-Personen-Clustering mit Klarnamenzuweisung (*„Bischof Ulrich“*).
-  * Integrierte Kuratierungs-Werkzeuge: **Cluster-Merge** zum Zusammenführen getrennter Bestände und **Cluster-Split / Ausschluss** (*„Nicht diese Person“*) zum Entfernen falsch zugeordneter Porträts.
-  * Hybride Relevanz-Verschmelzung: Benannte Personen werden in der normalen Freitextsuche automatisch erkannt und mit 100 % Relevanz und Personen-Badge ganz oben platziert.
   * Vollautomatische EXIF-Orientierungs-Entzerrung (`PIL.ImageOps.exif_transpose`) und normalisierte Prozent-Bounding-Boxes für fehlerfreies Rendering in allen Browsern.
+* **OOM-Schutz, Speichersicherheit & Prozess-Isolation für Massen-Imports:**
+  * **Isolierter Hintergrund-Worker (`app.workers.indexing_worker`):** Batch-Imports laufen in einem eigenständigen OS-Subprozess. Nach Abschluss gibt das Betriebssystem 100 % des C-Heaps (PyTorch, ONNX, PIL) frei; der Webserver bleibt dauerhaft schlank bei ~180 MB RAM.
+  * **Periodischer Memory-Flush:** Automatisches `gc.collect()` und `torch.cuda.empty_cache()` alle 50 Bilder im Import-Loop sowie sofortiges Schließen von PIL- und Byte-Puffern verhindern Heapfragmentierung bei tagelangen Dauerläufen (> 70.000 Bilder).
+  * **Skalierbares Chunked-Clustering (> 200.000 Gesichter):** Streaming ohne Metadaten-Payload (445 MB statt 4 GB) und PyTorch FP16 Tensor-Cores / CPU Cosine-DBSCAN + Union-Find. Reduziert den Speicherbedarf von 50+ GB auf unter 1,5 GB RAM bei 15–20 Sekunden Laufzeit.
+  * **Schwellenwert-geschütztes Auto-Clustering (`AUTO_CLUSTER_MAX_FACES = 5000`):** Verhindert unkontrollierte automatische Clustering-Jobs im Anschluss an Mammut-Imports und ermöglicht gezieltes Ausführen im Personen-Tab.
+  * **Container-Limits:** Qdrant per Docker auf 16 GB RAM / 24 GB Swap limitiert zur Vermeidung von Speicherengpässen.
 * **Ressourcen- & Speicheroptimierung:**
   * Automatischer Thumbnail- und Bildausschnitt-Cache (`.cache/thumbnails/`) mit MD5-Invalidierung zur schnellen Anzeige historischer Großformate und TIFF-Dateien.
   * Optimierte Vektorsuche und speicherschonendes Clustering.
@@ -49,7 +51,8 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
 ## 🏗️ Architektur & Komponenten
 
 * **Backend:** FastAPI (Python 3.11, asynchron)
-* **Vektordatenbank:** Qdrant (lokale Docker-Instanz, Port 6333) mit persistentem Volume (`./qdrant_storage`)
+* **Hintergrund-Worker:** Entkoppelter Betriebssystem-Subprozess (`app.workers.indexing_worker`) mit atomarer SQLite-Zustandssynchronisation (`system_state`)
+* **Vektordatenbank:** Qdrant (lokale Docker-Instanz, Port 6333) mit persistentem Volume (`./qdrant_storage`) und 16-GB-Hardlimit
 * **Metadaten- & Zweiblatt-Datenbank:** SQLite (`data/archive_metadata.db` im WAL-Modus)
 * **IIIF Image Service:** IIIF Image API 3.0 konformer Dienst mit OpenSeadragon Deep Zoom
 * **Modelle & Merkmalsextraktion:**
@@ -65,7 +68,7 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
 
 ```text
 .
-├── docker-compose.yml       # Lokale Qdrant-Vektordatenbank mit persistentem Speicher
+├── docker-compose.yml       # Lokale Qdrant-Vektordatenbank mit persistentem Speicher & 16 GB Limit
 ├── start_qdrant.sh          # Hilfsskript zum Starten des Qdrant-Containers
 ├── requirements.txt         # Python-Abhängigkeiten
 ├── .env.example             # Konfigurationsvorlage (DSGVO-Schalter, Pfade, Ports)
@@ -78,17 +81,19 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
 │   │   ├── config.py        # Pydantic-Settings & Umgebungsvariablen
 │   │   ├── security.py      # Pfadvalidierung (Sandbox gegen Path Traversal)
 │   │   └── system_profiler.py # Automatische Hardware-Erkennung & Performance-Tuning
+│   ├── workers/
+│   │   └── indexing_worker.py # Isolierter OS-Worker für ressourcenschonende Batch-Imports
 │   ├── services/
 │   │   ├── qdrant_service.py   # Qdrant Client, Collections & Art. 17 Pruning
-│   │   ├── metadata_db.py      # SQLite Archiv-Metadatenbank (WAL-Modus)
+│   │   ├── metadata_db.py      # SQLite Archiv-Metadatenbank (WAL-Modus) & Job-State
 │   │   ├── recto_verso_service.py # Zweiblatt-Logik (Recto/Verso) & Paar-Erkennung
 │   │   ├── iiif_service.py     # IIIF Image API 3.0 & Pyramidales Kacheln
 │   │   ├── thesaurus_service.py # Kirchlicher Fachthesaurus & Iconclass
 │   │   ├── clip_service.py     # OpenCLIP Text- & Bild-Embeddings
 │   │   ├── face_service.py     # InsightFace Gesichtserkennung & ArcFace
-│   │   ├── clustering_service.py # DBSCAN-Personengruppierung & Namensvergabe
+│   │   ├── clustering_service.py # Skalierbares Chunked Cosine-DBSCAN (< 1,5 GB RAM)
 │   │   ├── metadata_service.py # EXIF-, IPTC-, XMP- & Sidecar-Extraktion
-│   │   ├── indexing_service.py # Idempotente Indexierung via UUIDv5
+│   │   ├── indexing_service.py # Idempotente Indexierung via UUIDv5 & Progress-Sync
 │   │   └── thumbnail_service.py# Performanter Thumbnail-Cache für TIFF/JPEG
 │   └── api/
 │       ├── deps.py          # Dependency Injection & Lazy Service Loading
@@ -96,7 +101,7 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
 │       ├── thesaurus.py     # Thesaurus- und Schlagwort-Routen
 │       ├── network.py       # Beziehungs- und Netzwerkgraphen
 │       └── routes/
-│           ├── archive.py   # Ordner-Scan, Inkrementelle Indexierung, Zweiblatt-API
+│           ├── archive.py   # Ordner-Scan, Inkrementelle Indexierung, Zweiblatt-API, Live-Progress
 │           ├── iiif.py      # IIIF Image API 3.0 Endpunkte & Kachelauslieferung
 │           └── system.py    # Health-Check, DB-Info, System-Profil & Pruning
 └── static/

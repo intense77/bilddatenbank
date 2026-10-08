@@ -246,8 +246,19 @@
 </ul>
 <hr />
 <h2 id="3-eigene-bildbestande-einlesen-indexierung">3. Eigene Bildbestände einlesen (Indexierung)</h2>
-<p>Das Einlesen neuer oder bestehender Bildordner erfolgt über das CLI-Skript <code>indexer.py</code>.</p>
-<h3 id="grundbefehle">Grundbefehle</h3>
+<h3 id="methode-a-komfortables-einlesen-uber-das-web-frontend-empfohlen">Methode A: Komfortables Einlesen über das Web-Frontend (Empfohlen)</h3>
+<p>Sie können Bildbestände direkt im Webbrowser einbinden, ohne die Konsole öffnen zu müssen:<br />
+1. Wechseln Sie im Web-Frontend in den Reiter <strong>„Archiv / Ordner“</strong> bzw. <strong>„Bestand einbinden“</strong>.<br />
+2. Nutzen Sie den interaktiven Ordner-Browser, um zu Ihrem Bildverzeichnis zu navigieren.<br />
+3. Klicken Sie auf <strong>„Ordner prüfen“</strong>: Das System analysiert blitzschnell die Dateianzahl, zeigt Stichproben an und gleicht ab, wie viele Bilder bereits in der Datenbank existieren.<br />
+4. Klicken Sie auf <strong>„Ordner indexieren“</strong>:<br />
+   * Der Import wird als <strong>vollständig isolierter Betriebssystem-Prozess</strong> im Hintergrund gestartet (<code>app.workers.indexing_worker</code>).<br />
+   * Der Webserver bleibt vollständig reaktionsschnell und kann normal weitergenutzt werden.<br />
+   * Ein Live-Fortschrittsbalken zeigt den aktuellen Verarbeitungsstand in Echtzeit an.<br />
+   * Sämtliche Ausgaben des Workers werden in <code>.cache/indexing_worker.log</code> protokolliert.<br />
+   * <strong>100 % Speichersicherheit:</strong> Nach Abschluss des Jobs gibt der Subprozess den gesamten Speicher (C-Heap, ONNX, PyTorch) restlos an das Betriebssystem zurück.</p>
+<h3 id="methode-b-einlesen-uber-die-konsole-cli-indexerpy">Methode B: Einlesen über die Konsole (CLI <code>indexer.py</code>)</h3>
+<p>Für automatisierte Skripte oder Cron-Jobs steht das CLI-Tool <code>indexer.py</code> bereit:</p>
 <pre><code class="language-bash"># 1. Standard: Nur semantische Bild- &amp; Metadatensuche (ressourcenschonend, DSGVO-konform)
 .venv/bin/python indexer.py --source-dir /pfad/zu/den/archivbildern
 
@@ -257,7 +268,7 @@
 # 3. Synchronisation: Gelöschte Dateien aus dem Index entfernen und neue aufnehmen
 .venv/bin/python indexer.py --source-dir /pfad/zu/den/archivbildern --sync
 </code></pre>
-<h3 id="parameter-ubersicht">Parameter-Übersicht</h3>
+<h3 id="parameter-ubersicht-cli">Parameter-Übersicht (CLI)</h3>
 <table>
 <thead>
 <tr>
@@ -280,7 +291,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>--cluster-faces</code></td>
-<td style="text-align: left;">Führt nach dem Einlesen automatisch das DBSCAN-Clustering durch, um erkannte Personen zusammenzufassen.</td>
+<td style="text-align: left;">Führt nach dem Einlesen das DBSCAN-Clustering durch, um erkannte Personen zusammenzufassen.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--prune</code></td>
@@ -313,7 +324,9 @@
 </ul>
 <blockquote>
 <p>[!NOTE]<br />
-<strong>Inkrementelle Speicherung &amp; Idempotenz:</strong> Das Skript erzeugt für jeden relativen Dateipfad eine feste UUIDv5. Wenn Sie später neue Bilder in denselben Ordner ablegen und den Befehl erneut starten, werden <strong>nur neu hinzugekommene Bilder</strong> berechnet. Bereits vorhandene Bilder werden übersprungen.</p>
+<strong>Inkrementelle Speicherung &amp; Idempotenz:</strong> Das System erzeugt für jeden relativen Dateipfad eine feste UUIDv5. Wenn Sie später neue Bilder in denselben Ordner ablegen und den Import erneut starten, werden <strong>nur neu hinzugekommene Bilder</strong> berechnet. Bereits vorhandene Bilder werden übersprungen.</p>
+<p><strong>Tipp:</strong> &gt; <strong>Automatisches vs. manuelles Clustering bei Großbeständen:</strong><br />
+Bei Archiven mit mehr als 5.000 Gesichtern wird das automatische Clustering nach dem Import sicherheitshalber übersprungen, um lange Wartezeiten nach dem Import zu vermeiden. Sie können das Personen-Clustering jederzeit gezielt im Reiter <strong>Personen</strong> per Klick auf <strong>„Personen jetzt gruppieren“</strong> starten. Dank optimierter GPU-Tensor-Cores und speicherschonendem Streaming dauert das Clustering von 200.000 Gesichtern nur ca. 15–20 Sekunden und benötigt weniger als 1,5 GB RAM.</p>
 </blockquote>
 <hr />
 <h2 id="4-archivische-metadaten-json-sidecars">4. Archivische Metadaten &amp; JSON-Sidecars</h2>
@@ -487,20 +500,30 @@
 <p>Ja. Webbrowser wie Firefox oder Chrome können TIFF-Dateien gewöhnlich nicht direkt anzeigen. Das Backend wandelt TIFF- und CMYK-Bilder für das Web-Frontend <strong>automatisch und verlustfrei über einen Thumbnail-Cache nach JPEG um</strong>. Ihre Originaldateien auf der Festplatte bleiben unverändert.</p>
 <h3 id="werden-gpu-cuda-unterstutzt">Werden GPU / CUDA unterstützt?</h3>
 <p>Ja. Das System prüft beim Start via PyTorch, ob eine kompatible NVIDIA-Grafikkarte verfügbar ist. Ist keine GPU vorhanden oder reicht der Videospeicher nicht aus, schaltet das System automatisch auf optimierte CPU-Inferenz um.</p>
+<h3 id="wie-verhalt-sich-das-system-bei-extrem-groen-archiven-50000-bilder-200000-gesichter">Wie verhält sich das System bei extrem großen Archiven (&gt; 50.000 Bilder, &gt; 200.000 Gesichter)?</h3>
+<p>Das System ist speziell für wissenschaftliche Großbestände gehärtet und verfügt über einen mehrstufigen OOM- und Speicherschutz:<br />
+* <strong>Prozess-Isolation:</strong> Der Import läuft als eigenständiger Hintergrund-Subprozess. Nach Abschluss gibt der Linux-Kernel den gesamten C-Heap (ONNX, PyTorch, PIL) frei; der Webserver bleibt dauerhaft schlank bei ~180 MB RAM.<br />
+* <strong>Periodischer Memory-Flush:</strong> Alle 50 Bilder werden ungenutzte Bildpuffer und CUDA-Speicherbereiche zwangsweise geleert (<code>gc.collect()</code>, <code>empty_cache()</code>).<br />
+* <strong>Chunked-Clustering:</strong> Das Personen-Clustering berechnet Distanzmatrizen blockweise in PyTorch FP16 und gruppiert Gesichter via Union-Find. Dadurch sinkt der Speicherbedarf von ehemals über 50 GB auf unter 1,5 GB RAM bei blitzschneller Ausführung.<br />
+* <strong>Docker-Container-Absicherung:</strong> Der Qdrant-Container ist fest auf 16 GB RAM limitiert.</p>
 <hr />
 <h2 id="7-wartung-datensicherung-fehlerbehebung">7. Wartung, Datensicherung &amp; Fehlerbehebung</h2>
 <h3 id="wo-liegen-die-daten">Wo liegen die Daten?</h3>
 <ul>
-<li><strong>Die Vektoren und Metadaten:</strong> Liegen im Ordner <code>./qdrant_storage</code> im Projektverzeichnis.</li>
-<li><strong>Der Thumbnail-Cache:</strong> Liegt im Ordner <code>.cache/thumbnails/</code> und kann bei Bedarf jederzeit gefahrlos gelöscht werden.</li>
-<li><strong>Ihre Originalbilder:</strong> Verbleiben immer an ihrem ursprünglichen Speicherort (z. B. im Archiv-Verzeichnis). Das System speichert in Qdrant lediglich relative/absolute Pfade und Merkmalsvektoren.</li>
+<li><strong>Die Vektordatenbank:</strong> Liegt im Ordner <code>./qdrant_storage</code> (Embeddings von Bildern und Gesichtern).</li>
+<li><strong>Die Metadaten- &amp; Personendatenbank:</strong> Liegt in <code>data/archive_metadata.db</code> (SQLite im WAL-Modus: Klarnamen, Notizen, Recto/Verso-Verknüpfungen und System-Zustände).</li>
+<li><strong>Der Thumbnail- &amp; Kachel-Cache:</strong> Liegt im Ordner <code>.cache/thumbnails/</code> bzw. <code>.cache/iiif_tiles/</code> und kann bei Bedarf jederzeit gefahrlos gelöscht werden (wird automatisch neu generiert).</li>
+<li><strong>Ihre Originalbilder:</strong> Verbleiben immer an ihrem ursprünglichen Speicherort (z. B. auf dem Archiv-Server oder NAS). Das System speichert lediglich Pfade und Merkmale.</li>
 </ul>
 <h3 id="backup-erstellen">Backup erstellen</h3>
-<p>Um alle indizierten Merkmale, erkannten Gesichter und vergebenen Personennamen zu sichern:<br />
+<p>Um alle indizierten Merkmale, erkannten Gesichter, Klarnamen und Metadaten-Ergänzungen vollständig zu sichern:<br />
 1. Qdrant stoppen: <code>docker compose stop</code><br />
-2. Den Ordner kopieren:<br />
+2. Die Datenbank-Verzeichnisse sichern:<br />
 <code>bash
-   cp -r ./qdrant_storage /pfad/zum/backup/</code><br />
+   # Vektordatenbank (Embeddings)
+   cp -r ./qdrant_storage /pfad/zum/backup/
+   # SQLite-Metadaten &amp; Personenzuweisungen
+   cp data/archive_metadata.db /pfad/zum/backup/</code><br />
 3. Qdrant wieder starten: <code>docker compose start</code></p>
 <h3 id="fehlerbehebung">Fehlerbehebung</h3>
 <h4 id="verbindung-zum-server-unter-localhost8000-fehlgeschlagen">„Verbindung zum Server unter localhost:8000 fehlgeschlagen“</h4>

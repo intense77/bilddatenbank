@@ -725,6 +725,49 @@
 </ul>
 </li>
 </ul>
+<hr />
+<h2 id="27-oom-schutz-speichersicherheit-prozess-robustheit-fur-langzeit-imports-massen-clustering">27. OOM-Schutz, Speichersicherheit &amp; Prozess-Robustheit für Langzeit-Imports &amp; Massen-Clustering</h2>
+<ul>
+<li><strong>Ziel:</strong> 100 % Stabilität bei tagelangen Dauer-Imports (&gt; 70.000 Bilder, &gt; 200.000 Gesichter) ohne Speicherlecks, Heap-Aufblähung oder OOM-Killer-Abstürze durch den Linux-Kernel.</li>
+<li><strong>Problemstellung &amp; Analyse:</strong></li>
+<li>Nach 19 Stunden Dauer-Import erreichte der Uvicorn/FastAPI-Prozess über 53 GB RAM (RSS) und 97 GB virtuellen Speicher, bis der Linux-Kernel den Prozess mit SIGKILL beendete.</li>
+<li>Ursachen:<ol>
+<li>Akkumulation von Speicherarenen in ONNX Runtime (InsightFace) und PyTorch CUDA Caching über zehntausende unterschiedliche Bildauflösungen ohne periodisches <code>gc.collect()</code> / <code>empty_cache()</code>.</li>
+<li>Nicht-geschlossene PIL-Bildobjekte und In-Memory-Byte-Puffer führen zu massiver glibc-Heapfragmentierung.</li>
+<li>Automatisches DBSCAN-Clustering von über 200.000 Gesichtern im selben Atemzug: Scikit-learns <code>BallTree</code> mit 8 Worker-Threads in 512 Dimensionen erzeugt eine Speicher-Explosion bei der Nachbarschaftsberechnung.</li>
+<li>Fehlende Prozess-Isolation: Der Import läuft im selben Python-Prozess wie der Webserver.</li>
+<li>Workstation-Konfiguration: Nur 8 GB Swap auf einer 61-GB-RAM-Maschine lässt keinen Puffer für kurze Spitzen.</li>
+</ol>
+</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[x] <strong>1. Speicherbereinigung &amp; Leak-Prävention im Import-Loop (<code>indexing_service.py</code>):</strong><ul>
+<li>Periodischer Flush alle 50–100 Bilder: Explizites <code>gc.collect()</code> und <code>torch.cuda.empty_cache()</code> (falls CUDA aktiv).</li>
+<li>Sofortiges Schließen und Freigeben von PIL-Image-Objekten (<code>pil_img.close()</code>, <code>raw_transposed.close()</code>, <code>del prepared_data</code>) nach der Merkmalsextraktion.</li>
+<li>Begrenzung von Puffer- und Queue-Objekten, um Speicher-Aufstauungen zu unterbinden.</li>
+</ul>
+</li>
+<li>[x] <strong>2. Entkopplung des automatischen Massen-Clusterings (<code>archive.py</code>):</strong><ul>
+<li>Kein unkontrolliertes automatisches Voll-Clustering von hunderttausenden Gesichtern direkt am Ende eines 19-stündigen Massen-Imports im Webserver-Thread.</li>
+<li>Konfigurierbares Schwellenwert-Verhalten: Bei Großbeständen (&gt; 5.000 Gesichter) wird der Import sauber beendet und das Clustering als separater, kontrollierter Schritt angeboten.</li>
+</ul>
+</li>
+<li>[x] <strong>3. Skalierbares &amp; speicherschonendes Clustering für Großbestände (&gt; 200.000 Gesichter in <code>clustering_service.py</code>):</strong><ul>
+<li>Streaming- und Chunk-basiertes Laden aus Qdrant ohne 217.000 Python-Objekte gleichzeitig im Heap zu halten.</li>
+<li>Beseitigung der Ball-Tree-Speicherfalle in 512 Dimensionen (Dimensionsreduktion/PCA oder Chunked/Cosine-Nachbarschaftssuche mit strengem Speicherlimit).</li>
+<li>Payload-Updates in Qdrant in großen Chunks (z. B. 500 Punkte) zur Minimierung von Lock- und Netzwerk-Overhead.</li>
+</ul>
+</li>
+<li>[x] <strong>4. Prozess-Isolation für Batch-Imports:</strong><ul>
+<li>Auslagerung rechenintensiver Massen-Imports in einen separaten Hintergrund-Subprozess (<code>multiprocessing.Process</code> / isolierter Worker-Task).</li>
+<li>Nach Abschluss des Jobs gibt das Betriebssystem 100 % des C-Heaps (PyTorch, ONNX, PIL) an den Kernel zurück; der Webserver bleibt dauerhaft schlank bei ~200 MB RAM.</li>
+</ul>
+</li>
+<li>[x] <strong>5. System- &amp; Container-Absicherung (Workstation &amp; Docker):</strong><ul>
+<li>Definition von Speicherobergrenzen (<code>mem_limit: 16g</code>, <code>mem_reservation: 4g</code>) in <code>docker-compose.yml</code> und Live-Aktivierung auf <code>archive_qdrant</code> via <code>docker update</code>. Verhindert unkontrollierte Speicherkonflikte zwischen Qdrant und Host.</li>
+<li>Bereitstellung der Befehle zur NVMe-Swap-Erweiterung auf 40 GB (32 GB Zusatz-Swap auf <code>/dev/nvme0n1p2</code>), um dem Linux-Kernel bei massiven Spitzenlasten elastischen Puffer vor dem OOM-Killer zu geben.</li>
+</ul>
+</li>
+</ul>
     </article>
     <footer>
       <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>
