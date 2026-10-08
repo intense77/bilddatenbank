@@ -98,19 +98,31 @@ class ClipService:
         Nutzt Vorab-Downsampling (> 1600 px) und FP16 Mixed Precision (CUDA) für maximale Performanz.
         """
         img = load_image_rgb(image_path)
-        # Vorab-Downsampling: Extrem hochauflösende Scans im Speicher verkleinern
-        if max(img.width, img.height) > 1600:
-            img.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+        try:
+            # Vorab-Downsampling: Extrem hochauflösende Scans im Speicher verkleinern
+            if max(img.width, img.height) > 1600:
+                img.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
 
-        tensor = self.preprocess(img).unsqueeze(0).to(self.device)
-        if self.device == "cuda":
-            with torch.cuda.amp.autocast(dtype=torch.float16):
-                image_features = self.model.encode_image(tensor)
-        else:
-            image_features = self.model.encode_image(tensor)
+            tensor = self.preprocess(img).unsqueeze(0).to(self.device)
+            try:
+                if self.device == "cuda":
+                    with torch.cuda.amp.autocast(dtype=torch.float16):
+                        image_features = self.model.encode_image(tensor)
+                else:
+                    image_features = self.model.encode_image(tensor)
 
-        image_features /= image_features.norm(dim=-1, keepdim=True)
-        return image_features.squeeze(0).cpu().float().numpy().tolist()
+                image_features /= image_features.norm(dim=-1, keepdim=True)
+                result = image_features.squeeze(0).cpu().float().numpy().tolist()
+                del image_features
+                return result
+            finally:
+                del tensor
+        finally:
+            if not isinstance(image_path, Image.Image):
+                try:
+                    img.close()
+                except Exception:
+                    pass
 
     @torch.no_grad()
     def embed_text(self, query: str) -> List[float]:

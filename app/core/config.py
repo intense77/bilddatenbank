@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     INSIGHTFACE_MODEL_NAME: str = "buffalo_l"
     INSIGHTFACE_DET_SIZE: int = 640
 
+    # Automatisches Clustering Schwellenwert (Schutz vor OOM bei Großbeständen)
+    AUTO_CLUSTER_MAX_FACES: int = Field(
+        default=5000,
+        description="Maximale Gesichtsanzahl in der Datenbank, bis zu der nach einem Import automatisch geclustert wird. Größere Bestände erfordern manuellen Start im Personen-Tab."
+    )
+
     # Datenverzeichnis für historische Bilder
     ARCHIVE_DATA_DIR: str = "./data"
     ALLOWED_IMAGE_DIRS: list[str] = ["./data", "."]

@@ -399,6 +399,38 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   - [x] **Relationale Datenbank & Metadaten (SQLite):**
     * *Aktivierung des WAL-Modus (Write-Ahead Logging):* Konfiguration von `PRAGMA journal_mode = WAL;`, `PRAGMA synchronous = NORMAL;` und 64 MB RAM-Cache (`PRAGMA cache_size = -64000;`). Stellt sicher, dass Lese- und Schreibzugriffe vollständig entkoppelt sind und sich niemals gegenseitig blockieren.
 
+---
+
+## 27. OOM-Schutz, Speichersicherheit & Prozess-Robustheit für Langzeit-Imports & Massen-Clustering
+* **Ziel:** 100 % Stabilität bei tagelangen Dauer-Imports (> 70.000 Bilder, > 200.000 Gesichter) ohne Speicherlecks, Heap-Aufblähung oder OOM-Killer-Abstürze durch den Linux-Kernel.
+* **Problemstellung & Analyse:**
+  * Nach 19 Stunden Dauer-Import erreichte der Uvicorn/FastAPI-Prozess über 53 GB RAM (RSS) und 97 GB virtuellen Speicher, bis der Linux-Kernel den Prozess mit SIGKILL beendete.
+  * Ursachen:
+    1. Akkumulation von Speicherarenen in ONNX Runtime (InsightFace) und PyTorch CUDA Caching über zehntausende unterschiedliche Bildauflösungen ohne periodisches `gc.collect()` / `empty_cache()`.
+    2. Nicht-geschlossene PIL-Bildobjekte und In-Memory-Byte-Puffer führen zu massiver glibc-Heapfragmentierung.
+    3. Automatisches DBSCAN-Clustering von über 200.000 Gesichtern im selben Atemzug: Scikit-learns `BallTree` mit 8 Worker-Threads in 512 Dimensionen erzeugt eine Speicher-Explosion bei der Nachbarschaftsberechnung.
+    4. Fehlende Prozess-Isolation: Der Import läuft im selben Python-Prozess wie der Webserver.
+    5. Workstation-Konfiguration: Nur 8 GB Swap auf einer 61-GB-RAM-Maschine lässt keinen Puffer für kurze Spitzen.
+* **Aufgaben:**
+  - [x] **1. Speicherbereinigung & Leak-Prävention im Import-Loop (`indexing_service.py`):**
+    * Periodischer Flush alle 50–100 Bilder: Explizites `gc.collect()` und `torch.cuda.empty_cache()` (falls CUDA aktiv).
+    * Sofortiges Schließen und Freigeben von PIL-Image-Objekten (`pil_img.close()`, `raw_transposed.close()`, `del prepared_data`) nach der Merkmalsextraktion.
+    * Begrenzung von Puffer- und Queue-Objekten, um Speicher-Aufstauungen zu unterbinden.
+  - [x] **2. Entkopplung des automatischen Massen-Clusterings (`archive.py`):**
+    * Kein unkontrolliertes automatisches Voll-Clustering von hunderttausenden Gesichtern direkt am Ende eines 19-stündigen Massen-Imports im Webserver-Thread.
+    * Konfigurierbares Schwellenwert-Verhalten: Bei Großbeständen (> 5.000 Gesichter) wird der Import sauber beendet und das Clustering als separater, kontrollierter Schritt angeboten.
+  - [x] **3. Skalierbares & speicherschonendes Clustering für Großbestände (> 200.000 Gesichter in `clustering_service.py`):**
+    * Streaming- und Chunk-basiertes Laden aus Qdrant ohne 217.000 Python-Objekte gleichzeitig im Heap zu halten.
+    * Beseitigung der Ball-Tree-Speicherfalle in 512 Dimensionen (Dimensionsreduktion/PCA oder Chunked/Cosine-Nachbarschaftssuche mit strengem Speicherlimit).
+    * Payload-Updates in Qdrant in großen Chunks (z. B. 500 Punkte) zur Minimierung von Lock- und Netzwerk-Overhead.
+  - [x] **4. Prozess-Isolation für Batch-Imports:**
+    * Auslagerung rechenintensiver Massen-Imports in einen separaten Hintergrund-Subprozess (`multiprocessing.Process` / isolierter Worker-Task).
+    * Nach Abschluss des Jobs gibt das Betriebssystem 100 % des C-Heaps (PyTorch, ONNX, PIL) an den Kernel zurück; der Webserver bleibt dauerhaft schlank bei ~200 MB RAM.
+  - [x] **5. System- & Container-Absicherung (Workstation & Docker):**
+    * Definition von Speicherobergrenzen (`mem_limit: 16g`, `mem_reservation: 4g`) in `docker-compose.yml` und Live-Aktivierung auf `archive_qdrant` via `docker update`. Verhindert unkontrollierte Speicherkonflikte zwischen Qdrant und Host.
+    * Bereitstellung der Befehle zur NVMe-Swap-Erweiterung auf 40 GB (32 GB Zusatz-Swap auf `/dev/nvme0n1p2`), um dem Linux-Kernel bei massiven Spitzenlasten elastischen Puffer vor dem OOM-Killer zu geben.
+
+
 
 
 

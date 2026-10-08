@@ -140,6 +140,20 @@ class FaceService:
         except Exception as e:
             logger.error("Fehler bei der Gesichtserkennung für '%s': %s", image_path, e, exc_info=True)
             return []
+        finally:
+            del rgb_array
+            del bgr_array
+            if infer_img is not img:
+                try:
+                    infer_img.close()
+                except Exception:
+                    pass
+            # Falls image_path ein Pfad/String war, wurde img in load_image_rgb neu geöffnet
+            if not isinstance(image_path, Image.Image):
+                try:
+                    img.close()
+                except Exception:
+                    pass
 
         results = []
         for face in faces:

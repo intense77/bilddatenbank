@@ -12,3 +12,5 @@ services:
       - ./qdrant_storage:/qdrant/storage
     environment:
       - QDRANT__SERVICE__ENABLE_STATIC_CONTENT=1
+    mem_limit: 16g
+    mem_reservation: 4g

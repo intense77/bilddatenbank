@@ -174,11 +174,17 @@ class ThumbnailService:
             webp_file = self.cache_dir / f"thumb_{cache_key}_{max_dim}.webp"
             if not webp_file.is_file():
                 thumb_copy = pil_img.copy()
-                if thumb_copy.width > max_dim or thumb_copy.height > max_dim:
-                    thumb_copy.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
-                buf = io.BytesIO()
-                thumb_copy.save(buf, format="WEBP", quality=80, method=4)
-                webp_file.write_bytes(buf.getvalue())
+                try:
+                    if thumb_copy.width > max_dim or thumb_copy.height > max_dim:
+                        thumb_copy.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                    buf = io.BytesIO()
+                    try:
+                        thumb_copy.save(buf, format="WEBP", quality=80, method=4)
+                        webp_file.write_bytes(buf.getvalue())
+                    finally:
+                        buf.close()
+                finally:
+                    thumb_copy.close()
 
             # 2. WebP Gesichts-Crops
             if face_bboxes:
@@ -205,10 +211,16 @@ class ThumbnailService:
                         continue
 
                     face_crop = pil_img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
-                    face_crop.thumbnail((target_size, target_size), Image.Resampling.LANCZOS)
-                    cbuf = io.BytesIO()
-                    face_crop.save(cbuf, format="WEBP", quality=85, method=4)
-                    crop_file.write_bytes(cbuf.getvalue())
+                    try:
+                        face_crop.thumbnail((target_size, target_size), Image.Resampling.LANCZOS)
+                        cbuf = io.BytesIO()
+                        try:
+                            face_crop.save(cbuf, format="WEBP", quality=85, method=4)
+                            crop_file.write_bytes(cbuf.getvalue())
+                        finally:
+                            cbuf.close()
+                    finally:
+                        face_crop.close()
         except Exception as e:
             logger.debug("Proaktives Caching der Bildderivate fehlgeschlagen (%s): %s", file_path, e)
 

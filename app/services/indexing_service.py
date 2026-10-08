@@ -1,4 +1,5 @@
 import os
+import gc
 import uuid
 import logging
 import queue
@@ -38,7 +39,33 @@ INDEXING_PROGRESS: Dict[str, Any] = {
     "error": None,
     "started_at": None,
     "last_updated": None,
+    "clustering_status": None,
+    "clustering_message": None,
+    "pid": None,
 }
+
+
+def update_indexing_progress(updates: Dict[str, Any]) -> None:
+    """Aktualisiert den In-Memory-Status und synchronisiert ihn in SQLite (für isolierte Worker)."""
+    global INDEXING_PROGRESS
+    INDEXING_PROGRESS.update(updates)
+    try:
+        from app.services.metadata_db import metadata_db
+        metadata_db.set_system_state("indexing_progress", INDEXING_PROGRESS)
+    except Exception as e:
+        logger.debug("Konnte Indexing-Status nicht in SQLite spiegeln: %s", e)
+
+
+def get_current_indexing_progress() -> Dict[str, Any]:
+    """Liefert den aktuellen Verarbeitungsstatus (vorrangig aus SQLite für Prozess-Isolation)."""
+    try:
+        from app.services.metadata_db import metadata_db
+        db_state = metadata_db.get_system_state("indexing_progress")
+        if db_state and isinstance(db_state, dict):
+            return db_state
+    except Exception:
+        pass
+    return INDEXING_PROGRESS
 
 
 class IndexingService:
@@ -85,6 +112,11 @@ class IndexingService:
             raw_transposed = ImageOps.exif_transpose(raw_img)
             pil_img = safe_normalize_image_to_rgb(raw_transposed)
             pil_img.load()
+            if raw_transposed is not pil_img:
+                try:
+                    raw_transposed.close()
+                except Exception:
+                    pass
             width, height = pil_img.size
 
         from app.services.variant_service import compute_image_hashes
@@ -145,6 +177,13 @@ class IndexingService:
             thumbnail_service.cache_image_derivatives(file_path, pil_img, face_bboxes=bboxes)
         except Exception as cache_err:
             logger.debug("Proaktives Caching übersprungen für %s: %s", path_str, cache_err)
+
+        # Bild-Pixeldaten im RAM sofort freigeben, da Vektoren, Hashes & Thumbs extrahiert sind
+        try:
+            pil_img.close()
+        except Exception:
+            pass
+        prepared["pil_img"] = None
 
         # 4. Bild-Point für archive_images
         image_point = rest_models.PointStruct(
@@ -332,9 +371,8 @@ class IndexingService:
         faces_count = 0
         errors = []
 
-        global INDEXING_PROGRESS
         current_job_id = INDEXING_PROGRESS.get("job_id") or uuid.uuid4().hex[:12]
-        INDEXING_PROGRESS.update({
+        update_indexing_progress({
             "job_id": current_job_id,
             "is_running": True,
             "finished": False,
@@ -443,7 +481,7 @@ class IndexingService:
 
                         orig_idx, f_path, prepared_data, prep_err = item
 
-                        INDEXING_PROGRESS.update({
+                        update_indexing_progress({
                             "processed_count": orig_idx + 1,
                             "current_file": f_path.name,
                             "new_indexed": indexed_count,
@@ -476,8 +514,28 @@ class IndexingService:
                         except Exception as e:
                             logger.error("Fehler beim Verarbeiten von %s: %s", f_path, e)
                             errors.append(f_path.name)
+                        finally:
+                            del prepared_data
+                            del item
+
+                        # Periodische Speicherbereinigung alle 50 Bilder gegen glibc-Heapfragmentierung & PyTorch Caching
+                        if indexed_count > 0 and indexed_count % 50 == 0:
+                            gc.collect()
+                            try:
+                                import torch
+                                if torch.cuda.is_available():
+                                    torch.cuda.empty_cache()
+                            except Exception:
+                                pass
 
                     _flush_batches()
+                    gc.collect()
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except Exception:
+                        pass
                 finally:
                     abort_event.set()
                     prefetch_thread.join(timeout=2.0)
@@ -505,11 +563,11 @@ class IndexingService:
                 "errors": errors[:20],
             }
         except Exception as e:
-            INDEXING_PROGRESS["error"] = str(e)
+            update_indexing_progress({"error": str(e)})
             raise
         finally:
             already_fully = (total_found > 0 and indexed_count == 0 and skipped_count == total_found)
-            INDEXING_PROGRESS.update({
+            update_indexing_progress({
                 "is_running": False,
                 "finished": True,
                 "new_indexed": indexed_count,

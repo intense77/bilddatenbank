@@ -5,6 +5,10 @@
 let activeCluster = null;
 let currentModalImageDetails = null;
 let osdViewer = null;
+// Laufende Sequenznummern, um überholte asynchrone Antworten zu verwerfen
+// (z. B. schnelles Wechseln zwischen Clustern oder Bildern)
+let clusterDetailSeq = 0;
+let modalOpenSeq = 0;
 let isDeepZoomActive = false;
 let isModalCardFlipped = false;
 let currentTwoSidedInfo = null;
@@ -1049,6 +1053,7 @@ async function loadClusters() {
 }
 
 async function openClusterDetail(cluster) {
+  const mySeq = ++clusterDetailSeq;
   activeCluster = cluster;
   const container = document.getElementById('clusters-container');
   const detailView = document.getElementById('cluster-detail-view');
@@ -1099,9 +1104,15 @@ async function openClusterDetail(cluster) {
       }
     } catch (err) {
       console.error('Fehler beim Laden der Cluster-Details:', err);
-      showToast(`Fehler beim Laden der Bilder: ${err.message}`, true);
+      if (mySeq === clusterDetailSeq) {
+        showToast(`Fehler beim Laden der Bilder: ${err.message}`, true);
+      }
     }
   }
+
+  // Inzwischen wurde ein anderes Cluster geöffnet (oder die Ansicht geschlossen):
+  // Diese veraltete Antwort darf das Bildergitter nicht mehr überschreiben.
+  if (mySeq !== clusterDetailSeq || activeCluster !== cluster) return;
 
   imagesGrid.innerHTML = '';
 
@@ -1696,8 +1707,8 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   const wrapper = document.getElementById('modal-bbox-wrapper');
   const facesList = document.getElementById('modal-faces-list');
 
+  const mySeq = ++modalOpenSeq;
   currentModalImageDetails = { filePath, fileName };
-  currentModalTargetFaceContext = targetFaceContext || null;
   targetFaceBoxCoords = null;
 
   toggleCropMode(false);
@@ -1755,7 +1766,12 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   };
 
   // Bildquelle setzen
+  // WICHTIG: Zuschnitt-Quelle des vorherigen Bildes verwerfen. Sonst stellen
+  // loadModalEditSettings()/resetAllImageAdjustments() das ALTE Bild wieder her
+  // (Symptom: "es bleibt immer dasselbe Bild stehen").
+  delete img.dataset.uncroppedSrc;
   img.onload = () => {
+    if (mySeq !== modalOpenSeq) return;
     scheduleHistogramRender();
     if (isSplitSliderActive) {
       const origImg = document.getElementById('modal-split-original-img');
@@ -1780,8 +1796,10 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   // Lade Gesichtsdetails und Metadaten aus der Datenbank
   try {
     const res = await fetch(`/images/details?path=${encodeURIComponent(filePath)}`);
+    if (mySeq !== modalOpenSeq) return; // inzwischen anderes Bild geöffnet
     if (!res.ok) return;
     const data = await res.json();
+    if (mySeq !== modalOpenSeq) return;
 
     // Titel anpassen, falls archivalischer Titel vorhanden ist
     if (data.metadata && data.metadata.title) {
@@ -1990,6 +2008,7 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
 
     // Bounding Boxes auf dem vergrößerten Bild platzieren
     function drawModalBoxes() {
+      if (mySeq !== modalOpenSeq) return;
       wrapper.querySelectorAll('.face-bbox').forEach(e => e.remove());
       if (!data.faces || data.faces.length === 0) return;
 
@@ -2058,6 +2077,7 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
     }
 
   } catch (err) {
+    if (mySeq !== modalOpenSeq) return;
     facesList.innerHTML = '<span class="text-rose-400">Details nicht geladen</span>';
   }
 }
@@ -3236,6 +3256,12 @@ async function checkIndexingProgress() {
           showToast(`Ordner ist bereits vollständig vorhanden (${data.skipped || data.total_found} Bilder).`, false);
         } else if (data.new_indexed > 0 && data.skipped > 0) {
           if (status) status.textContent = `${data.new_indexed} neue Bilder hinzugefügt (${data.skipped} vorh.)`;
+          const clusterMsgHtml = data.clustering_message ? `
+            <div class="mt-2.5 pt-2 border-t border-slate-700/60 text-[11px] text-amber-300 flex items-start gap-1.5 leading-relaxed">
+              <span class="shrink-0 text-amber-400">💡</span>
+              <span>${escapeHtml(data.clustering_message)}</span>
+            </div>
+          ` : '';
           if (preview) {
             preview.classList.remove('hidden');
             preview.innerHTML = `
@@ -3249,12 +3275,19 @@ async function checkIndexingProgress() {
                   <p>&bull; Bereits vorhanden: <strong class="text-slate-400">${data.skipped}</strong> Bilder (übersprungen)</p>
                   <p>&bull; Erkannte Gesichter: <strong class="text-amber-400">${data.faces_detected}</strong></p>
                 </div>
+                ${clusterMsgHtml}
               </div>
             `;
           }
           showToast(`Inkrementeller Import: ${data.new_indexed} neue Bilder hinzugefügt (${data.skipped} übersprungen).`);
         } else {
           if (status) status.textContent = 'Indexierung abgeschlossen';
+          const clusterMsgHtml = data.clustering_message ? `
+            <div class="mt-2.5 pt-2 border-t border-slate-700/60 text-[11px] text-amber-300 flex items-start gap-1.5 leading-relaxed">
+              <span class="shrink-0 text-amber-400">💡</span>
+              <span>${escapeHtml(data.clustering_message)}</span>
+            </div>
+          ` : '';
           if (preview) {
             preview.classList.remove('hidden');
             preview.innerHTML = `
@@ -3267,6 +3300,7 @@ async function checkIndexingProgress() {
                   <p>&bull; Neu indexiert: <strong class="text-amber-400">${data.processed_count || data.new_indexed || 0}</strong> Bilder</p>
                   <p>&bull; Erkannte Gesichter: <strong class="text-amber-400">${data.faces_detected || 0}</strong></p>
                 </div>
+                ${clusterMsgHtml}
               </div>
             `;
           }

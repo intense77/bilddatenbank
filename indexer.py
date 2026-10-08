@@ -362,6 +362,12 @@ def main():
                         face_points.append(face_point)
                     total_faces += len(detected_faces)
 
+                # Bildpuffer im RAM schließen
+                try:
+                    pil_img.close()
+                except Exception:
+                    pass
+
                 total_indexed += 1
 
             except Exception as e:
@@ -380,6 +386,17 @@ def main():
             logger.error("Fehler beim Qdrant-Batch-Upsert: %s", e, exc_info=True)
             total_errors += len(image_points)
             total_indexed -= len(image_points)
+        finally:
+            del image_points
+            del face_points
+            import gc
+            gc.collect()
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
         progress_bar.set_postfix({
             "Neu": total_indexed,

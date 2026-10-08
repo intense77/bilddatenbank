@@ -51,8 +51,33 @@ async def get_registered_folders():
 @router.get("/index-progress")
 async def get_indexing_progress():
     """Liefert den aktuellen Verarbeitungsstatus der Ordner-Indexierung in Echtzeit."""
-    from app.services.indexing_service import INDEXING_PROGRESS
-    return INDEXING_PROGRESS
+    from app.services.indexing_service import get_current_indexing_progress, update_indexing_progress
+
+    state = get_current_indexing_progress()
+
+    # Liveness-Check des Worker-Prozesses (falls Betriebssystem den Prozess beendet hat)
+    if state.get("is_running") and state.get("pid"):
+        pid = state["pid"]
+        alive = False
+        try:
+            os.kill(pid, 0)
+            alive = True
+        except ProcessLookupError:
+            alive = False
+        except PermissionError:
+            alive = True
+        except OSError:
+            alive = False
+
+        if not alive:
+            logger.warning("Indexierungs-Worker (PID %d) existiert nicht mehr. Markiere Job als beendet.", pid)
+            state["is_running"] = False
+            state["finished"] = True
+            if not state.get("error"):
+                state["error"] = f"Der Hintergrund-Indexierungsprozess (PID {pid}) wurde unerwartet beendet."
+            update_indexing_progress(state)
+
+    return state
 
 
 @router.get("/browse-folders")
@@ -257,44 +282,53 @@ def scan_folder(request: ScanFolderRequest):
 @router.post("/index-folder")
 async def index_existing_folder(
     request: IndexFolderRequest,
-    background_tasks: BackgroundTasks,
-    indexing_service: IndexingService = Depends(get_indexing_service),
-    clustering_service: ClusteringService = Depends(get_clustering_service),
 ):
     """
     Bindet einen bestehenden Ordner auf dem Rechner/Server ohne Verschieben ein
-    und indexiert alle Bilder asynchron im Hintergrund. Registriert den Pfad sicher in der Sandbox.
+    und indexiert alle Bilder in einem vollständig isolierten Hintergrund-Subprozess.
+    Schützt den Webserver dauerhaft vor Memory-Lecks, Heap-Fragmentierung und OOM-Kills.
     """
     path = resolve_archive_path(request.folder_path)
 
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"Ungültiges Verzeichnis: {path}")
 
-    from app.services.indexing_service import INDEXING_PROGRESS
-    if INDEXING_PROGRESS.get("is_running"):
-        raise HTTPException(
-            status_code=409,
-            detail="Es läuft bereits eine Indexierung im Hintergrund. Bitte warten Sie, bis diese abgeschlossen ist.",
-        )
+    from app.services.indexing_service import get_current_indexing_progress, update_indexing_progress
+
+    current_state = get_current_indexing_progress()
+    if current_state.get("is_running"):
+        worker_pid = current_state.get("pid")
+        is_alive = False
+        if worker_pid:
+            try:
+                os.kill(worker_pid, 0)
+                is_alive = True
+            except OSError:
+                is_alive = False
+
+        if is_alive:
+            raise HTTPException(
+                status_code=409,
+                detail="Es läuft bereits eine Indexierung im Hintergrund. Bitte warten Sie, bis diese abgeschlossen ist.",
+            )
 
     # 1. Pfad in den erlaubten Archiv-Pfaden registrieren und in .env sichern
     registered_path = register_allowed_archive_dir(path, persist=True)
     logger.info("Ordner '%s' für Bildzugriff registriert.", registered_path)
 
-    # 2. Status SOFORT synchron initialisieren, BEVOR der Thread gestartet wird!
-    # Verhindert jede Race Condition beim unmittelbaren Frontend-Polling.
+    # 2. Status initialisieren
     import uuid
     from datetime import datetime, timezone
     new_job_id = uuid.uuid4().hex[:12]
     now_iso = datetime.now(timezone.utc).isoformat()
-    INDEXING_PROGRESS.update({
+    update_indexing_progress({
         "job_id": new_job_id,
         "is_running": True,
         "finished": False,
         "folder_path": str(registered_path),
         "total_found": 0,
         "processed_count": 0,
-        "current_file": "Scanne Ordner nach Bilddateien...",
+        "current_file": "Starte isolierten Hintergrund-Worker...",
         "new_indexed": 0,
         "skipped": 0,
         "faces_detected": 0,
@@ -303,37 +337,50 @@ async def index_existing_folder(
         "error": None,
         "started_at": now_iso,
         "last_updated": now_iso,
+        "clustering_status": None,
+        "clustering_message": None,
     })
 
-    # 3. Asynchrone Indexierung im Hintergrund starten
-    def run_indexing_job():
-        try:
-            stats = indexing_service.index_folder(
-                folder_path=registered_path,
-                recursive=request.recursive,
-                force=request.force,
-            )
-            if (
-                request.cluster_faces
-                and settings.ENABLE_FACE_RECOGNITION
-                and stats.get("faces_detected", 0) > 0
-            ):
-                try:
-                    clustering_service.run_clustering()
-                except Exception as ce:
-                    logger.warning("Clustering nach Hintergrund-Indexierung fehlgeschlagen: %s", ce)
-        except Exception as e:
-            logger.error("Hintergrund-Indexierung für '%s' fehlgeschlagen: %s", registered_path, e, exc_info=True)
+    # 3. Isolierten Subprozess starten (vollständige RAM-Isolation gegen OOM & Heap-Lecks)
+    import subprocess
+    import sys
 
-    import threading
-    thread = threading.Thread(target=run_indexing_job, daemon=True, name="ArchiveFolderIndexer")
-    thread.start()
+    log_dir = Path(".cache")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "indexing_worker.log"
+    log_handle = open(log_file, "a", encoding="utf-8")
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "app.workers.indexing_worker",
+        "--folder", str(registered_path),
+        "--job-id", new_job_id,
+    ]
+    if request.recursive:
+        cmd.append("--recursive")
+    else:
+        cmd.append("--no-recursive")
+    if request.force:
+        cmd.append("--force")
+    if request.cluster_faces:
+        cmd.append("--cluster-faces")
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,  # Eigenständige Prozessgruppe
+    )
+    update_indexing_progress({"pid": process.pid})
+    logger.info("Isolierter Indexierungs-Prozess gestartet (PID: %d, Job-ID: %s).", process.pid, new_job_id)
 
     return {
         "status": "started",
         "job_id": new_job_id,
+        "pid": process.pid,
         "folder_path": str(registered_path),
-        "message": "Indexierung wurde erfolgreich im Hintergrund gestartet.",
+        "message": "Indexierung wurde erfolgreich als isolierter Prozess gestartet.",
     }
 
 
@@ -400,16 +447,33 @@ async def upload_archive_images(
                 "faces_detected": num_faces,
             })
 
-    # Clustering ausführen, falls Gesichter erkannt wurden
+    # Clustering ausführen, falls Gesichter erkannt wurden und Gesamtbestand im Rahmen liegt
+    clustering_performed = False
     if (
         enable_clustering
         and settings.ENABLE_FACE_RECOGNITION
         and total_faces > 0
     ):
+        total_coll_faces = 0
         try:
-            clustering_service.run_clustering()
-        except Exception as e:
-            logger.warning("Clustering nach Upload fehlgeschlagen: %s", e)
+            coll_info = clustering_service.qdrant.client.get_collection(settings.COLLECTION_FACES)
+            total_coll_faces = coll_info.points_count or 0
+        except Exception:
+            pass
+
+        max_threshold = getattr(settings, "AUTO_CLUSTER_MAX_FACES", 5000)
+        if total_coll_faces <= max_threshold:
+            try:
+                clustering_service.run_clustering()
+                clustering_performed = True
+            except Exception as e:
+                logger.warning("Clustering nach Upload fehlgeschlagen: %s", e)
+        else:
+            logger.info(
+                "Automatisches Clustering nach Upload übersprungen: Archiv enthält %d Gesichter (Schwelle: %d).",
+                total_coll_faces,
+                max_threshold,
+            )
 
     return {
         "status": "success",
@@ -418,6 +482,7 @@ async def upload_archive_images(
         "uploaded_sidecars": len(saved_sidecars),
         "indexed_images": indexed_count,
         "faces_detected": total_faces,
+        "clustering_performed": clustering_performed,
         "items": results,
     }
 

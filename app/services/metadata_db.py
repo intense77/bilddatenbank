@@ -86,10 +86,50 @@ class MetadataDatabase:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_face_count ON clusters(face_count DESC);")
 
+                # Tabelle für systemweiten Job- und Verarbeitungsstatus (Prozess-übergreifend)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS system_state (
+                        key TEXT PRIMARY KEY,
+                        value TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+
                 conn.commit()
             logger.info("SQLite-Archivdatenbank erfolgreich initialisiert (WAL-Modus aktiv): %s", self.db_path)
         except Exception as e:
             logger.error("Fehler beim Initialisieren der SQLite-Datenbank: %s", e)
+
+    def set_system_state(self, key: str, value: Any) -> None:
+        """Speichert beliebigen Zustand (z. B. Job-Fortschritt) atomar als JSON-String in SQLite."""
+        try:
+            import json
+            serialized = json.dumps(value, ensure_ascii=False)
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO system_state (key, value, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;
+                    """,
+                    (key, serialized),
+                )
+                conn.commit()
+        except Exception as e:
+            logger.debug("Fehler beim Speichern von system_state[%s]: %s", key, e)
+
+    def get_system_state(self, key: str, default: Any = None) -> Any:
+        """Liest einen Zustand als geparstes JSON-Objekt aus SQLite."""
+        try:
+            import json
+            with self._get_connection() as conn:
+                cursor = conn.execute("SELECT value FROM system_state WHERE key = ?", (key,))
+                row = cursor.fetchone()
+                if row and row["value"]:
+                    return json.loads(row["value"])
+        except Exception as e:
+            logger.debug("Fehler beim Lesen von system_state[%s]: %s", key, e)
+        return default
 
     # ------------------ Metadaten-Operationen ------------------
 
