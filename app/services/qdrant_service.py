@@ -65,7 +65,7 @@ class QdrantService:
                 ),
             )
             # Payload Index für schnelle Pfad-Suchen und Metadaten-Filter
-            for field in ["file_path", "image_path", "relative_path", "title", "creator", "date", "signature", "keywords"]:
+            for field in ["file_path", "image_path", "relative_path", "title", "creator", "date", "signature", "keywords", "import_id"]:
                 self.client.create_payload_index(
                     collection_name=settings.COLLECTION_IMAGES,
                     field_name=field,
@@ -75,6 +75,14 @@ class QdrantService:
         else:
             logger.info("Collection '%s' existiert bereits. Aktiviere INT8-Quantisierung falls nötig...", settings.COLLECTION_IMAGES)
             self.enable_scalar_quantization(settings.COLLECTION_IMAGES)
+            try:
+                self.client.create_payload_index(
+                    collection_name=settings.COLLECTION_IMAGES,
+                    field_name="import_id",
+                    field_schema=rest_models.PayloadSchemaType.KEYWORD,
+                )
+            except Exception:
+                pass
 
         # 2. Face Collection
         if settings.COLLECTION_FACES not in existing_collections:
@@ -93,8 +101,8 @@ class QdrantService:
                     )
                 ),
             )
-            # Payload Indizes für Metadaten: file_path, image_path, relative_path, face_id, cluster_id, label
-            for field in ["file_path", "image_path", "relative_path", "face_id", "cluster_id", "label"]:
+            # Payload Indizes für Metadaten: file_path, image_path, relative_path, face_id, cluster_id, label, import_id
+            for field in ["file_path", "image_path", "relative_path", "face_id", "cluster_id", "label", "import_id"]:
                 self.client.create_payload_index(
                     collection_name=settings.COLLECTION_FACES,
                     field_name=field,
@@ -104,6 +112,14 @@ class QdrantService:
         else:
             logger.info("Collection '%s' existiert bereits. Aktiviere INT8-Quantisierung falls nötig...", settings.COLLECTION_FACES)
             self.enable_scalar_quantization(settings.COLLECTION_FACES)
+            try:
+                self.client.create_payload_index(
+                    collection_name=settings.COLLECTION_FACES,
+                    field_name="import_id",
+                    field_schema=rest_models.PayloadSchemaType.KEYWORD,
+                )
+            except Exception:
+                pass
 
     def enable_scalar_quantization(self, collection_name: str) -> bool:
         """Aktiviert skalare INT8-Quantisierung (75% RAM-Ersparnis, 3-4x schnellere Distanzsuche)."""
@@ -258,19 +274,86 @@ class QdrantService:
             "pruned": not dry_run,
         }
 
+    def delete_by_import_id(self, import_id: str) -> dict[str, Any]:
+        """Löscht alle Vektorpunkte eines Import-Batches aus archive_images und archive_faces."""
+        flt = rest_models.Filter(
+            must=[
+                rest_models.FieldCondition(
+                    key="import_id",
+                    match=rest_models.MatchValue(value=import_id),
+                )
+            ]
+        )
+        images_deleted = False
+        faces_deleted = False
+        try:
+            self.client.delete(
+                collection_name=settings.COLLECTION_IMAGES,
+                points_selector=rest_models.FilterSelector(filter=flt),
+                wait=True,
+            )
+            images_deleted = True
+        except Exception as e:
+            logger.warning("Fehler beim Löschen von Punkten aus archive_images für import_id=%s: %s", import_id, e)
+
+        try:
+            self.client.delete(
+                collection_name=settings.COLLECTION_FACES,
+                points_selector=rest_models.FilterSelector(filter=flt),
+                wait=True,
+            )
+            faces_deleted = True
+        except Exception as e:
+            logger.warning("Fehler beim Löschen von Punkten aus archive_faces für import_id=%s: %s", import_id, e)
+
+        return {
+            "import_id": import_id,
+            "images_deleted": images_deleted,
+            "faces_deleted": faces_deleted,
+        }
+
     def search_images(
         self,
         query_vector: List[float],
         limit: int = 20,
         score_threshold: Optional[float] = None,
+        import_id: Optional[str] = None,
     ) -> List[rest_models.ScoredPoint]:
-        """Sucht ähnliche Bilder anhand eines CLIP-Vektors."""
+        """Sucht ähnliche Bilder anhand eines CLIP-Vektors (optional gefiltert nach import_id)."""
+        query_filter = None
+        if import_id:
+            if import_id == "batch_initial_legacy":
+                query_filter = rest_models.Filter(
+                    should=[
+                        rest_models.FieldCondition(
+                            key="import_id",
+                            match=rest_models.MatchValue(value=import_id),
+                        ),
+                        rest_models.IsEmptyCondition(
+                            is_empty=rest_models.PayloadField(key="import_id"),
+                        ),
+                        rest_models.IsNullCondition(
+                            is_null=rest_models.PayloadField(key="import_id"),
+                        ),
+                    ]
+                )
+            else:
+                query_filter = rest_models.Filter(
+                    must=[
+                        rest_models.FieldCondition(
+                            key="import_id",
+                            match=rest_models.MatchValue(value=import_id),
+                        )
+                    ]
+                )
+
         if hasattr(self.client, "query_points"):
             res = self.client.query_points(
                 collection_name=settings.COLLECTION_IMAGES,
                 query=query_vector,
                 limit=limit,
                 score_threshold=score_threshold,
+                query_filter=query_filter,
             )
             return res.points
         return self.client.search(
@@ -278,6 +361,7 @@ class QdrantService:
             query_vector=query_vector,
             limit=limit,
             score_threshold=score_threshold,
+            query_filter=query_filter,
         )
 
     def search_faces(

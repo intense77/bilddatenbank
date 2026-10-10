@@ -109,6 +109,18 @@ def parse_arguments() -> argparse.Namespace:
         help="Vollständige Synchronisation: Bereinigt gelöschte Dateien aus Qdrant und indexiert neue Bestände.",
     )
     parser.add_argument(
+        "--batch-name",
+        type=str,
+        default=None,
+        help="Sprechende Bestandsbezeichnung für das archivische Akzessionsjournal.",
+    )
+    parser.add_argument(
+        "--batch-notes",
+        type=str,
+        default=None,
+        help="Optionale Provenienz-Notizen zum importierten Bestand.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         default=False,
@@ -133,6 +145,7 @@ def main():
         from app.services.face_service import FaceService
         from app.services.qdrant_service import QdrantService
         from app.services.metadata_service import metadata_service
+        from app.services.metadata_db import metadata_db
     except ImportError as e:
         logger.error(
             "Benötigte Abhängigkeiten fehlen (%s). Bitte zuerst 'pip install -r requirements.txt' ausführen.",
@@ -234,6 +247,25 @@ def main():
     else:
         logger.info("Gesichtserkennung deaktiviert (Datensparsamkeit / Art. 9 DSGVO).")
 
+    # Batch-Registrierung im Akzessionsjournal
+    batch_id = f"batch_{uuid.uuid4().hex[:12]}"
+    batch_name = (
+        args.batch_name.strip()
+        if args.batch_name and args.batch_name.strip()
+        else f"Import {source_dir.name} ({datetime.now().strftime('%d.%m.%Y %H:%M')})"
+    )
+    if not args.dry_run:
+        try:
+            metadata_db.create_import_batch(
+                batch_id=batch_id,
+                name=batch_name,
+                folder_path=str(source_dir),
+                notes=args.batch_notes,
+                status="running",
+            )
+        except Exception as be:
+            logger.debug("Konnte Import-Batch nicht anlegen: %s", be)
+
     # Statistiken
     total_indexed = 0
     total_skipped = 0
@@ -320,6 +352,7 @@ def main():
                         "copyright": meta.get("copyright"),
                         "keywords": meta.get("keywords", []),
                         "metadata": meta,
+                        "import_id": batch_id,
                     },
                 )
                 image_points.append(image_point)
@@ -357,6 +390,7 @@ def main():
                                 "parent_image_id": image_id,
                                 "face_index": face_idx,
                                 "indexed_at": now_iso,
+                                "import_id": batch_id,
                             },
                         )
                         face_points.append(face_point)
@@ -416,6 +450,20 @@ def main():
     logger.info("Erfasste Gesichter:     %d", total_faces)
     logger.info("Fehlerhafte Dateien:    %d", total_errors)
     logger.info("=" * 50)
+
+    # Batch-Abschluss in SQLite vermerken
+    if not args.dry_run:
+        try:
+            metadata_db.update_import_batch(
+                batch_id=batch_id,
+                status="completed",
+                image_count=total_indexed,
+                face_count=total_faces,
+                skipped_count=total_skipped,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception as ue:
+            logger.debug("Konnte Import-Batch-Abschluss nicht protokollieren: %s", ue)
 
     # Optionales automatisches Clustering
     if args.cluster_faces and faces_active:

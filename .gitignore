@@ -36,3 +36,5 @@ models/
 
 # Data
 data/
+*.db
+*.sqlite*

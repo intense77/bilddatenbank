@@ -37,6 +37,9 @@ def main():
     parser = argparse.ArgumentParser(description="Isolierter Hintergrund-Indexierungs-Worker")
     parser.add_argument("--folder", type=str, required=True, help="Absoluter Pfad zum Bildordner")
     parser.add_argument("--job-id", type=str, required=True, help="Eindeutige Job-ID")
+    parser.add_argument("--batch-id", type=str, default=None, help="Eindeutige Import-Batch-ID")
+    parser.add_argument("--batch-name", type=str, default=None, help="Sprechende Bestandsbezeichnung")
+    parser.add_argument("--notes", type=str, default=None, help="Optionale Bemerkungen zum Bestand")
     parser.add_argument("--recursive", action="store_true", default=True, help="Rekursiv scannen")
     parser.add_argument("--no-recursive", dest="recursive", action="store_false")
     parser.add_argument("--force", action="store_true", default=False, help="Neuindexierung erzwingen")
@@ -52,13 +55,32 @@ def main():
         pass
 
     pid = os.getpid()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_dt = datetime.now(timezone.utc)
+    now_iso = now_dt.isoformat()
     folder_path = Path(args.folder).resolve()
 
-    logger.info("Starte isolierten Indexierungs-Worker (PID %d, Job %s) für '%s'...", pid, args.job_id, folder_path)
+    batch_id = args.batch_id or f"batch_{args.job_id}"
+    batch_name = args.batch_name.strip() if args.batch_name and args.batch_name.strip() else f"Import {folder_path.name} ({now_dt.strftime('%d.%m.%Y %H:%M')})"
+
+    logger.info("Starte isolierten Indexierungs-Worker (PID %d, Job %s, Batch '%s' [%s]) für '%s'...",
+                pid, args.job_id, batch_name, batch_id, folder_path)
+
+    # Import-Batch im Akzessionsjournal anlegen
+    try:
+        metadata_db.create_import_batch(
+            batch_id=batch_id,
+            name=batch_name,
+            folder_path=str(folder_path),
+            notes=args.notes,
+            status="running",
+        )
+    except Exception as be:
+        logger.warning("Konnte Import-Batch %s nicht in SQLite initialisieren: %s", batch_id, be)
 
     update_indexing_progress({
         "job_id": args.job_id,
+        "batch_id": batch_id,
+        "batch_name": batch_name,
         "pid": pid,
         "is_running": True,
         "finished": False,
@@ -98,7 +120,21 @@ def main():
             folder_path=folder_path,
             recursive=args.recursive,
             force=args.force,
+            import_id=batch_id,
         )
+
+        # Batch-Statistiken in SQLite aktualisieren
+        try:
+            metadata_db.update_import_batch(
+                batch_id=batch_id,
+                status="completed",
+                image_count=stats.get("new_indexed", 0),
+                face_count=stats.get("faces_detected", 0),
+                skipped_count=stats.get("skipped", 0),
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception as ue:
+            logger.warning("Konnte Import-Batch-Abschluss nicht aktualisieren: %s", ue)
 
         # Sicheres Clustering mit Schwellenwert-Prüfung
         if (
@@ -114,7 +150,7 @@ def main():
             except Exception:
                 pass
 
-            max_threshold = getattr(settings, "AUTO_CLUSTER_MAX_FACES", 5000)
+            max_threshold = getattr(settings, "AUTO_CLUSTER_MAX_FACES", 500000)
             if total_faces_count > max_threshold:
                 msg = (
                     f"Automatisches Clustering nach Import übersprungen: Archiv enthält {total_faces_count:,} Gesichter "
@@ -148,6 +184,15 @@ def main():
 
     except Exception as e:
         logger.error("Fehler im isolierten Indexierungs-Worker: %s", e, exc_info=True)
+        try:
+            metadata_db.update_import_batch(
+                batch_id=batch_id,
+                status="failed",
+                notes=f"Fehler: {e}",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception:
+            pass
         update_indexing_progress({
             "is_running": False,
             "finished": True,

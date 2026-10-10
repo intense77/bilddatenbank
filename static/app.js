@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadLightboxState();
   initModalZoomAndPan();
   initSplitSliderDrag();
+  loadImportBatches();
   // Vorbelegung Suche falls gewünscht
   const urlParams = new URLSearchParams(window.location.search);
   const q = urlParams.get('q');
@@ -100,6 +101,7 @@ function switchTab(tab) {
     if (importBtn) importBtn.className = activeCls;
     loadRegisteredFolders();
     checkIndexingProgress();
+    loadImportBatches();
   }
 }
 
@@ -294,6 +296,10 @@ async function executeSearch(query, limit = 24) {
     if (threshold > 0) {
       url += `&score_threshold=${threshold}`;
     }
+    const batchFilterVal = document.getElementById('search-batch-filter')?.value;
+    if (batchFilterVal) {
+      url += `&batch_id=${encodeURIComponent(batchFilterVal)}`;
+    }
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Fehler bei der Suche (${res.status})`);
     const data = await res.json();
@@ -446,6 +452,10 @@ async function loadMoreSearchResults() {
     let url = `/search/semantic?q=${encodeURIComponent(currentSearchQuery)}&limit=${currentSearchLimit}&offset=${currentSearchOffset}&stack_variants=${stackVariants}`;
     if (threshold > 0) {
       url += `&score_threshold=${threshold}`;
+    }
+    const batchFilterVal = document.getElementById('search-batch-filter')?.value;
+    if (batchFilterVal) {
+      url += `&batch_id=${encodeURIComponent(batchFilterVal)}`;
     }
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Fehler beim Nachladen (${res.status})`);
@@ -1049,6 +1059,19 @@ async function loadClusters() {
   } catch (err) {
     spinner.classList.add('hidden');
     showToast(`Fehler beim Laden der Cluster: ${err.message}`, true);
+  }
+}
+
+async function syncClusterLabels() {
+  try {
+    showToast('Gleiche Personen-Namen mit Bildvektoren ab...', false);
+    const res = await fetch('/faces/clusters/sync-labels', { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    showToast(`Erfolgreich ${data.labeled_clusters_count || 0} Personen-Namen synchronisiert.`, false);
+    await loadClusters();
+  } catch (err) {
+    showToast(`Fehler beim Namensabgleich: ${err.message}`, true);
   }
 }
 
@@ -3307,6 +3330,7 @@ async function checkIndexingProgress() {
           showToast(`Indexierung erfolgreich: ${data.processed_count || data.new_indexed || 0} Bilder erfasst.`);
         }
         loadRegisteredFolders();
+        loadImportBatches();
       } else {
         stopProgressPolling();
         resetFolderIndexButton();
@@ -3379,11 +3403,15 @@ async function startFolderIndexing(forceExplicit = false) {
   isActivelyTrackingIndexing = true;
 
   try {
+    const batchNameInput = document.getElementById('folder-batch-name-input');
+    const customBatchName = batchNameInput ? batchNameInput.value.trim() : '';
+
     const res = await fetch('/api/archive/index-folder', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         folder_path: folderPath,
+        batch_name: customBatchName || undefined,
         recursive: recursive,
         force: !skipExisting,
         cluster_faces: true,
@@ -7276,4 +7304,262 @@ function applyThesaurusTermToSearch(term) {
   executeSearch(term);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+
+// =========================================================================
+// Archivische Import-Historie & Akzessionsjournal (Provenienz & Rollback)
+// =========================================================================
+
+let loadedImportBatches = [];
+let pendingRollbackBatchId = null;
+
+function formatBatchDate(dateStr) {
+  if (!dateStr) return '–';
+  try {
+    // Normalisiere Datums-Strings mit Leerzeichen statt T für plattformübergreifende Date()-Kompatibilität
+    const normalized = String(dateStr).trim().replace(' ', 'T');
+    const d = new Date(normalized);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  } catch (e) {
+    return dateStr;
+  }
+}
+
+async function loadImportBatches() {
+  const tbody = document.getElementById('import-batches-tbody');
+  const badge = document.getElementById('batches-total-badge');
+  const searchFilter = document.getElementById('search-batch-filter');
+
+  if (tbody && (!loadedImportBatches || loadedImportBatches.length === 0)) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="px-4 py-6 text-center text-slate-400 font-sans">
+          <div class="flex items-center justify-center gap-2.5">
+            <div class="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+            <span>Lade Import-Historie...</span>
+          </div>
+        </td>
+      </tr>`;
+  }
+
+  try {
+    const res = await fetch('/api/archive/batches');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    loadedImportBatches = data.batches || [];
+
+    if (badge) {
+      const count = loadedImportBatches.length;
+      badge.textContent = `${count} ${count === 1 ? 'Bestand' : 'Bestände'}`;
+    }
+
+    // Dropdown in Semantischer Suche aktualisieren
+    if (searchFilter) {
+      const currentVal = searchFilter.value;
+      let optHtml = '<option value="">Alle Bestände</option>';
+      loadedImportBatches.forEach(b => {
+        const isSel = b.id === currentVal ? 'selected' : '';
+        optHtml += `<option value="${escapeHtml(b.id)}" ${isSel}>${escapeHtml(b.name)}</option>`;
+      });
+      searchFilter.innerHTML = optHtml;
+    }
+
+    renderImportBatchesTable();
+  } catch (err) {
+    console.error('Fehler beim Laden der Import-Historie:', err);
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-4 text-center text-rose-400 font-sans">Fehler beim Laden der Historie: ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+}
+
+function renderImportBatchesTable() {
+  const tbody = document.getElementById('import-batches-tbody');
+  if (!tbody) return;
+
+  try {
+    if (!loadedImportBatches || loadedImportBatches.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" class="px-4 py-8 text-center text-slate-500 font-sans">
+            Noch keine Import-Chargen erfasst. Sobald Sie einen Ordner indexieren, erscheint er hier im Akzessionsjournal.
+          </td>
+        </tr>`;
+      return;
+    }
+
+    let html = '';
+    loadedImportBatches.forEach(b => {
+      const started = formatBatchDate(b.started_at);
+
+      // Status Badge
+      let statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-400">Unbekannt</span>';
+      if (b.status === 'completed') {
+        statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium">✓ Abgeschlossen</span>';
+      } else if (b.status === 'running') {
+        statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] bg-amber-500/10 border border-amber-500/30 text-amber-400 font-medium animate-pulse">⏳ Aktiv...</span>';
+      } else if (b.status === 'failed') {
+        statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] bg-rose-500/10 border border-rose-500/20 text-rose-400 font-medium">✕ Fehlgeschlagen</span>';
+      }
+
+      html += `
+        <tr class="hover:bg-slate-900/60 transition group">
+          <td class="px-4 py-3 whitespace-nowrap text-slate-400 text-[11px]">
+            ${started}
+          </td>
+          <td class="px-4 py-3 font-sans font-medium text-slate-200">
+            <div class="flex items-center gap-1.5">
+              <span>${escapeHtml(b.name)}</span>
+              <button type="button" onclick="editBatchPrompt('${escapeHtml(b.id)}', '${escapeHtml(b.name || '')}', '${escapeHtml(b.notes || '')}')"
+                class="opacity-0 group-hover:opacity-100 p-1 hover:text-amber-400 text-slate-500 transition" title="Bestandsbezeichnung bearbeiten">
+                ✏️
+              </button>
+            </div>
+            ${b.notes ? `<div class="text-[11px] text-slate-500 truncate max-w-xs font-normal" title="${escapeHtml(b.notes)}">${escapeHtml(b.notes)}</div>` : ''}
+          </td>
+          <td class="px-4 py-3 text-slate-400 text-[11px] truncate max-w-xs" title="${escapeHtml(b.folder_path)}">
+            ${escapeHtml(b.folder_path)}
+          </td>
+          <td class="px-4 py-3 text-right text-slate-300 font-semibold">
+            ${(b.image_count || 0).toLocaleString('de-DE')}
+          </td>
+          <td class="px-4 py-3 text-right text-amber-400 font-semibold">
+            ${(b.face_count || 0).toLocaleString('de-DE')}
+          </td>
+          <td class="px-4 py-3 text-center whitespace-nowrap">
+            ${statusBadge}
+          </td>
+          <td class="px-4 py-3 text-right whitespace-nowrap font-sans">
+            <div class="flex items-center justify-end gap-1.5">
+              <button type="button" onclick="filterSearchByBatch('${escapeHtml(b.id)}')"
+                class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 text-[11px] font-medium transition flex items-center gap-1 border border-slate-700/60"
+                title="Bilder dieses Bestands in der Suche anzeigen">
+                <span>🔍</span>
+                <span class="hidden sm:inline">Suche</span>
+              </button>
+              <button type="button" onclick="openBatchRollbackModal('${escapeHtml(b.id)}', '${escapeHtml(b.name)}', '${escapeHtml(b.folder_path)}', ${b.image_count || 0}, ${b.face_count || 0})"
+                class="px-2 py-1 rounded bg-rose-950/30 hover:bg-rose-900/60 text-rose-400 text-[11px] font-medium transition flex items-center gap-1 border border-rose-900/40"
+                title="Diesen Bestand vollständig aus dem Archiv entfernen (Rollback)">
+                <span>🗑️</span>
+                <span class="hidden sm:inline">Rollback</span>
+              </button>
+            </div>
+          </td>
+        </tr>`;
+    });
+
+    tbody.innerHTML = html;
+  } catch (renderErr) {
+    console.error('Fehler beim Rendern der Import-Historie-Tabelle:', renderErr);
+    tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-4 text-center text-rose-400 font-sans">Darstellungsfehler: ${escapeHtml(renderErr.message)}</td></tr>`;
+  }
+}
+
+function filterSearchByBatch(batchId) {
+  switchTab('search');
+  const filter = document.getElementById('search-batch-filter');
+  if (filter) {
+    filter.value = batchId;
+  }
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) {
+    if (!searchInput.value.trim()) {
+      searchInput.value = 'Foto';
+    }
+    executeSearch(searchInput.value.trim());
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function editBatchPrompt(batchId, currentName, currentNotes) {
+  const newName = prompt('Bestandsbezeichnung anpassen:', currentName);
+  if (newName === null) return;
+  const newNotes = prompt('Archivische Notizen / Provenienz anpassen:', currentNotes);
+  if (newNotes === null) return;
+
+  try {
+    const res = await fetch(`/api/archive/batches/${encodeURIComponent(batchId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newName.trim() || currentName,
+        notes: newNotes.trim(),
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    showToast('Bestandsdaten erfolgreich aktualisiert.', false);
+    loadImportBatches();
+  } catch (err) {
+    showToast(`Fehler beim Aktualisieren: ${err.message}`, true);
+  }
+}
+
+function openBatchRollbackModal(batchId, name, path, imageCount, faceCount) {
+  pendingRollbackBatchId = batchId;
+  const modal = document.getElementById('batch-rollback-modal');
+  const nameEl = document.getElementById('rollback-batch-name');
+  const pathEl = document.getElementById('rollback-batch-path');
+  const statsEl = document.getElementById('rollback-batch-stats');
+
+  if (nameEl) nameEl.textContent = name;
+  if (pathEl) pathEl.textContent = `Pfad: ${path}`;
+  if (statsEl) statsEl.textContent = `${(imageCount || 0).toLocaleString('de-DE')} Bilder • ${(faceCount || 0).toLocaleString('de-DE')} Gesichter`;
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeBatchRollbackModal() {
+  pendingRollbackBatchId = null;
+  const modal = document.getElementById('batch-rollback-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function executeBatchRollback() {
+  if (!pendingRollbackBatchId) return;
+  const batchId = pendingRollbackBatchId;
+  const btn = document.getElementById('confirm-batch-rollback-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>Lösche Vektoren...</span>';
+  }
+
+  try {
+    const res = await fetch(`/api/archive/batches/${encodeURIComponent(batchId)}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+
+    closeBatchRollbackModal();
+    showToast(`Bestand '${data.batch_name || batchId}' erfolgreich entfernt.`, false);
+    await loadImportBatches();
+    loadRegisteredFolders();
+  } catch (err) {
+    showToast(`Rollback fehlgeschlagen: ${err.message}`, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>Rollback durchführen</span>';
+    }
+  }
+}
+
+// Explizite Bindung für HTML-Inline-Handler (onclick)
+window.loadImportBatches = loadImportBatches;
+window.renderImportBatchesTable = renderImportBatchesTable;
+window.filterSearchByBatch = filterSearchByBatch;
+window.editBatchPrompt = editBatchPrompt;
+window.openBatchRollbackModal = openBatchRollbackModal;
+window.closeBatchRollbackModal = closeBatchRollbackModal;
+window.executeBatchRollback = executeBatchRollback;
+window.syncClusterLabels = syncClusterLabels;
+
 

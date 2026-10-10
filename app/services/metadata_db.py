@@ -55,8 +55,8 @@ class MetadataDatabase:
                 except Exception:
                     pass
 
-                # Migration: Falls Zweiblatt-Spalten (companion_path, sheet_role, verso_notes) noch fehlen
-                for col in ["companion_path TEXT", "sheet_role TEXT", "verso_notes TEXT"]:
+                # Migration: Falls Zweiblatt-Spalten (companion_path, sheet_role, verso_notes) oder import_id noch fehlen
+                for col in ["companion_path TEXT", "sheet_role TEXT", "verso_notes TEXT", "import_id TEXT"]:
                     try:
                         conn.execute(f"ALTER TABLE metadata ADD COLUMN {col};")
                     except Exception:
@@ -78,13 +78,32 @@ class MetadataDatabase:
                 except Exception:
                     pass
 
+                # Tabelle für archivische Import-Chargen & Akzessionsjournal (Provenienz & Rollback)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS import_batches (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        folder_path TEXT NOT NULL,
+                        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        finished_at TIMESTAMP,
+                        image_count INTEGER DEFAULT 0,
+                        face_count INTEGER DEFAULT 0,
+                        skipped_count INTEGER DEFAULT 0,
+                        status TEXT DEFAULT 'running',
+                        notes TEXT
+                    );
+                """)
+
                 # Performance-Indizes für schnelle Suche und Lookups
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_filename ON metadata(file_name);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_title ON metadata(title);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_signature ON metadata(signature);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_companion ON metadata(companion_path);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_import_id ON metadata(import_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_face_count ON clusters(face_count DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_import_batches_started ON import_batches(started_at DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_import_batches_status ON import_batches(status);")
 
                 # Tabelle für systemweiten Job- und Verarbeitungsstatus (Prozess-übergreifend)
                 conn.execute("""
@@ -294,10 +313,12 @@ class MetadataDatabase:
             logger.error("Fehler beim Löschen des Clusters %s: %s", cluster_id, e)
             return False
 
-    def bulk_sync_clusters(self, clusters: List[Dict[str, Any]]) -> None:
+    def bulk_sync_clusters(self, clusters: List[Dict[str, Any]], preserve_existing_names: bool = False) -> None:
         """
         Synchronisiert eine Liste aggregierter Personen-Cluster atomar per Batch in SQLite.
         Ermöglicht Sub-5ms Reaktionszeiten für get_clusters() im Frontend.
+        preserve_existing_names: Wenn False, werden Labels exakt übernommen bzw. auf NULL gesetzt,
+        um Namens-Verschiebungen bei Cluster-Neuberechnungen zu verhindern.
         """
         if not clusters:
             return
@@ -313,22 +334,51 @@ class MetadataDatabase:
             )
             for c in clusters
         ]
+        name_clause = "COALESCE(excluded.name, clusters.name)" if preserve_existing_names else "excluded.name"
         try:
             with self._get_connection() as conn:
-                conn.executemany("""
+                conn.executemany(f"""
                     INSERT INTO clusters (id, name, face_count, preview_image, notes, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
-                        name = COALESCE(excluded.name, clusters.name),
+                        name = {name_clause},
                         face_count = excluded.face_count,
                         preview_image = COALESCE(excluded.preview_image, clusters.preview_image),
                         notes = COALESCE(excluded.notes, clusters.notes),
                         updated_at = excluded.updated_at
                 """, rows)
                 conn.commit()
-            logger.info("Erfolgreich %d Cluster in SQLite synchronisiert.", len(rows))
+            logger.info("Erfolgreich %d Cluster in SQLite synchronisiert (preserve_names=%s).", len(rows), preserve_existing_names)
         except Exception as e:
             logger.error("Fehler beim Bulk-Sync der Cluster in SQLite: %s", e)
+
+    def sync_exact_cluster_labels(self, cluster_to_label: Dict[str, str]) -> None:
+        """
+        Gleicht die Klarnamen der Personen-Cluster in SQLite exakt mit den echten Labels aus Qdrant ab.
+        Entfernt alte, verschobene Namen und setzt verifizierte Klarnamen für die aktuellen Cluster_IDs.
+        """
+        now = datetime.now().isoformat()
+        try:
+            with self._get_connection() as conn:
+                # 1. Bestehende Namen leeren, um Geisternamen aus alten Clusterungen zu beseitigen
+                conn.execute("UPDATE clusters SET name = NULL WHERE name IS NOT NULL;")
+
+                # 2. Die aktuellen Labels für die tatsächlichen Cluster-IDs setzen
+                for cid, label in cluster_to_label.items():
+                    if not label or not str(label).strip():
+                        continue
+                    conn.execute("""
+                        INSERT INTO clusters (id, name, face_count, preview_image, updated_at)
+                        VALUES (?, ?, 0, ?, ?)
+                        ON CONFLICT(id) DO UPDATE SET
+                            name = excluded.name,
+                            updated_at = excluded.updated_at
+                    """, (str(cid), str(label).strip(), f"/faces/clusters/{cid}/preview", now))
+                conn.commit()
+            logger.info("Erfolgreich %d Personen-Labels aus Qdrant in SQLite synchronisiert.", len(cluster_to_label))
+        except Exception as e:
+            logger.error("Fehler beim Synchronisieren der Cluster-Labels in SQLite: %s", e)
+            raise e
 
     def get_clusters_summary(self) -> List[Dict[str, Any]]:
         """
@@ -448,6 +498,166 @@ class MetadataDatabase:
         except Exception as e:
             logger.error("Fehler bei der Metadatensuche in SQLite: %s", e)
             return []
+
+    # ------------------ Import-Batches & Akzessionsjournal ------------------
+
+    def create_import_batch(
+        self,
+        batch_id: str,
+        name: str,
+        folder_path: str,
+        notes: Optional[str] = None,
+        status: str = "running",
+    ) -> Dict[str, Any]:
+        """Legt einen neuen Import-Batch im Akzessionsjournal an."""
+        now_iso = datetime.now().isoformat()
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO import_batches (id, name, folder_path, started_at, status, notes)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        folder_path = excluded.folder_path,
+                        notes = COALESCE(excluded.notes, import_batches.notes),
+                        status = excluded.status;
+                    """,
+                    (batch_id, name.strip(), folder_path.strip(), now_iso, status, notes),
+                )
+                conn.commit()
+            return self.get_import_batch(batch_id) or {
+                "id": batch_id,
+                "name": name,
+                "folder_path": folder_path,
+                "started_at": now_iso,
+                "status": status,
+                "notes": notes,
+            }
+        except Exception as e:
+            logger.error("Fehler beim Anlegen des Import-Batches %s: %s", batch_id, e)
+            raise
+
+    def update_import_batch(
+        self,
+        batch_id: str,
+        status: Optional[str] = None,
+        image_count: Optional[int] = None,
+        face_count: Optional[int] = None,
+        skipped_count: Optional[int] = None,
+        notes: Optional[str] = None,
+        finished_at: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Aktualisiert die Statistiken und den Status eines Import-Batches."""
+        updates = []
+        params = []
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+        if image_count is not None:
+            updates.append("image_count = ?")
+            params.append(image_count)
+        if face_count is not None:
+            updates.append("face_count = ?")
+            params.append(face_count)
+        if skipped_count is not None:
+            updates.append("skipped_count = ?")
+            params.append(skipped_count)
+        if notes is not None:
+            updates.append("notes = ?")
+            params.append(notes)
+        if finished_at is not None:
+            updates.append("finished_at = ?")
+            params.append(finished_at)
+
+        if not updates:
+            return self.get_import_batch(batch_id)
+
+        params.append(batch_id)
+        sql = f"UPDATE import_batches SET {', '.join(updates)} WHERE id = ?;"
+        try:
+            with self._get_connection() as conn:
+                conn.execute(sql, params)
+                conn.commit()
+            return self.get_import_batch(batch_id)
+        except Exception as e:
+            logger.error("Fehler beim Aktualisieren des Import-Batches %s: %s", batch_id, e)
+            return None
+
+    def get_import_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
+        """Gibt die Details eines einzelnen Import-Batches zurück."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute("SELECT * FROM import_batches WHERE id = ?;", (batch_id,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error("Fehler beim Abrufen des Import-Batches %s: %s", batch_id, e)
+            return None
+
+    def list_import_batches(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Liefert alle erfassten Import-Chargen sortiert nach Startdatum (neueste zuerst)."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    "SELECT * FROM import_batches ORDER BY started_at DESC LIMIT ?;",
+                    (limit,),
+                )
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error("Fehler beim Abrufen der Import-Batches: %s", e)
+            return []
+
+    def delete_import_batch(self, batch_id: str) -> bool:
+        """Löscht einen Import-Batch und entfernt verknüpfte SQLite-Metadateneinträge."""
+        try:
+            with self._get_connection() as conn:
+                # 1. Metadateneinträge bereinigen
+                conn.execute("DELETE FROM metadata WHERE import_id = ?;", (batch_id,))
+                # 2. Batch-Eintrag löschen
+                cursor = conn.execute("DELETE FROM import_batches WHERE id = ?;", (batch_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error("Fehler beim Löschen des Import-Batches %s aus SQLite: %s", batch_id, e)
+            return False
+
+    def update_metadata_import_id(self, file_path: str, import_id: str) -> None:
+        """Verknüpft ein Bild in der SQLite-Metadatentabelle mit einer Import-ID."""
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "UPDATE metadata SET import_id = ? WHERE file_path = ?;",
+                    (import_id, file_path),
+                )
+                conn.commit()
+        except Exception as e:
+            logger.debug("Konnte import_id nicht für Metadaten (%s) setzen: %s", file_path, e)
+
+    def seed_legacy_batch_if_empty(self, folder_path: str, image_count: int, face_count: int) -> None:
+        """Erstellt einen initialen Legacy-Batch, falls noch keine Import-Batches existieren aber Daten vorliegen."""
+        try:
+            with self._get_connection() as conn:
+                count = conn.execute("SELECT COUNT(*) FROM import_batches;").fetchone()[0]
+                if count == 0 and image_count > 0:
+                    conn.execute(
+                        """
+                        INSERT INTO import_batches (id, name, folder_path, started_at, finished_at, image_count, face_count, status, notes)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, 'completed', ?);
+                        """,
+                        (
+                            "batch_initial_legacy",
+                            "Hauptbestand (Initialer Archivimport)",
+                            folder_path,
+                            image_count,
+                            face_count,
+                            "Vorhandener Archivbestand vor Einführung des Akzessionsjournals.",
+                        ),
+                    )
+                    conn.commit()
+                    logger.info("Initialer Legacy-Batch 'batch_initial_legacy' für %d Bilder angelegt.", image_count)
+        except Exception as e:
+            logger.debug("Fehler beim Anlegen des Legacy-Batches: %s", e)
 
 
 metadata_db = MetadataDatabase()

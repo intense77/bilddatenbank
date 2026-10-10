@@ -47,10 +47,10 @@ class Settings(BaseSettings):
     INSIGHTFACE_MODEL_NAME: str = "buffalo_l"
     INSIGHTFACE_DET_SIZE: int = 640
 
-    # Automatisches Clustering Schwellenwert (Schutz vor OOM bei Großbeständen)
+    # Automatisches Clustering Schwellenwert (Dank GPU PyTorch FP16 Chunking bis 500.000 Gesichter sicher)
     AUTO_CLUSTER_MAX_FACES: int = Field(
-        default=5000,
-        description="Maximale Gesichtsanzahl in der Datenbank, bis zu der nach einem Import automatisch geclustert wird. Größere Bestände erfordern manuellen Start im Personen-Tab."
+        default=500000,
+        description="Maximale Gesichtsanzahl in der Datenbank, bis zu der nach einem Import automatisch geclustert wird. Dank GPU-Beschleunigung auf 500.000 angehoben."
     )
 
     # Datenverzeichnis für historische Bilder

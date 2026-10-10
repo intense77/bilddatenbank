@@ -768,6 +768,40 @@
 </ul>
 </li>
 </ul>
+<hr />
+<h2 id="28-archivische-import-historie-benannte-bestande-ingest-journal-provenienz-rollback">28. Archivische Import-Historie, Benannte Bestände &amp; Ingest-Journal (Provenienz &amp; Rollback)</h2>
+<ul>
+<li><strong>Ziel:</strong> Erweiterung des Systems um ein archivwissenschaftliches Akzessions- und Ingest-Journal (angelehnt an das OAIS-Referenzmodell), um Bildimporte mit sprechenden Bestandsbezeichnungen zu versehen, Provenienzen nachzuhalten, nach Akzessionen zu filtern und fehlerhafte Chargen selektiv rückgängig machen zu können.</li>
+<li><strong>Archivfachlicher &amp; Technischer Nutzen:</strong></li>
+<li><strong>Provenienzprinzip &amp; Akzessionsjournal:</strong> Direkte Verknüpfung digitaler Import-Chargen mit dem physischen Zugangsbuch (z. B. <em>„Nachlass Pfarrer Müller 2026/04“</em> oder <em>„Digitalisierungskampagne Altarraum Herbst 2026“</em>).</li>
+<li><strong>Selektives Rollback &amp; Revisionssicherheit:</strong> Möglichkeit, einzelne versehentlich oder fehlerhaft importierte Ordner-Chargen isoliert aus SQLite und Qdrant zu entfernen, ohne den Gesamtbestand zu gefährden.</li>
+<li><strong>Gezielte Bestandsfilterung:</strong> Gezielte Recherche nach Beständen/Importen (<em>„Nur Bilder aus Zugang XY“</em>) neben semantischer Suche und Schlagwörtern.</li>
+<li><strong>Ingest-Audit-Trail:</strong> Dokumentation von Import-Dauer, Bild- und Gesichtszahlen, Erfolgsquoten und übersprungenen Dateien für Berichte und Fördergeber.</li>
+<li><strong>Aufgaben:</strong></li>
+<li>[x] <strong>1. Relationale Schema-Erweiterung (<code>metadata_db.py</code>):</strong><ul>
+<li>Tabelle <code>import_batches</code> mit Feldern: <code>id</code> (UUID/Präfix), <code>name</code> (sprechender Name), <code>folder_path</code>, <code>started_at</code>, <code>finished_at</code>, <code>image_count</code>, <code>face_count</code>, <code>skipped_count</code>, <code>status</code> (<code>running</code>, <code>completed</code>, <code>failed</code>), <code>notes</code>.</li>
+<li>CRUD-Methoden in <code>MetadataDatabase</code> zur Abfrage, Filterung und Verwaltung von Import-Chargen sowie Initial-Seeding des historischen Altbestands (<code>batch_initial_legacy</code>).</li>
+</ul>
+</li>
+<li>[x] <strong>2. Qdrant-Payload-Erweiterung (<code>import_id</code>):</strong><ul>
+<li>Zuweisung der <code>import_id</code> als indiziertes Payload-Feld in <code>archive_images</code> und <code>archive_faces</code>.</li>
+<li>Schnelle Sub-Millisekunden-Filterung in Qdrant via <code>FieldCondition(key="import_id", match=...)</code> sowie Unterstützung für Altbestände ohne explizite ID.</li>
+<li>Rollback-Methode <code>delete_by_import_id()</code> zum sauberen Bereinigen von Vektoren und Metadaten.</li>
+</ul>
+</li>
+<li>[x] <strong>3. Worker- &amp; API-Integration (<code>indexing_worker.py</code> &amp; <code>archive.py</code>):</strong><ul>
+<li>Übergabe eines optionalen Namens <code>--batch-name</code> und <code>--notes</code> beim Start des Imports (intelligenter Fallback: Ordnername + Datum).</li>
+<li>Automatisches Befüllen der Statistiken (<code>image_count</code>, <code>face_count</code>, <code>duration</code>) bei Abschluss des Worker-Prozesses in <code>metadata_db</code>.</li>
+<li>REST-Endpunkte: <code>GET /api/archive/batches</code> (Liste aller Chargen), <code>GET /api/archive/batches/{id}</code> (Details &amp; Ingest-Log), <code>PATCH /api/archive/batches/{id}</code> (Umbenennen / Notizen) und <code>DELETE /api/archive/batches/{id}</code> (Selektives Rollback).</li>
+</ul>
+</li>
+<li>[x] <strong>4. Web-Interface: Bestandsbezeichnung beim Import &amp; Reiter „Import-Historie“:</strong><ul>
+<li>Eingabefeld <em>„Bestandsbezeichnung (optional)“</em> im Ordner-Scan-/Ingest-Dialog.</li>
+<li>Übersichtskarte <em>„Import-Historie &amp; Akzessionsjournal“</em> im Ingest-Reiter: Tabelle mit Datum, Name, Pfad, Anzahl Bildern/Gesichtern und Status-Badges.</li>
+<li>Schnellaktionen: <em>„Bilder dieses Bestands anzeigen“</em> (aktiviert Filter in der Suche), <em>„Metadaten bearbeiten“</em> und <em>„Bestand rückgängig machen / entfernen (Rollback)“</em> mit Bestätigungsmodal.</li>
+</ul>
+</li>
+</ul>
     </article>
     <footer>
       <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>

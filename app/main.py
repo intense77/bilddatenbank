@@ -22,6 +22,12 @@ async def lifespan(app: FastAPI):
     if qdrant.check_health():
         logger.info("Verbindung zu Qdrant erfolgreich. Initialisiere Collections...")
         qdrant.init_collections()
+        try:
+            from app.api.deps import get_clustering_service
+            clustering_svc = get_clustering_service()
+            clustering_svc.sync_cluster_labels_with_qdrant()
+        except Exception as e:
+            logger.warning("Automatischer Sync der Personen-Cluster-Labels beim Start übersprungen: %s", e)
     else:
         logger.warning(
             "Qdrant ist unter %s:%d noch nicht erreichbar. "
@@ -48,6 +54,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path in ["/", "/index.html", "/app.js"] or path.endswith(".js"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 import os
 from pathlib import Path

@@ -31,6 +31,8 @@ class ScanFolderRequest(BaseModel):
 
 class IndexFolderRequest(BaseModel):
     folder_path: str = Field(..., min_length=1, description="Absoluter oder relativer Pfad zum Bildordner")
+    batch_name: Optional[str] = Field(default=None, description="Sprechende Bestandsbezeichnung (z. B. 'Nachlass Pfarrer Müller 2026')")
+    batch_notes: Optional[str] = Field(default=None, description="Optionale archivische Bemerkungen zum Bestand")
     recursive: bool = Field(default=True, description="Auch Unterordner durchsuchen")
     force: bool = Field(default=False, description="Erzwingt Neuindexierung bereits vorhandener Bilder")
     cluster_faces: bool = Field(default=True, description="Führt automatisches Clustering nach dem Einlesen aus")
@@ -356,7 +358,12 @@ async def index_existing_folder(
         "app.workers.indexing_worker",
         "--folder", str(registered_path),
         "--job-id", new_job_id,
+        "--batch-id", f"batch_{new_job_id}",
     ]
+    if request.batch_name and request.batch_name.strip():
+        cmd.extend(["--batch-name", request.batch_name.strip()])
+    if request.batch_notes and request.batch_notes.strip():
+        cmd.extend(["--notes", request.batch_notes.strip()])
     if request.recursive:
         cmd.append("--recursive")
     else:
@@ -461,7 +468,7 @@ async def upload_archive_images(
         except Exception:
             pass
 
-        max_threshold = getattr(settings, "AUTO_CLUSTER_MAX_FACES", 5000)
+        max_threshold = getattr(settings, "AUTO_CLUSTER_MAX_FACES", 500000)
         if total_coll_faces <= max_threshold:
             try:
                 clustering_service.run_clustering()
@@ -525,4 +532,79 @@ def save_two_sided_notes(req: TwoSidedNotesRequest):
         "success": True,
         "path": str(safe_path),
         "notes": req.notes,
+    }
+
+
+# =========================================================================
+# Archivische Import-Historie & Akzessionsjournal (Provenienz & Rollback)
+# =========================================================================
+
+class UpdateBatchRequest(BaseModel):
+    name: Optional[str] = Field(default=None, description="Aktualisierter Name des Bestands")
+    notes: Optional[str] = Field(default=None, description="Aktualisierte archivische Notizen")
+
+
+@router.get("/batches")
+def get_import_batches(limit: int = 100):
+    """Gibt die Liste aller erfassten Import-Chargen und Bestände zurück."""
+    from app.services.metadata_db import metadata_db
+    batches = metadata_db.list_import_batches(limit=limit)
+    return {"batches": batches, "count": len(batches)}
+
+
+@router.get("/batches/{batch_id}")
+def get_import_batch_details(batch_id: str):
+    """Liefert die Details einer einzelnen Import-Charge."""
+    from app.services.metadata_db import metadata_db
+    batch = metadata_db.get_import_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail=f"Import-Batch '{batch_id}' nicht gefunden.")
+    return batch
+
+
+@router.patch("/batches/{batch_id}")
+def update_import_batch(batch_id: str, req: UpdateBatchRequest):
+    """Aktualisiert die Bestandsbezeichnung oder Notizen einer Charge."""
+    from app.services.metadata_db import metadata_db
+    batch = metadata_db.get_import_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail=f"Import-Batch '{batch_id}' nicht gefunden.")
+    updated = metadata_db.update_import_batch(batch_id, notes=req.notes)
+    if req.name and req.name.strip():
+        try:
+            with metadata_db._get_connection() as conn:
+                conn.execute("UPDATE import_batches SET name = ? WHERE id = ?;", (req.name.strip(), batch_id))
+                conn.commit()
+            updated = metadata_db.get_import_batch(batch_id)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Fehler beim Umbenennen des Bestands: {e}")
+    return updated
+
+
+@router.delete("/batches/{batch_id}")
+def rollback_import_batch(batch_id: str):
+    """
+    Führt ein selektives Rollback für einen Import-Batch aus:
+    Löscht alle zugehörigen Bild- und Gesichts-Vektorpunkte aus Qdrant
+    sowie die Metadateneinträge aus SQLite.
+    """
+    from app.services.metadata_db import metadata_db
+    from app.services.qdrant_service import QdrantService
+    batch = metadata_db.get_import_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail=f"Import-Batch '{batch_id}' nicht gefunden.")
+
+    qs = QdrantService()
+    # 1. Aus Qdrant entfernen
+    qdrant_res = qs.delete_by_import_id(batch_id)
+    # 2. Aus SQLite entfernen
+    deleted_from_db = metadata_db.delete_import_batch(batch_id)
+
+    logger.info("Rollback für Batch '%s' ('%s') erfolgreich durchgeführt.", batch_id, batch.get("name"))
+    return {
+        "status": "deleted",
+        "batch_id": batch_id,
+        "batch_name": batch.get("name"),
+        "deleted_from_db": deleted_from_db,
+        "qdrant": qdrant_res,
     }

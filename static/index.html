@@ -166,6 +166,11 @@
               <option value="48">48 Treffer</option>
               <option value="96">96 Treffer</option>
             </select>
+            <select id="search-batch-filter" onchange="handleSearchSubmit(event)"
+              class="bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-3 text-xs sm:text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/50 max-w-[210px] truncate"
+              title="Ergebnisse auf eine bestimmte Import-Charge / Akzession einschränken">
+              <option value="">Alle Bestände</option>
+            </select>
             <label
               class="flex items-center gap-1.5 px-3 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-xs sm:text-sm text-slate-300 cursor-pointer hover:border-slate-600 transition select-none"
               title="Fasst Varianten, Repros und Serienaufnahmen automatisch zu Bildstapeln zusammen">
@@ -299,6 +304,14 @@
               </path>
             </svg>
             <span>Aktualisieren</span>
+          </button>
+          <button type="button" onclick="syncClusterLabels()"
+            class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs sm:text-sm font-medium rounded-xl border border-slate-700 transition flex items-center gap-1.5"
+            title="Gleicht gespeicherte Personen-Namen exakt mit den echten Bild-Labels in Qdrant ab">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+            </svg>
+            <span>Namen abgleichen</span>
           </button>
           <button id="run-clustering-btn" onclick="triggerClustering()"
             class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs sm:text-sm rounded-xl transition shadow-md shadow-amber-500/10 flex items-center gap-2">
@@ -552,6 +565,15 @@
                 </div>
               </div>
 
+              <!-- Bestandsbezeichnung / Akzession -->
+              <div>
+                <label for="folder-batch-name-input" class="block text-xs font-medium text-slate-300 mb-1">
+                  Bestandsbezeichnung / Akzessionsname (optional)
+                </label>
+                <input type="text" id="folder-batch-name-input" placeholder="z. B. Nachlass Pfarrer Müller 2026 oder Digitalisierungskampagne Altarraum"
+                  class="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50" />
+              </div>
+
               <!-- Optionen -->
               <div class="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
                 <label class="flex items-center gap-2 cursor-pointer select-none">
@@ -677,6 +699,59 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- ================= Archivische Import-Historie & Akzessionsjournal ================= -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center text-xl font-bold">
+              📋
+            </div>
+            <div>
+              <h3 class="text-base font-semibold text-slate-100 flex items-center gap-2">
+                <span>Import-Historie &amp; Akzessionsjournal</span>
+                <span id="batches-total-badge" class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono text-xs">...</span>
+              </h3>
+              <p class="text-xs text-slate-400">
+                Lückenlose Provenienz nach OAIS-Standard, Ingest-Statistiken und selektives Rollback von Chargen.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="loadImportBatches()"
+              class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition flex items-center gap-1.5 border border-slate-700"
+              title="Historie neu laden">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              <span>Aktualisieren</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Batches Table Container -->
+        <div class="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="text-[11px] uppercase tracking-wider text-slate-400 bg-slate-950/80 border-b border-slate-800">
+              <tr>
+                <th class="px-4 py-3 font-semibold">Datum / Start</th>
+                <th class="px-4 py-3 font-semibold">Bestandsbezeichnung</th>
+                <th class="px-4 py-3 font-semibold">Quellpfad</th>
+                <th class="px-4 py-3 font-semibold text-right">Bilder</th>
+                <th class="px-4 py-3 font-semibold text-right">Gesichter</th>
+                <th class="px-4 py-3 font-semibold text-center">Status</th>
+                <th class="px-4 py-3 font-semibold text-right">Aktionen</th>
+              </tr>
+            </thead>
+            <tbody id="import-batches-tbody" class="divide-y divide-slate-800/60 font-mono">
+              <tr>
+                <td colspan="7" class="px-4 py-6 text-center text-slate-500 font-sans">Lade Import-Historie...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Registrierte Archiv-Ordner Übersicht -->
@@ -2350,10 +2425,53 @@
     </div>
   </div>
 
+  <!-- Modal: Import-Batch Rollback / Löschen -->
+  <div id="batch-rollback-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+    <div class="bg-slate-900 border border-rose-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center text-xl flex-shrink-0">
+          ⚠️
+        </div>
+        <div>
+          <h3 class="text-base font-bold text-slate-100">Bestand rückgängig machen (Rollback)</h3>
+          <p class="text-xs text-slate-400 mt-1">
+            Möchten Sie diesen Import-Batch wirklich aus dem Archiv entfernen?
+          </p>
+        </div>
+      </div>
+
+      <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1.5 font-mono">
+        <div class="text-slate-300 font-sans font-semibold" id="rollback-batch-name">...</div>
+        <div class="text-slate-400 truncate text-[11px]" id="rollback-batch-path">...</div>
+        <div class="text-amber-400 text-[11px]" id="rollback-batch-stats">...</div>
+      </div>
+
+      <div class="text-xs text-rose-300 bg-rose-950/30 border border-rose-500/20 p-3 rounded-xl space-y-1">
+        <p class="font-semibold">Was passiert beim Rollback:</p>
+        <p class="text-[11px] text-slate-300">
+          • Alle Vektoren dieses Imports werden rückstandslos aus Qdrant gelöscht.<br>
+          • Zugehörige Metadateneinträge in SQLite werden entfernt.<br>
+          • <strong>Die Originaldateien auf dem Speichermedium bleiben unberührt.</strong>
+        </p>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button type="button" onclick="closeBatchRollbackModal()"
+          class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition">
+          Abbrechen
+        </button>
+        <button type="button" id="confirm-batch-rollback-btn" onclick="executeBatchRollback()"
+          class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-md shadow-rose-900/30">
+          <span>Rollback durchführen</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="/cropper.min.js"></script>
   <script src="/vis-network.min.js"></script>
   <script src="/openseadragon.min.js"></script>
-  <script src="/app.js?v=5.1"></script>
+  <script src="/app.js?v=6.0.0"></script>
 </body>
 
 </html>

@@ -135,7 +135,7 @@ class ClusteringService:
     def _cluster_vectors_chunked(
         self,
         vectors_np: np.ndarray,
-        eps: float = 0.55,
+        eps: float = 0.35,
         min_samples: int = 2,
         chunk_size: int = 2000,
     ) -> np.ndarray:
@@ -260,7 +260,7 @@ class ClusteringService:
 
     def run_clustering(
         self,
-        eps: float = 0.55,
+        eps: float = 0.35,
         min_samples: int = 2,
     ) -> Dict[str, Any]:
         """
@@ -268,6 +268,7 @@ class ClusteringService:
         - Lädt Vektoren gestreamt ohne Payloads (< 500 MB RAM für 200k Gesichter)
         - Stückweise Inferenz auf GPU/CPU (< 1.5 GB RAM)
         - Aktualisiert cluster_id im Qdrant-Payload in Batches von 1.000 Punkten
+        - Tastet bestehende Klarnamen (label) auf den Gesichtern NICHT an!
         """
         logger.info("Lade Gesichts-Embeddings aus Qdrant ('%s')...", settings.COLLECTION_FACES)
         point_ids, vectors = self.fetch_all_face_vectors(batch_size=5000)
@@ -310,11 +311,44 @@ class ClusteringService:
             len(noise_points),
         )
 
+        # Vorhandene Gesichts-Labels aus Qdrant abrufen, um Klarnamen in der SQLite-Übersicht zuzuordnen
+        labeled_records, _ = self.qdrant.client.scroll(
+            collection_name=settings.COLLECTION_FACES,
+            scroll_filter=rest_models.Filter(
+                must_not=[
+                    rest_models.IsEmptyCondition(is_empty=rest_models.PayloadField(key="label")),
+                    rest_models.IsNullCondition(is_null=rest_models.PayloadField(key="label")),
+                ]
+            ),
+            limit=50000,
+            with_payload=["label"],
+            with_vectors=False,
+        )
+        face_to_label = {
+            str(r.id): r.payload.get("label")
+            for r in labeled_records
+            if r.payload and r.payload.get("label")
+        }
+
+        from collections import Counter, defaultdict
+        person_to_cluster_counts: Dict[str, Counter] = defaultdict(Counter)
+        for c_id, p_ids in points_by_cluster.items():
+            for pid in p_ids:
+                lbl = face_to_label.get(pid)
+                if lbl and lbl.strip():
+                    person_to_cluster_counts[lbl.strip()][c_id] += 1
+
+        # Jede Person darf systemweit exakt EINEM primären Haupt-Cluster zugeordnet sein!
+        cluster_labels: Dict[str, str] = {}
+        for person, c_counts in person_to_cluster_counts.items():
+            best_cid, count = c_counts.most_common(1)[0]
+            cluster_labels[best_cid] = person
+
         # Qdrant Payload gebatcht aktualisieren (verhindert Request-Timeouts & WAL-Überlastung)
         logger.info("Aktualisiere Qdrant-Payloads für %d geclusterte Gruppen und %d Rauschpunkte...",
                     len(points_by_cluster), len(noise_points))
 
-        # 1. Geclusterte Punkte
+        # 1. Geclusterte Punkte: Ausschließlich cluster_id setzen (Niemals unbestätigte Labels injizieren!)
         BATCH_POINTS = 1000
         for c_id, p_ids in points_by_cluster.items():
             for i in range(0, len(p_ids), BATCH_POINTS):
@@ -338,12 +372,13 @@ class ClusteringService:
         clusters_to_sync = [
             {
                 "cluster_id": c_id,
+                "label": cluster_labels.get(c_id),
                 "face_count": count,
                 "preview_image": f"/faces/clusters/{c_id}/preview",
             }
             for c_id, count in cluster_counts.items()
         ]
-        metadata_db.bulk_sync_clusters(clusters_to_sync)
+        metadata_db.bulk_sync_clusters(clusters_to_sync, preserve_existing_names=False)
 
         self.invalidate_clusters_cache()
 
@@ -819,3 +854,61 @@ class ClusteringService:
             "label": final_label,
             "affected_images": len(affected_parent_ids),
         }
+
+    def sync_cluster_labels_with_qdrant(self) -> Dict[str, Any]:
+        """
+        Liest alle in Qdrant (archive_faces) gespeicherten Klarnamen aus und
+        gleicht die relationale SQLite-Tabelle clusters damit ab.
+        Stellt sicher, dass nach Neuberechnungen oder Restarts keine verschobenen
+        oder veralteten Namen in der Übersichtskarte angezeigt werden.
+        """
+        logger.info("Starte Konsistenzprüfung und Synchronisation der Personen-Labels zwischen Qdrant und SQLite...")
+        offset = None
+        all_labeled = []
+        flt = rest_models.Filter(
+            must_not=[
+                rest_models.IsEmptyCondition(is_empty=rest_models.PayloadField(key="label")),
+                rest_models.IsNullCondition(is_null=rest_models.PayloadField(key="label")),
+            ]
+        )
+        while True:
+            pts, next_offset = self.qdrant.client.scroll(
+                collection_name=settings.COLLECTION_FACES,
+                scroll_filter=flt,
+                limit=2000,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            all_labeled.extend(pts)
+            if not next_offset:
+                break
+            offset = next_offset
+
+        from collections import Counter, defaultdict
+        person_to_cluster_counts: Dict[str, Counter] = defaultdict(Counter)
+        for p in all_labeled:
+            cid = p.payload.get("cluster_id")
+            lbl = p.payload.get("label")
+            if cid and lbl and str(lbl).strip():
+                person_to_cluster_counts[str(lbl).strip()][cid] += 1
+
+        # Jede benannte Person darf systemweit exakt EINEM Haupt-Cluster zugeordnet werden!
+        cluster_to_label: Dict[str, str] = {}
+        for person, c_counts in person_to_cluster_counts.items():
+            best_cid, count = c_counts.most_common(1)[0]
+            cluster_to_label[best_cid] = person
+
+        metadata_db.sync_exact_cluster_labels(cluster_to_label)
+        self.invalidate_clusters_cache()
+        logger.info(
+            "Synchronisation der Personen-Labels abgeschlossen: %d Cluster synchronisiert (%s).",
+            len(cluster_to_label),
+            ", ".join([f"{cid}: {lbl}" for cid, lbl in cluster_to_label.items()]),
+        )
+        return {
+            "status": "success",
+            "labeled_clusters_count": len(cluster_to_label),
+            "clusters": cluster_to_label,
+        }
+

@@ -430,6 +430,32 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
     * Definition von Speicherobergrenzen (`mem_limit: 16g`, `mem_reservation: 4g`) in `docker-compose.yml` und Live-Aktivierung auf `archive_qdrant` via `docker update`. Verhindert unkontrollierte Speicherkonflikte zwischen Qdrant und Host.
     * Bereitstellung der Befehle zur NVMe-Swap-Erweiterung auf 40 GB (32 GB Zusatz-Swap auf `/dev/nvme0n1p2`), um dem Linux-Kernel bei massiven Spitzenlasten elastischen Puffer vor dem OOM-Killer zu geben.
 
+---
+
+## 28. Archivische Import-Historie, Benannte Bestände & Ingest-Journal (Provenienz & Rollback)
+* **Ziel:** Erweiterung des Systems um ein archivwissenschaftliches Akzessions- und Ingest-Journal (angelehnt an das OAIS-Referenzmodell), um Bildimporte mit sprechenden Bestandsbezeichnungen zu versehen, Provenienzen nachzuhalten, nach Akzessionen zu filtern und fehlerhafte Chargen selektiv rückgängig machen zu können.
+* **Archivfachlicher & Technischer Nutzen:**
+  * **Provenienzprinzip & Akzessionsjournal:** Direkte Verknüpfung digitaler Import-Chargen mit dem physischen Zugangsbuch (z. B. *„Nachlass Pfarrer Müller 2026/04“* oder *„Digitalisierungskampagne Altarraum Herbst 2026“*).
+  * **Selektives Rollback & Revisionssicherheit:** Möglichkeit, einzelne versehentlich oder fehlerhaft importierte Ordner-Chargen isoliert aus SQLite und Qdrant zu entfernen, ohne den Gesamtbestand zu gefährden.
+  * **Gezielte Bestandsfilterung:** Gezielte Recherche nach Beständen/Importen (*„Nur Bilder aus Zugang XY“*) neben semantischer Suche und Schlagwörtern.
+  * **Ingest-Audit-Trail:** Dokumentation von Import-Dauer, Bild- und Gesichtszahlen, Erfolgsquoten und übersprungenen Dateien für Berichte und Fördergeber.
+* **Aufgaben:**
+  - [x] **1. Relationale Schema-Erweiterung (`metadata_db.py`):**
+    * Tabelle `import_batches` mit Feldern: `id` (UUID/Präfix), `name` (sprechender Name), `folder_path`, `started_at`, `finished_at`, `image_count`, `face_count`, `skipped_count`, `status` (`running`, `completed`, `failed`), `notes`.
+    * CRUD-Methoden in `MetadataDatabase` zur Abfrage, Filterung und Verwaltung von Import-Chargen sowie Initial-Seeding des historischen Altbestands (`batch_initial_legacy`).
+  - [x] **2. Qdrant-Payload-Erweiterung (`import_id`):**
+    * Zuweisung der `import_id` als indiziertes Payload-Feld in `archive_images` und `archive_faces`.
+    * Schnelle Sub-Millisekunden-Filterung in Qdrant via `FieldCondition(key="import_id", match=...)` sowie Unterstützung für Altbestände ohne explizite ID.
+    * Rollback-Methode `delete_by_import_id()` zum sauberen Bereinigen von Vektoren und Metadaten.
+  - [x] **3. Worker- & API-Integration (`indexing_worker.py` & `archive.py`):**
+    * Übergabe eines optionalen Namens `--batch-name` und `--notes` beim Start des Imports (intelligenter Fallback: Ordnername + Datum).
+    * Automatisches Befüllen der Statistiken (`image_count`, `face_count`, `duration`) bei Abschluss des Worker-Prozesses in `metadata_db`.
+    * REST-Endpunkte: `GET /api/archive/batches` (Liste aller Chargen), `GET /api/archive/batches/{id}` (Details & Ingest-Log), `PATCH /api/archive/batches/{id}` (Umbenennen / Notizen) und `DELETE /api/archive/batches/{id}` (Selektives Rollback).
+  - [x] **4. Web-Interface: Bestandsbezeichnung beim Import & Reiter „Import-Historie“:**
+    * Eingabefeld *„Bestandsbezeichnung (optional)“* im Ordner-Scan-/Ingest-Dialog.
+    * Übersichtskarte *„Import-Historie & Akzessionsjournal“* im Ingest-Reiter: Tabelle mit Datum, Name, Pfad, Anzahl Bildern/Gesichtern und Status-Badges.
+    * Schnellaktionen: *„Bilder dieses Bestands anzeigen“* (aktiviert Filter in der Suche), *„Metadaten bearbeiten“* und *„Bestand rückgängig machen / entfernen (Rollback)“* mit Bestätigungsmodal.
+
 
 
 

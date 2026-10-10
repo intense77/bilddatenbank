@@ -140,6 +140,7 @@ class IndexingService:
         prepared: Dict[str, Any],
         cluster_id_mapping: Optional[dict[str, str]] = None,
         upsert: bool = True,
+        import_id: Optional[str] = None,
     ) -> Tuple[bool, int, Optional[rest_models.PointStruct], List[rest_models.PointStruct]]:
         """
         Inferenz- & Vektorphase (auf GPU/CPU):
@@ -210,6 +211,7 @@ class IndexingService:
                 "copyright": meta.get("copyright"),
                 "keywords": meta.get("keywords", []),
                 "metadata": meta,
+                "import_id": import_id,
             },
         )
 
@@ -250,9 +252,17 @@ class IndexingService:
                     "face_index": idx,
                     "parent_image_id": image_id,
                     "indexed_at": now_iso,
+                    "import_id": import_id,
                 },
             )
             face_points.append(face_point)
+
+        if import_id:
+            try:
+                from app.services.metadata_db import metadata_db
+                metadata_db.update_metadata_import_id(path_str, import_id)
+            except Exception:
+                pass
 
         if upsert:
             self.qdrant.upsert_images([image_point], wait=False)
@@ -267,6 +277,7 @@ class IndexingService:
         cluster_id_mapping: Optional[dict[str, str]] = None,
         base_dir: Optional[Path] = None,
         forced_rel_path: Optional[str] = None,
+        import_id: Optional[str] = None,
     ) -> Tuple[bool, int]:
         """
         Verarbeitet eine einzelne Bilddatei:
@@ -279,7 +290,7 @@ class IndexingService:
         try:
             prepared = self.prepare_image_data(file_path, base_dir=base_dir, forced_rel_path=forced_rel_path)
             success, num_faces, _, _ = self.process_prepared_image(
-                prepared, cluster_id_mapping=cluster_id_mapping, upsert=True
+                prepared, cluster_id_mapping=cluster_id_mapping, upsert=True, import_id=import_id
             )
             return success, num_faces
         except Exception as e:
@@ -340,6 +351,7 @@ class IndexingService:
         folder_path: Path,
         recursive: bool = True,
         force: bool = False,
+        import_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Scannt ein Verzeichnis nach Bilddateien und indexiert neue Dateien inkrementell
@@ -498,7 +510,7 @@ class IndexingService:
 
                         try:
                             success, num_faces, img_pt, fc_pts = self.process_prepared_image(
-                                prepared_data, upsert=False
+                                prepared_data, upsert=False, import_id=import_id
                             )
                             if success and img_pt:
                                 batched_images.append(img_pt)

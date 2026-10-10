@@ -140,6 +140,7 @@ def search_semantic(
     offset: int = Query(default=0, ge=0, description="Offset für Paginierung / Mehr laden"),
     score_threshold: Optional[float] = Query(default=None, ge=-1.0, le=1.0, description="Mindest-Ähnlichkeitsscore"),
     stack_variants: bool = Query(default=True, description="Fasst Varianten und Duplikate zu Bildstapeln zusammen"),
+    batch_id: Optional[str] = Query(default=None, description="Optionaler Filter auf eine bestimmte Import-Charge"),
     clip_service: ClipService = Depends(get_clip_service),
     qdrant: QdrantService = Depends(get_qdrant_service),
     variant_service: VariantService = Depends(get_variant_service),
@@ -337,6 +338,7 @@ def search_semantic(
             query_vector=query_vector,
             limit=fetch_limit,
             score_threshold=effective_clip_threshold if effective_clip_threshold > 0 else None,
+            import_id=batch_id,
         )
     except Exception as e:
         logger.warning("CLIP Textvektorisierung fehlgeschlagen: %s", e)
@@ -774,12 +776,12 @@ def remove_face_from_cluster(
 
 @router.post("/faces/clusters/run", response_model=ClusteringRunResponse)
 def trigger_clustering(
-    eps: float = Query(default=0.55, ge=0.01, le=1.0, description="DBSCAN Epsilon (Cosine-Distanz)"),
+    eps: float = Query(default=0.35, ge=0.01, le=1.0, description="DBSCAN Epsilon (Cosine-Distanz, 0.35 für hohe Präzision)"),
     min_samples: int = Query(default=2, ge=1, description="Mindestanzahl Gesichter pro Cluster"),
     clustering_service: ClusteringService = Depends(get_clustering_service),
 ):
     """
-    Führt das DBSCAN-Clustering (eps=0.55, min_samples=2, metric='cosine')
+    Führt das DBSCAN-Clustering (eps=0.35, min_samples=2, metric='cosine')
     für alle Gesichter in `archive_faces` aus und aktualisiert die `cluster_id` in Qdrant.
     """
     if not settings.ENABLE_FACE_RECOGNITION:
@@ -790,6 +792,22 @@ def trigger_clustering(
 
     result = clustering_service.run_clustering(eps=eps, min_samples=min_samples)
     return result
+
+
+@router.post("/faces/clusters/sync-labels")
+def sync_cluster_labels(
+    clustering_service: ClusteringService = Depends(get_clustering_service),
+):
+    """
+    Gleicht die Personen-Namen in SQLite exakt mit den in Qdrant gespeicherten Gesichts-Labels ab.
+    Beseitigt eventuelle Inkonsistenzen und veraltete Namen nach Cluster-Neuberechnungen.
+    """
+    if not settings.ENABLE_FACE_RECOGNITION:
+        raise HTTPException(
+            status_code=403,
+            detail="Biometrische Gesichtserkennung ist in der Systemkonfiguration deaktiviert."
+        )
+    return clustering_service.sync_cluster_labels_with_qdrant()
 
 
 @router.get("/images/serve")
