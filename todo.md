@@ -456,6 +456,41 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
     * Übersichtskarte *„Import-Historie & Akzessionsjournal“* im Ingest-Reiter: Tabelle mit Datum, Name, Pfad, Anzahl Bildern/Gesichtern und Status-Badges.
     * Schnellaktionen: *„Bilder dieses Bestands anzeigen“* (aktiviert Filter in der Suche), *„Metadaten bearbeiten“* und *„Bestand rückgängig machen / entfernen (Rollback)“* mit Bestätigungsmodal.
 
+---
+
+## 29. Revisionssichere Archiv-Standards, Bitstream Preservation & IT-Sicherheits-Audit (GLAM / OAIS / PREMIS)
+* **Ziel:** Härtung der Anwendung für den produktiven, revisionssicheren Dauerbetrieb in professionellen Museums-, Stifts- und Diözesanarchiven gemäß OAIS (ISO 14721) und archivischen Langzeiterhaltungs-Standards.
+* **Audit-Ergebnis (Senior Developer Review):**
+  * *Stärken:* Herausragende semantische OpenCLIP- und Gesichts-Vektorsuche, Sub-5ms SQLite-Metadaten-Cache, Dublin-Core XMP-Sidecars, IIIF 3.0 API, Recto/Verso-Kopplung und Akzessionsjournal.
+  * *Handlungsbedarfe:* Unveränderlichkeit der Master-Digitalisate (Schutz vor In-situ-Modifikation), fehlende Netzwerk-Authentifizierung, kryptographische Fixity-Prüfsummen und Filesystem-Stabilität des Speicherorts (GVFS-Ablösung).
+* **Priorisierte Aufgaben:**
+  - [ ] **Priorität 1: Unveränderlichkeit der Archiv-Master bei Bilddrehungen (Bitstream Preservation):**
+    * *Problem:* `image_rotation_service.py` modifiziert aktuell physisch die Master-JPEG-Datei auf dem Storage via `jpegtran`. Dies verletzt das archivarische Gebot der unveränderten Originalerhaltung (OAIS).
+    * *Lösung:* Umstellung auf rein **virtuelle Drehungen** über das Metadatenfeld `edit_settings: {"rotation": 90}` in SQLite/Qdrant oder Generierung separater Derivate im Cache. Der physische Bitstream des Original-Digitalisats bleibt zu 100 % unverändert und kann schreibgeschützt gemountet werden.
+  - [ ] **Priorität 1: Netzwerk-Authentifizierung & Rollenbasierte Zugriffskontrolle (RBAC):**
+    * *Problem:* Das System lauscht auf `0.0.0.0:8000` ohne Authentifizierung. Jeder Rechner im LAN kann potentiell Ingests auslösen, Metadaten manipulieren oder Cluster löschen.
+    * *Lösung:* Implementierung einer leichtgewichtigen HTTP-Basic-Auth oder Token-/Session-Authentifizierung mit mindestens zwei Rollen:
+      1. *Archivar / Bearbeiter (Admin):* Vollzugriff auf Ingest, Metadaten-Editierung, Personen-Clustering und Löschungen.
+      2. *Leser / Gast (Viewer):* Nur Lesezugriff auf Recherche, Bildansicht, IIIF-Manifeste und Downloads.
+  - [ ] **Priorität 1: Robuster Kernel-CIFS-Mount statt Desktop-GVFS:**
+    * *Problem:* Aktuell ist das NAS über GNOME-GVFS (`/run/user/1000/gvfs/...`) angebunden. GVFS ist ein Desktop-Userspace-Daemon und friert bei Netzwerk-Latenzen im Kernel `D-State` ein.
+    * *Lösung:* Dokumentation und Umstellung auf einen nativen Linux-Kernel-Mount via `/etc/fstab` (`cifs` mit `credentials`, `iocharset=utf8`, `actimeo=60` und bevorzugt `ro`-Flag für den Masterbestand).
+  - [ ] **Priorität 2: Kryptographische Fixity-Prüfsummen (SHA-256) nach PREMIS:**
+    * *Problem:* Bisher werden nur perzeptuelle Hashes (`pHash`, `dHash`) zur Duplikatserkennung erfasst, die jedoch keine Integritätsprüfung gegen Bit-Rot (schleichende Datenträger-Degeneration) ermöglichen.
+    * *Lösung:* Automatische Berechnung eines SHA-256-Hashes beim Import in `indexer.py` und `indexing_worker.py`. Ablage in `metadata.sha256` sowie CLI-Befehl `python indexer.py --verify-fixity` zur automatisierten periodischen Unversehrtheitsprüfung.
+  - [ ] **Priorität 2: Automatisierte Datenbank- & Vektor-Snapshots:**
+    * *Problem:* Ein Ausfall oder Defekt der SQLite-DB oder der Qdrant-Instanz erfordert aufwendige Re-Indexierungen von hunderttausenden Vektoren.
+    * *Lösung:* Integrierter täglicher Online-Backup-Task:
+      * Atomares SQLite-Backup im laufenden WAL-Betrieb: `PRAGMA vacuum_into('data/backups/archive_metadata_backup.db');`.
+      * Automatischer Aufruf der Qdrant-Snapshot-API (`/collections/{name}/snapshots`) mit Rotation der letzten 7 Sicherungen.
+  - [ ] **Priorität 2: Archivische Export-Schnittstellen (EAD, METS, CSV):**
+    * *Problem:* Facharchive benötigen strukturierte Übergaben an zentrale Archivinformationssysteme (AIS wie *ScopeArchiv, Faust, ACTApro*) oder Portale (*DDB, Europeana*).
+    * *Lösung:* Implementierung von Export-Filtern für Rechercheergebnisse nach EAD-XML (Bestände & Tektonik), METS/MODS (Digitalisat-Metadaten) sowie Standard-CSV mit Dublin-Core-Spalten.
+  - [ ] **Priorität 3: Normdatenanbindung (GND / Wikidata / VIAF):**
+    * *Problem:* Personen- und Körperschaftsnamen sind aktuell reine Freitexte ohne Verknüpfung zu kontrollierten Vokabularen.
+    * *Lösung:* Autovervollständigung und optionale URI-Verknüpfung mit der Gemeinsamen Normdatei (GND) der Deutschen Nationalbibliothek im Personen-Modal.
+
+
 
 
 

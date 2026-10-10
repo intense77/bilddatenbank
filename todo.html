@@ -802,6 +802,54 @@
 </ul>
 </li>
 </ul>
+<hr />
+<h2 id="29-revisionssichere-archiv-standards-bitstream-preservation-it-sicherheits-audit-glam-oais-premis">29. Revisionssichere Archiv-Standards, Bitstream Preservation &amp; IT-Sicherheits-Audit (GLAM / OAIS / PREMIS)</h2>
+<ul>
+<li><strong>Ziel:</strong> Härtung der Anwendung für den produktiven, revisionssicheren Dauerbetrieb in professionellen Museums-, Stifts- und Diözesanarchiven gemäß OAIS (ISO 14721) und archivischen Langzeiterhaltungs-Standards.</li>
+<li><strong>Audit-Ergebnis (Senior Developer Review):</strong></li>
+<li><em>Stärken:</em> Herausragende semantische OpenCLIP- und Gesichts-Vektorsuche, Sub-5ms SQLite-Metadaten-Cache, Dublin-Core XMP-Sidecars, IIIF 3.0 API, Recto/Verso-Kopplung und Akzessionsjournal.</li>
+<li><em>Handlungsbedarfe:</em> Unveränderlichkeit der Master-Digitalisate (Schutz vor In-situ-Modifikation), fehlende Netzwerk-Authentifizierung, kryptographische Fixity-Prüfsummen und Filesystem-Stabilität des Speicherorts (GVFS-Ablösung).</li>
+<li><strong>Priorisierte Aufgaben:</strong></li>
+<li>[ ] <strong>Priorität 1: Unveränderlichkeit der Archiv-Master bei Bilddrehungen (Bitstream Preservation):</strong><ul>
+<li><em>Problem:</em> <code>image_rotation_service.py</code> modifiziert aktuell physisch die Master-JPEG-Datei auf dem Storage via <code>jpegtran</code>. Dies verletzt das archivarische Gebot der unveränderten Originalerhaltung (OAIS).</li>
+<li><em>Lösung:</em> Umstellung auf rein <strong>virtuelle Drehungen</strong> über das Metadatenfeld <code>edit_settings: {"rotation": 90}</code> in SQLite/Qdrant oder Generierung separater Derivate im Cache. Der physische Bitstream des Original-Digitalisats bleibt zu 100 % unverändert und kann schreibgeschützt gemountet werden.</li>
+</ul>
+</li>
+<li>[ ] <strong>Priorität 1: Netzwerk-Authentifizierung &amp; Rollenbasierte Zugriffskontrolle (RBAC):</strong><ul>
+<li><em>Problem:</em> Das System lauscht auf <code>0.0.0.0:8000</code> ohne Authentifizierung. Jeder Rechner im LAN kann potentiell Ingests auslösen, Metadaten manipulieren oder Cluster löschen.</li>
+<li><em>Lösung:</em> Implementierung einer leichtgewichtigen HTTP-Basic-Auth oder Token-/Session-Authentifizierung mit mindestens zwei Rollen:<br />
+  1. <em>Archivar / Bearbeiter (Admin):</em> Vollzugriff auf Ingest, Metadaten-Editierung, Personen-Clustering und Löschungen.<br />
+  2. <em>Leser / Gast (Viewer):</em> Nur Lesezugriff auf Recherche, Bildansicht, IIIF-Manifeste und Downloads.</li>
+</ul>
+</li>
+<li>[ ] <strong>Priorität 1: Robuster Kernel-CIFS-Mount statt Desktop-GVFS:</strong><ul>
+<li><em>Problem:</em> Aktuell ist das NAS über GNOME-GVFS (<code>/run/user/1000/gvfs/...</code>) angebunden. GVFS ist ein Desktop-Userspace-Daemon und friert bei Netzwerk-Latenzen im Kernel <code>D-State</code> ein.</li>
+<li><em>Lösung:</em> Dokumentation und Umstellung auf einen nativen Linux-Kernel-Mount via <code>/etc/fstab</code> (<code>cifs</code> mit <code>credentials</code>, <code>iocharset=utf8</code>, <code>actimeo=60</code> und bevorzugt <code>ro</code>-Flag für den Masterbestand).</li>
+</ul>
+</li>
+<li>[ ] <strong>Priorität 2: Kryptographische Fixity-Prüfsummen (SHA-256) nach PREMIS:</strong><ul>
+<li><em>Problem:</em> Bisher werden nur perzeptuelle Hashes (<code>pHash</code>, <code>dHash</code>) zur Duplikatserkennung erfasst, die jedoch keine Integritätsprüfung gegen Bit-Rot (schleichende Datenträger-Degeneration) ermöglichen.</li>
+<li><em>Lösung:</em> Automatische Berechnung eines SHA-256-Hashes beim Import in <code>indexer.py</code> und <code>indexing_worker.py</code>. Ablage in <code>metadata.sha256</code> sowie CLI-Befehl <code>python indexer.py --verify-fixity</code> zur automatisierten periodischen Unversehrtheitsprüfung.</li>
+</ul>
+</li>
+<li>[ ] <strong>Priorität 2: Automatisierte Datenbank- &amp; Vektor-Snapshots:</strong><ul>
+<li><em>Problem:</em> Ein Ausfall oder Defekt der SQLite-DB oder der Qdrant-Instanz erfordert aufwendige Re-Indexierungen von hunderttausenden Vektoren.</li>
+<li><em>Lösung:</em> Integrierter täglicher Online-Backup-Task:</li>
+<li>Atomares SQLite-Backup im laufenden WAL-Betrieb: <code>PRAGMA vacuum_into('data/backups/archive_metadata_backup.db');</code>.</li>
+<li>Automatischer Aufruf der Qdrant-Snapshot-API (<code>/collections/{name}/snapshots</code>) mit Rotation der letzten 7 Sicherungen.</li>
+</ul>
+</li>
+<li>[ ] <strong>Priorität 2: Archivische Export-Schnittstellen (EAD, METS, CSV):</strong><ul>
+<li><em>Problem:</em> Facharchive benötigen strukturierte Übergaben an zentrale Archivinformationssysteme (AIS wie <em>ScopeArchiv, Faust, ACTApro</em>) oder Portale (<em>DDB, Europeana</em>).</li>
+<li><em>Lösung:</em> Implementierung von Export-Filtern für Rechercheergebnisse nach EAD-XML (Bestände &amp; Tektonik), METS/MODS (Digitalisat-Metadaten) sowie Standard-CSV mit Dublin-Core-Spalten.</li>
+</ul>
+</li>
+<li>[ ] <strong>Priorität 3: Normdatenanbindung (GND / Wikidata / VIAF):</strong><ul>
+<li><em>Problem:</em> Personen- und Körperschaftsnamen sind aktuell reine Freitexte ohne Verknüpfung zu kontrollierten Vokabularen.</li>
+<li><em>Lösung:</em> Autovervollständigung und optionale URI-Verknüpfung mit der Gemeinsamen Normdatei (GND) der Deutschen Nationalbibliothek im Personen-Modal.</li>
+</ul>
+</li>
+</ul>
     </article>
     <footer>
       <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>
