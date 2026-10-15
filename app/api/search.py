@@ -152,7 +152,106 @@ def payload_matches_batch(
     return item_batch == target_batch_id
 
 
+HISTORICAL_EPOCHS = {
+    "kaiserreich": (1860, 1914),
+    "weimar": (1914, 1939),
+    "nachkrieg": (1939, 1965),
+    "konzil": (1965, 1990),
+    "modern": (1990, 2030),
+}
+
+
+def extract_year_from_item(date_val: Optional[Any], file_path: Optional[str] = None) -> Optional[int]:
+    """
+    Extrahiert ein 4-stelliges historisches Jahr (1500-2099) aus Datumsstrings
+    (z.B. '2008:12:18 22:40:53', '2010-10-31', 'ca. 1895', '1924')
+    oder aus Verzeichnispfaden (z.B. '/1928/', '/2009/August/', '1914_Kaiserreich').
+    """
+    pattern = r"(?<!\d)(1[5-9]\d\d|20\d\d)(?!\d)"
+    if date_val:
+        d_str = str(date_val).strip()
+        m = re.search(pattern, d_str)
+        if m:
+            try:
+                return int(m.group(1))
+            except ValueError:
+                pass
+    if file_path:
+        parts = Path(file_path).parts
+        for part in reversed(parts):
+            m = re.search(pattern, part)
+            if m:
+                try:
+                    return int(m.group(1))
+                except ValueError:
+                    pass
+    return None
+
+
+def item_matches_facets(
+    payload: Optional[Dict[str, Any]],
+    file_path: str,
+    meta_sq: Optional[Dict[str, Any]] = None,
+    batch_id: Optional[str] = None,
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
+    signature_filter: Optional[str] = None,
+    creator_filter: Optional[str] = None,
+) -> bool:
+    """
+    Prüft strikt, ob ein Datenpunkt die aktiven Facetten erfüllt:
+    - Batch-Isolation (import_id)
+    - Historischer Zeitraum (year_from / year_to)
+    - Archivsignatur (signature_filter)
+    - Fotograf / Urheber (creator_filter)
+    """
+    payload = payload or {}
+    meta_sq = meta_sq or {}
+
+    # 1. Batch ID
+    if batch_id and not payload_matches_batch(payload or meta_sq, batch_id, file_path):
+        return False
+
+    # 2. Historischer Zeitraum (Zeitleiste)
+    if year_from is not None or year_to is not None:
+        raw_date = meta_sq.get("date") or payload.get("date")
+        item_year = extract_year_from_item(raw_date, file_path)
+        if item_year is None:
+            return False
+        if year_from is not None and item_year < year_from:
+            return False
+        if year_to is not None and item_year > year_to:
+            return False
+
+    # 3. Archivsignatur
+    if signature_filter and signature_filter.strip():
+        sig = (meta_sq.get("signature") or payload.get("signature") or "").strip().lower()
+        if signature_filter.strip().lower() not in sig:
+            return False
+
+    # 4. Fotograf / Urheber / Atelier
+    if creator_filter and creator_filter.strip():
+        cre = (meta_sq.get("creator") or payload.get("creator") or "").strip().lower()
+        if creator_filter.strip().lower() not in cre:
+            return False
+
+    return True
+
+
 # --- Endpunkte ---
+
+@router.get("/search/facets")
+def get_search_facets():
+    """
+    Liefert aggregierte Facetten für die historische Recherche:
+    - Zeitraum & Jahresgrenzen für die Zeitleiste
+    - Vordefinierte historische Epochen (Kaiserreich, Weimar, Nachkrieg, etc.)
+    - Liste bekannter Fotografen / Ateliers
+    - Liste vorhandener Archivsignaturen
+    - Import-Bestände & Akzessionen
+    """
+    return metadata_db.get_facets_summary()
+
 
 @router.get("/search/semantic", response_model=List[SemanticSearchResult])
 def search_semantic(
@@ -162,6 +261,11 @@ def search_semantic(
     score_threshold: Optional[float] = Query(default=None, ge=-1.0, le=1.0, description="Mindest-Ähnlichkeitsscore"),
     stack_variants: bool = Query(default=True, description="Fasst Varianten und Duplikate zu Bildstapeln zusammen"),
     batch_id: Optional[str] = Query(default=None, description="Optionaler Filter auf eine bestimmte Import-Charge"),
+    year_from: Optional[int] = Query(default=None, description="Startjahr der historischen Zeitleiste (z. B. 1880)"),
+    year_to: Optional[int] = Query(default=None, description="Endjahr der historischen Zeitleiste (z. B. 1950)"),
+    epoch: Optional[str] = Query(default=None, description="Vordefinierte Epoche (z.B. 'kaiserreich', 'weimar', 'nachkrieg', 'konzil', 'modern')"),
+    signature: Optional[str] = Query(default=None, description="Filter nach Archivsignatur / Signatur-Präfix"),
+    creator: Optional[str] = Query(default=None, description="Filter nach Fotograf / Urheber / Atelier"),
     clip_service: ClipService = Depends(get_clip_service),
     qdrant: QdrantService = Depends(get_qdrant_service),
     variant_service: VariantService = Depends(get_variant_service),
@@ -172,7 +276,8 @@ def search_semantic(
     ohne 5000er-Scroll-Limit) sowie archivische Metadaten aus SQLite (Signatur, Titel, Urheber,
     Beschreibung) und führt eine transparente Relevanz-Verschmelzung mit sauberer Abgrenzung
     und Paginierung (offset/limit) durch.
-    Wird `batch_id` angegeben, werden strikt nur Bilder dieses Bestands geliefert.
+    Unterstützt strikte Facettierung nach Import-Chargen (`batch_id`), historischer Zeitleiste
+    (`year_from`/`year_to`/`epoch`), Signatur (`signature`) und Urheber (`creator`).
     """
     # Direkte Aufrufe außerhalb von FastAPI (z.B. Tests) absichern:
     if hasattr(score_threshold, "default"):
@@ -185,35 +290,56 @@ def search_semantic(
         stack_variants = stack_variants.default if stack_variants.default is not None else True
     if hasattr(batch_id, "default"):
         batch_id = batch_id.default
+    if hasattr(year_from, "default"):
+        year_from = year_from.default
+    if hasattr(year_to, "default"):
+        year_to = year_to.default
+    if hasattr(epoch, "default"):
+        epoch = epoch.default
+    if hasattr(signature, "default"):
+        signature = signature.default
+    if hasattr(creator, "default"):
+        creator = creator.default
     if hasattr(q, "default"):
         q = q.default or ""
 
-    q_clean = (q or "").strip().lower()
+    # Epochen-Mapping anwenden
+    if epoch and epoch.lower() in HISTORICAL_EPOCHS:
+        e_from, e_to = HISTORICAL_EPOCHS[epoch.lower()]
+        if year_from is None:
+            year_from = e_from
+        if year_to is None:
+            year_to = e_to
 
-    # Spezialfall: Kein Suchbegriff oder Wildcard '*' (Reines Durchstöbern eines Bestands)
+    q_clean = (q or "").strip().lower()
+    has_facet_filters = bool(batch_id or year_from is not None or year_to is not None or signature or creator)
+
+    # Spezialfall: Kein Suchbegriff oder Wildcard '*' (Reines Durchstöbern nach Bestand / Zeitleiste / Facetten)
     if not q_clean or q_clean == "*":
-        if not batch_id:
+        if not has_facet_filters:
             return []
 
-        # Bilder des Bestands direkt aus Qdrant archive_images abrufen
-        if batch_id == "batch_initial_legacy":
-            batch_filter = rest_models.Filter(
-                should=[
-                    rest_models.FieldCondition(key="import_id", match=rest_models.MatchValue(value=batch_id)),
-                    rest_models.IsEmptyCondition(is_empty=rest_models.PayloadField(key="import_id")),
-                    rest_models.IsNullCondition(is_null=rest_models.PayloadField(key="import_id")),
-                ]
-            )
-        else:
-            batch_filter = rest_models.Filter(
-                must=[
-                    rest_models.FieldCondition(key="import_id", match=rest_models.MatchValue(value=batch_id))
-                ]
-            )
+        # Bilder aus Qdrant archive_images abrufen (mit batch_filter falls vorhanden)
+        batch_filter = None
+        if batch_id:
+            if batch_id == "batch_initial_legacy":
+                batch_filter = rest_models.Filter(
+                    should=[
+                        rest_models.FieldCondition(key="import_id", match=rest_models.MatchValue(value=batch_id)),
+                        rest_models.IsEmptyCondition(is_empty=rest_models.PayloadField(key="import_id")),
+                        rest_models.IsNullCondition(is_null=rest_models.PayloadField(key="import_id")),
+                    ]
+                )
+            else:
+                batch_filter = rest_models.Filter(
+                    must=[
+                        rest_models.FieldCondition(key="import_id", match=rest_models.MatchValue(value=batch_id))
+                    ]
+                )
 
         all_records = []
         next_scroll_offset = None
-        max_to_fetch = min(5000, max(200, (offset + limit) * 2))
+        max_to_fetch = min(5000, max(300, (offset + limit) * 4))
         while True:
             records, next_scroll_offset = qdrant.client.scroll(
                 collection_name=settings.COLLECTION_IMAGES,
@@ -227,23 +353,36 @@ def search_semantic(
             if not next_scroll_offset or len(all_records) >= max_to_fetch:
                 break
 
-        # Stabile Sortierung nach Dateiname
-        all_records.sort(
-            key=lambda r: (
-                (r.payload or {}).get("file_name")
-                or (r.payload or {}).get("filename")
-                or Path((r.payload or {}).get("file_path") or "").name
-            ).lower()
-        )
-
         results = []
         for rec in all_records:
             payload = rec.payload or {}
             file_path = payload.get("file_path") or payload.get("image_path", "")
             if not file_path:
                 continue
-            file_name = payload.get("file_name") or payload.get("filename") or Path(file_path).name
             meta_sq = metadata_db.get_metadata(file_path)
+            if not item_matches_facets(
+                payload=payload,
+                file_path=file_path,
+                meta_sq=meta_sq,
+                batch_id=batch_id,
+                year_from=year_from,
+                year_to=year_to,
+                signature_filter=signature,
+                creator_filter=creator,
+            ):
+                continue
+
+            file_name = payload.get("file_name") or payload.get("filename") or Path(file_path).name
+            matched_q_parts = []
+            if batch_id:
+                matched_q_parts.append(f"Bestand: {batch_id}")
+            if year_from is not None or year_to is not None:
+                matched_q_parts.append(f"Zeitraum: {year_from or '–'} bis {year_to or '–'}")
+            if creator:
+                matched_q_parts.append(f"Fotograf: {creator}")
+            if signature:
+                matched_q_parts.append(f"Signatur: {signature}")
+
             results.append(
                 SemanticSearchResult(
                     id=str(rec.id),
@@ -258,11 +397,22 @@ def search_semantic(
                     keywords=payload.get("keywords") or [],
                     persons=sorted(list(payload.get("persons") or [])),
                     match_type="metadata",
-                    matched_query=f"Bestand: {batch_id}",
+                    matched_query=", ".join(matched_q_parts) if matched_q_parts else "Facetten-Filter",
                     iconclass=None,
                     thesaurus_category=None,
                 )
             )
+
+        # Sortierung: chronologisch nach Jahr falls Zeitleiste aktiv, sonst nach Dateiname
+        if year_from is not None or year_to is not None:
+            results.sort(
+                key=lambda r: (
+                    extract_year_from_item(r.date, r.file_path) or 9999,
+                    (r.file_name or "").lower(),
+                )
+            )
+        else:
+            results.sort(key=lambda r: (r.file_name or "").lower())
 
         if stack_variants:
             results = variant_service.stack_search_results(results, similarity_threshold=0.92)
@@ -328,7 +478,17 @@ def search_semantic(
             if is_match:
                 img_path = p.get("file_path") or p.get("image_path")
                 if img_path:
-                    if batch_id and not payload_matches_batch(p, batch_id, img_path):
+                    meta_sq = metadata_db.get_metadata(img_path)
+                    if not item_matches_facets(
+                        payload=p,
+                        file_path=img_path,
+                        meta_sq=meta_sq,
+                        batch_id=batch_id,
+                        year_from=year_from,
+                        year_to=year_to,
+                        signature_filter=signature,
+                        creator_filter=creator,
+                    ):
                         continue
                     matching_person_labels.add(lbl_clean)
                     if img_path not in matched_person_images:
@@ -370,7 +530,17 @@ def search_semantic(
                     cp = cr.payload or {}
                     img_path = cp.get("file_path") or cp.get("image_path")
                     if img_path:
-                        if batch_id and not payload_matches_batch(cp, batch_id, img_path):
+                        meta_sq = metadata_db.get_metadata(img_path)
+                        if not item_matches_facets(
+                            payload=cp,
+                            file_path=img_path,
+                            meta_sq=meta_sq,
+                            batch_id=batch_id,
+                            year_from=year_from,
+                            year_to=year_to,
+                            signature_filter=signature,
+                            creator_filter=creator,
+                        ):
                             continue
                         m_score = 1.0 if is_exact_person_query else 0.98
                         if img_path not in matched_person_images:
@@ -411,7 +581,16 @@ def search_semantic(
                 m_path = row.get("file_path")
                 if not m_path or m_path in matched_person_images or m_path in matched_metadata_images:
                     continue
-                if batch_id and not payload_matches_batch(row, batch_id, m_path):
+                if not item_matches_facets(
+                    payload=row,
+                    file_path=m_path,
+                    meta_sq=row,
+                    batch_id=batch_id,
+                    year_from=year_from,
+                    year_to=year_to,
+                    signature_filter=signature,
+                    creator_filter=creator,
+                ):
                     continue
                 match_field = f"Thesaurus: {term} ({thesaurus_canonical})" if term != q else "Metadaten"
                 if row.get("signature") and term.lower() in str(row["signature"]).lower():
@@ -472,7 +651,17 @@ def search_semantic(
         file_path = payload.get("file_path") or payload.get("image_path", "")
         if not file_path:
             continue
-        if batch_id and not payload_matches_batch(payload, batch_id, file_path):
+        meta_sq = metadata_db.get_metadata(file_path)
+        if not item_matches_facets(
+            payload=payload,
+            file_path=file_path,
+            meta_sq=meta_sq,
+            batch_id=batch_id,
+            year_from=year_from,
+            year_to=year_to,
+            signature_filter=signature,
+            creator_filter=creator,
+        ):
             continue
         payloads_by_id[str(hit.id)] = payload
         payloads_by_path[file_path] = payload
@@ -520,7 +709,17 @@ def search_semantic(
     # Fehlende Personen- und Metadaten-Treffer nachladen
     parent_ids_to_fetch = []
     for p_path, p_info in {**matched_person_images, **matched_metadata_images}.items():
-        if batch_id and not payload_matches_batch(p_info.get("metadata_row") or {}, batch_id, p_path):
+        meta_sq = p_info.get("metadata_row") or metadata_db.get_metadata(p_path)
+        if not item_matches_facets(
+            payload=meta_sq,
+            file_path=p_path,
+            meta_sq=meta_sq,
+            batch_id=batch_id,
+            year_from=year_from,
+            year_to=year_to,
+            signature_filter=signature,
+            creator_filter=creator,
+        ):
             continue
         if p_path not in results_map:
             pid = p_info.get("parent_image_id")
@@ -575,8 +774,18 @@ def search_semantic(
             if meta_sq:
                 img_payload = meta_sq
 
-        # Strikte Bestandsprüfung
-        if batch_id and not payload_matches_batch(img_payload, batch_id, file_path):
+        # Strikte Facettenprüfung
+        meta_sq = metadata_db.get_metadata(file_path)
+        if not item_matches_facets(
+            payload=img_payload,
+            file_path=file_path,
+            meta_sq=meta_sq,
+            batch_id=batch_id,
+            year_from=year_from,
+            year_to=year_to,
+            signature_filter=signature,
+            creator_filter=creator,
+        ):
             continue
 
         payloads_by_path[file_path] = img_payload
@@ -609,8 +818,17 @@ def search_semantic(
         if file_path in results_map:
             continue
         m_row = m_info.get("metadata_row") or {}
-        # Strikte Bestandsprüfung
-        if batch_id and not payload_matches_batch(m_row, batch_id, file_path):
+        # Strikte Facettenprüfung
+        if not item_matches_facets(
+            payload=m_row,
+            file_path=file_path,
+            meta_sq=m_row,
+            batch_id=batch_id,
+            year_from=year_from,
+            year_to=year_to,
+            signature_filter=signature,
+            creator_filter=creator,
+        ):
             continue
 
         fallback_id = str(uuid.uuid5(UUID_NAMESPACE, Path(file_path).name))
@@ -632,14 +850,23 @@ def search_semantic(
             thesaurus_category=m_info.get("thesaurus_category") or thesaurus_category,
         )
 
-    # Sortiere nach Score absteigend
+    # Sortiere nach Score absteigend (oder chronologisch wenn nur Zeitraum aktiv)
     sorted_results = sorted(results_map.values(), key=lambda r: (r.score, r.file_path), reverse=True)
 
-    # Wenn batch_id angegeben ist, stellen wir 100% sicher, dass kein Bild außerhalb des Bestands überlebt
-    if batch_id:
+    # Wenn Facetten aktiv sind, strikte Sicherheitsfilterung
+    if batch_id or year_from is not None or year_to is not None or signature or creator:
         sorted_results = [
             r for r in sorted_results
-            if payload_matches_batch(payloads_by_path.get(r.file_path) or {}, batch_id, r.file_path)
+            if item_matches_facets(
+                payload=payloads_by_path.get(r.file_path) or {},
+                file_path=r.file_path,
+                meta_sq=metadata_db.get_metadata(r.file_path),
+                batch_id=batch_id,
+                year_from=year_from,
+                year_to=year_to,
+                signature_filter=signature,
+                creator_filter=creator,
+            )
         ]
 
     # Varianten und Duplikate optional zu Bildstapeln zusammenfassen

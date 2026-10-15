@@ -55,8 +55,17 @@ class MetadataDatabase:
                 except Exception:
                     pass
 
-                # Migration: Falls Zweiblatt-Spalten (companion_path, sheet_role, verso_notes) oder import_id/persons noch fehlen
-                for col in ["companion_path TEXT", "sheet_role TEXT", "verso_notes TEXT", "import_id TEXT", "persons TEXT"]:
+                # Migration: Falls Zweiblatt-Spalten, import_id/persons oder Fixity-Spalten (sha256, last_fixity_check, fixity_status) noch fehlen
+                for col in [
+                    "companion_path TEXT",
+                    "sheet_role TEXT",
+                    "verso_notes TEXT",
+                    "import_id TEXT",
+                    "persons TEXT",
+                    "sha256 TEXT",
+                    "last_fixity_check TIMESTAMP",
+                    "fixity_status TEXT",
+                ]:
                     try:
                         conn.execute(f"ALTER TABLE metadata ADD COLUMN {col};")
                     except Exception:
@@ -100,6 +109,8 @@ class MetadataDatabase:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_signature ON metadata(signature);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_companion ON metadata(companion_path);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_import_id ON metadata(import_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_sha256 ON metadata(sha256);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_fixity_status ON metadata(fixity_status);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_face_count ON clusters(face_count DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_import_batches_started ON import_batches(started_at DESC);")
@@ -220,8 +231,12 @@ class MetadataDatabase:
         creator: Optional[str] = None,
         description: Optional[str] = None,
         persons: Optional[Union[List[str], str]] = None,
+        sha256: Optional[str] = None,
+        import_id: Optional[str] = None,
+        last_fixity_check: Optional[str] = None,
+        fixity_status: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Erstellt oder aktualisiert den Metadatensatz eines Archivbildes."""
+        """Erstellt oder aktualisiert den Metadatensatz eines Archivbildes inklusive PREMIS Fixity-Prüfsumme."""
         import json
         now = datetime.now().isoformat()
         clean_path = str(file_path)
@@ -237,8 +252,11 @@ class MetadataDatabase:
         try:
             with self._get_connection() as conn:
                 conn.execute("""
-                    INSERT INTO metadata (file_path, file_name, signature, title, date, creator, description, persons, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO metadata (
+                        file_path, file_name, signature, title, date, creator, description,
+                        persons, sha256, import_id, last_fixity_check, fixity_status, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(file_path) DO UPDATE SET
                         file_name = excluded.file_name,
                         signature = COALESCE(excluded.signature, metadata.signature),
@@ -247,8 +265,15 @@ class MetadataDatabase:
                         creator = COALESCE(excluded.creator, metadata.creator),
                         description = COALESCE(excluded.description, metadata.description),
                         persons = COALESCE(excluded.persons, metadata.persons),
+                        sha256 = COALESCE(excluded.sha256, metadata.sha256),
+                        import_id = COALESCE(excluded.import_id, metadata.import_id),
+                        last_fixity_check = COALESCE(excluded.last_fixity_check, metadata.last_fixity_check),
+                        fixity_status = COALESCE(excluded.fixity_status, metadata.fixity_status),
                         updated_at = excluded.updated_at
-                """, (clean_path, clean_name, signature, title, date, creator, description, persons_str, now))
+                """, (
+                    clean_path, clean_name, signature, title, date, creator, description,
+                    persons_str, sha256, import_id, last_fixity_check, fixity_status, now
+                ))
                 conn.commit()
 
             return {
@@ -260,6 +285,10 @@ class MetadataDatabase:
                 "creator": creator,
                 "description": description,
                 "persons": persons,
+                "sha256": sha256,
+                "import_id": import_id,
+                "last_fixity_check": last_fixity_check,
+                "fixity_status": fixity_status,
                 "updated_at": now,
             }
         except Exception as e:
@@ -560,6 +589,102 @@ class MetadataDatabase:
             logger.error("Fehler beim Abrufen von Metadaten für import_id=%s: %s", import_id, e)
             return []
 
+    def get_distinct_creators(self, limit: int = 100) -> List[str]:
+        """Gibt eine sortierte Liste aller bekannten Fotografen, Urheber und Ateliers zurück."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    """
+                    SELECT DISTINCT TRIM(creator) as c 
+                    FROM metadata 
+                    WHERE creator IS NOT NULL AND TRIM(creator) != ''
+                    ORDER BY c ASC 
+                    LIMIT ?;
+                    """,
+                    (limit,),
+                )
+                return [r["c"] for r in cursor.fetchall() if r["c"]]
+        except Exception as e:
+            logger.error("Fehler beim Abrufen bekannter Urheber: %s", e)
+            return []
+
+    def get_distinct_signatures(self, limit: int = 100) -> List[str]:
+        """Gibt eine sortierte Liste aller bekannten Archivsignaturen zurück."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    """
+                    SELECT DISTINCT TRIM(signature) as s 
+                    FROM metadata 
+                    WHERE signature IS NOT NULL AND TRIM(signature) != ''
+                    ORDER BY s ASC 
+                    LIMIT ?;
+                    """,
+                    (limit,),
+                )
+                return [r["s"] for r in cursor.fetchall() if r["s"]]
+        except Exception as e:
+            logger.error("Fehler beim Abrufen bekannter Signaturen: %s", e)
+            return []
+
+    def get_facets_summary(self) -> Dict[str, Any]:
+        """
+        Liefert aggregierte Facetten für die Benutzeroberfläche:
+        - Zeitraum (Jahre min/max)
+        - Vordefinierte historische Epochen (Kaiserreich, Weimar, Nachkrieg, etc.)
+        - Bekannte Fotografen / Ateliers
+        - Bekannte Archivsignaturen
+        - Vorhandene Import-Bestände / Akzessionen
+        """
+        creators = self.get_distinct_creators()
+        signatures = self.get_distinct_signatures()
+        batches = self.list_import_batches(limit=100)
+
+        import re
+        year_pattern = r"(?<!\d)(1[5-9]\d\d|20\d\d)(?!\d)"
+        years: List[int] = []
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute("SELECT date, file_path FROM metadata WHERE date IS NOT NULL OR file_path IS NOT NULL LIMIT 2000;")
+                for row in cursor.fetchall():
+                    d_val = row["date"]
+                    if d_val:
+                        m = re.search(year_pattern, str(d_val))
+                        if m:
+                            years.append(int(m.group(1)))
+                            continue
+                    f_val = row["file_path"]
+                    if f_val:
+                        m = re.search(year_pattern, str(f_val))
+                        if m:
+                            years.append(int(m.group(1)))
+        except Exception as e:
+            logger.debug("Fehler bei Jahres-Aggregierung in SQLite: %s", e)
+
+        min_year = min(years) if years else 1860
+        max_year = max(years) if years else 2026
+        min_year = max(1840, min(min_year, 1900))
+        max_year = min(2030, max(max_year, 2025))
+
+        epochs = [
+            {"id": "kaiserreich", "label": "Kaiserreich & Frühe Fotografie", "years": "1860–1914", "from": 1860, "to": 1914, "icon": "🏛️"},
+            {"id": "weimar", "label": "Zwischenkriegszeit & Weimar", "years": "1914–1939", "from": 1914, "to": 1939, "icon": "📜"},
+            {"id": "nachkrieg", "label": "Nachkriegszeit & Wiederaufbau", "years": "1939–1965", "from": 1939, "to": 1965, "icon": "🕊️"},
+            {"id": "konzil", "label": "Konzilsära & Moderne", "years": "1965–1990", "from": 1965, "to": 1990, "icon": "⛪"},
+            {"id": "modern", "label": "Zeitgenössisch", "years": "ab 1990", "from": 1990, "to": 2030, "icon": "📸"},
+        ]
+
+        return {
+            "years": {
+                "min": min_year,
+                "max": max_year,
+            },
+            "epochs": epochs,
+            "creators": creators,
+            "signatures": signatures,
+            "batches": [{"id": b.get("id"), "name": b.get("name"), "count": b.get("image_count", 0)} for b in batches],
+        }
+
     # ------------------ Import-Batches & Akzessionsjournal ------------------
 
     def create_import_batch(
@@ -719,6 +844,153 @@ class MetadataDatabase:
                     logger.info("Initialer Legacy-Batch 'batch_initial_legacy' für %d Bilder angelegt.", image_count)
         except Exception as e:
             logger.debug("Fehler beim Anlegen des Legacy-Batches: %s", e)
+
+    def update_fixity(
+        self,
+        file_path: str,
+        sha256: Optional[str] = None,
+        fixity_status: str = "OK",
+        last_fixity_check: Optional[str] = None,
+    ) -> None:
+        """Aktualisiert Fixity-Status, Checksumme und Zeitstempel für ein Digitalisat."""
+        now = last_fixity_check or datetime.now().isoformat()
+        try:
+            with self._get_connection() as conn:
+                if sha256 is not None:
+                    conn.execute(
+                        """
+                        UPDATE metadata
+                        SET sha256 = ?, fixity_status = ?, last_fixity_check = ?
+                        WHERE file_path = ?;
+                        """,
+                        (sha256, fixity_status, now, str(file_path)),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE metadata
+                        SET fixity_status = ?, last_fixity_check = ?
+                        WHERE file_path = ?;
+                        """,
+                        (fixity_status, now, str(file_path)),
+                    )
+                conn.commit()
+        except Exception as e:
+            logger.error("Fehler beim Aktualisieren des Fixity-Status für %s: %s", file_path, e)
+
+    def verify_fixity(
+        self,
+        folder_path: Optional[str] = None,
+        calculate_missing: bool = True,
+        progress_callback: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """
+        Führt eine vollständige PREMIS-Fixity-Unversehrtheitsprüfung (Bitstream Preservation) durch.
+        - Vergleicht den aktuellen SHA-256 Bitstream-Hash mit der archivierten Checksumme.
+        - Erkennt Bit-Rot, Datenverfälschungen und gelöschte Master-Dateien.
+        - Initialisiert bei Bedarf fehlende Hashes für Altbestände.
+        """
+        from app.services.metadata_service import compute_file_sha256
+
+        results = {
+            "total_checked": 0,
+            "intact": 0,
+            "corrupted": 0,
+            "missing": 0,
+            "initialized": 0,
+            "unverified": 0,
+            "corrupted_items": [],
+            "missing_items": [],
+        }
+
+        try:
+            with self._get_connection() as conn:
+                if folder_path:
+                    cursor = conn.execute(
+                        "SELECT file_path, file_name, sha256, fixity_status FROM metadata WHERE file_path LIKE ? || '%';",
+                        (str(folder_path),),
+                    )
+                else:
+                    cursor = conn.execute("SELECT file_path, file_name, sha256, fixity_status FROM metadata;")
+                rows = cursor.fetchall()
+        except Exception as e:
+            logger.error("Fehler beim Laden der Metadaten für Fixity-Prüfung: %s", e)
+            return results
+
+        now_iso = datetime.now().isoformat()
+        total = len(rows)
+
+        for idx, row in enumerate(rows):
+            file_path_str = row["file_path"]
+            file_name = row["file_name"] or Path(file_path_str).name
+            stored_sha = row["sha256"]
+            path_obj = Path(file_path_str)
+
+            results["total_checked"] += 1
+
+            # 1. Existenzprüfung der Datei auf dem Datenträger / Storage
+            if not path_obj.exists() or not path_obj.is_file():
+                results["missing"] += 1
+                results["missing_items"].append({
+                    "file_path": file_path_str,
+                    "file_name": file_name,
+                    "expected_sha256": stored_sha,
+                    "error": "Master-Datei existiert nicht auf dem Dateisystem",
+                })
+                self.update_fixity(file_path_str, fixity_status="MISSING", last_fixity_check=now_iso)
+                if progress_callback:
+                    progress_callback(idx + 1, total, file_path_str, "MISSING")
+                continue
+
+            # 2. SHA-256 Bitstream-Prüfsumme im Streaming-Modus berechnen
+            current_sha = compute_file_sha256(path_obj)
+            if not current_sha:
+                results["corrupted"] += 1
+                results["corrupted_items"].append({
+                    "file_path": file_path_str,
+                    "file_name": file_name,
+                    "expected_sha256": stored_sha,
+                    "actual_sha256": None,
+                    "error": "I/O-Lesefehler beim Berechnen der Prüfsumme (möglicher E/A-Hardwarefehler)",
+                })
+                self.update_fixity(file_path_str, fixity_status="READ_ERROR", last_fixity_check=now_iso)
+                if progress_callback:
+                    progress_callback(idx + 1, total, file_path_str, "READ_ERROR")
+                continue
+
+            # 3. Fixity-Vergleich
+            if not stored_sha:
+                if calculate_missing:
+                    # Nachträgliche PREMIS-Fixity Baseline für Altbestand generieren
+                    self.update_fixity(file_path_str, sha256=current_sha, fixity_status="OK", last_fixity_check=now_iso)
+                    results["initialized"] += 1
+                    status = "INITIALIZED"
+                else:
+                    self.update_fixity(file_path_str, fixity_status="UNVERIFIED", last_fixity_check=now_iso)
+                    results["unverified"] += 1
+                    status = "UNVERIFIED"
+            elif current_sha == stored_sha:
+                # Bitstream intakt (revisionssicher bestätigt)
+                self.update_fixity(file_path_str, fixity_status="OK", last_fixity_check=now_iso)
+                results["intact"] += 1
+                status = "OK"
+            else:
+                # Alarm: Bit-Rot oder Manipulation festgestellt!
+                self.update_fixity(file_path_str, fixity_status="CORRUPTED", last_fixity_check=now_iso)
+                results["corrupted"] += 1
+                results["corrupted_items"].append({
+                    "file_path": file_path_str,
+                    "file_name": file_name,
+                    "expected_sha256": stored_sha,
+                    "actual_sha256": current_sha,
+                    "error": "Prüfsummen-Mismatch (Bit-Rot oder Dateimanipulation erkannt)",
+                })
+                status = "CORRUPTED"
+
+            if progress_callback:
+                progress_callback(idx + 1, total, file_path_str, status)
+
+        return results
 
 
 metadata_db = MetadataDatabase()

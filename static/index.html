@@ -177,12 +177,137 @@
               <span class="flex items-center gap-1 font-medium">📚 <span class="hidden sm:inline">Varianten</span>
                 stapeln</span>
             </label>
+            <button type="button" id="toggle-facets-btn" onclick="toggleFacetsPanel()"
+              class="flex items-center gap-1.5 px-3 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-xs sm:text-sm text-slate-300 hover:border-amber-500/50 hover:text-amber-400 transition select-none"
+              title="Historische Zeitleiste, Epochen-Filter, Fotografen & Signaturen einblenden">
+              <span>⏱️</span>
+              <span class="font-medium">Zeitleiste & Facetten</span>
+              <span id="facets-active-badge" class="hidden w-2 h-2 rounded-full bg-amber-400 animate-pulse ml-0.5"></span>
+            </button>
             <button type="submit" id="search-submit-btn"
               class="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-sm rounded-xl transition-all shadow-md shadow-amber-500/10 flex items-center justify-center gap-2 min-w-[120px]">
               <span>Suchen</span>
             </button>
           </div>
         </form>
+
+        <!-- Expandierbares Facetten- & Zeitleisten-Panel -->
+        <div id="search-facets-panel" class="hidden mt-4 pt-4 border-t border-slate-800/80 transition-all duration-300">
+          <div class="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 shadow-xl backdrop-blur-md">
+            
+            <!-- Kopfbereich des Panels -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-800/60">
+              <div class="flex items-center gap-2">
+                <span class="text-base">⏱️</span>
+                <h3 class="text-xs sm:text-sm font-semibold text-slate-200">Historische Zeitleiste & Archiv-Facetten</h3>
+                <span class="text-[11px] text-slate-500 hidden sm:inline">(Filterung nach Entstehungsjahr, Epoche, Fotograf oder Signatur)</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <button type="button" onclick="resetAllFacets()"
+                  class="px-2.5 py-1 text-[11px] rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-rose-300 border border-slate-700/60 transition flex items-center gap-1"
+                  title="Alle Zeitleisten- und Facettenfilter zurücksetzen">
+                  <span>✕</span>
+                  <span>Filter zurücksetzen</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 1. Historische Epochen (1-Klick-Auswahl) -->
+            <div class="mb-4">
+              <label class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-2">Historische Epochen (Schnellfilter):</label>
+              <div class="flex flex-wrap items-center gap-1.5" id="epoch-chips-container">
+                <button type="button" onclick="selectEpoch('')" data-epoch=""
+                  class="epoch-chip px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 shadow-sm transition">
+                  Alle Zeiten
+                </button>
+                <button type="button" onclick="selectEpoch('kaiserreich')" data-epoch="kaiserreich"
+                  class="epoch-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition flex items-center gap-1.5">
+                  <span>🏛️</span> Kaiserreich (1860–1914)
+                </button>
+                <button type="button" onclick="selectEpoch('weimar')" data-epoch="weimar"
+                  class="epoch-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition flex items-center gap-1.5">
+                  <span>📜</span> Weimar / Zwischenkriegszeit (1914–1939)
+                </button>
+                <button type="button" onclick="selectEpoch('nachkrieg')" data-epoch="nachkrieg"
+                  class="epoch-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition flex items-center gap-1.5">
+                  <span>🕊️</span> Wiederaufbau (1939–1965)
+                </button>
+                <button type="button" onclick="selectEpoch('konzil')" data-epoch="konzil"
+                  class="epoch-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition flex items-center gap-1.5">
+                  <span>⛪</span> Konzilsära (1965–1990)
+                </button>
+                <button type="button" onclick="selectEpoch('modern')" data-epoch="modern"
+                  class="epoch-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition flex items-center gap-1.5">
+                  <span>📸</span> Zeitgenössisch (ab 1990)
+                </button>
+              </div>
+            </div>
+
+            <!-- 2. Dual-Range Jahres-Schieberegler & Zahlenfelder -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-slate-900/50 p-3.5 rounded-xl border border-slate-800/80 mb-4">
+              <div class="md:col-span-3 flex items-center gap-2">
+                <label for="facet-year-from" class="text-xs text-slate-400 whitespace-nowrap">Von Jahr:</label>
+                <input type="number" id="facet-year-from" min="1840" max="2030" placeholder="z. B. 1880" oninput="handleYearInputChanged()"
+                  class="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-mono focus:outline-none focus:ring-1 focus:ring-amber-500">
+              </div>
+
+              <!-- Interactive Timeline Slider -->
+              <div class="md:col-span-6 px-2">
+                <div class="flex items-center justify-between text-[11px] text-slate-500 font-mono mb-1">
+                  <span id="slider-min-label">1860</span>
+                  <span id="slider-range-display" class="text-amber-400 font-semibold">1860 – 2026</span>
+                  <span id="slider-max-label">2026</span>
+                </div>
+                <div class="relative flex items-center">
+                  <input type="range" id="facet-range-slider" min="1860" max="2026" value="1860" oninput="handleSliderChanged(this.value)"
+                    class="w-full accent-amber-500 h-2 bg-slate-800 rounded-lg cursor-pointer">
+                </div>
+              </div>
+
+              <div class="md:col-span-3 flex items-center gap-2">
+                <label for="facet-year-to" class="text-xs text-slate-400 whitespace-nowrap">Bis Jahr:</label>
+                <input type="number" id="facet-year-to" min="1840" max="2030" placeholder="z. B. 1950" oninput="handleYearInputChanged()"
+                  class="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-mono focus:outline-none focus:ring-1 focus:ring-amber-500">
+              </div>
+            </div>
+
+            <!-- 3. Fotograf / Atelier & Archivsignatur -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label for="facet-creator-input" class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1.5">
+                  Fotograf / Urheber / Atelier:
+                </label>
+                <div class="relative">
+                  <input type="text" id="facet-creator-input" list="facet-creators-datalist" placeholder="Alle Fotografen / Freitext eingeben..." onchange="handleFacetChanged()"
+                    class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+                  <datalist id="facet-creators-datalist"></datalist>
+                </div>
+              </div>
+
+              <div>
+                <label for="facet-signature-input" class="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1.5">
+                  Archivsignatur / Inventarnummer:
+                </label>
+                <div class="relative">
+                  <input type="text" id="facet-signature-input" list="facet-signatures-datalist" placeholder="z. B. DiArch-01, Rep-A..." onchange="handleFacetChanged()"
+                    class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+                  <datalist id="facet-signatures-datalist"></datalist>
+                </div>
+              </div>
+            </div>
+
+            <!-- Anwenden Button -->
+            <div class="mt-3.5 pt-3 border-t border-slate-800/60 flex items-center justify-between">
+              <span id="facets-status-text" class="text-xs text-slate-400">Keine Filter aktiv</span>
+              <button type="button" onclick="handleSearchSubmit(event)"
+                class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs rounded-xl transition shadow-md flex items-center gap-1.5">
+                <span>Filter anwenden</span>
+                <span>→</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
 
         <!-- Search Prompt Chips -->
         <div class="mt-4 flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800/80 text-xs text-slate-400">

@@ -13,21 +13,26 @@ Dieses Dokument bietet eine vollständige Übersicht über die im System eingese
 | :--- | :--- | :--- | :--- |
 | **FastAPI** | MIT License | Asynchrones Web-Framework & REST-API | [fastapi.tiangolo.com](https://fastapi.tiangolo.com/) |
 | **Uvicorn** | BSD 3-Clause | Asynchroner ASGI-Webserver | [www.uvicorn.org](https://www.uvicorn.org/) |
+| **Pydantic & Settings** | MIT License | Typvalidierung & Konfigurationsmanagement | [docs.pydantic.dev](https://docs.pydantic.dev/) |
+| **python-multipart** | Apache 2.0 | Multipart/Form-Data Parser für Uploads | [github.com/Kludex/python-multipart](https://github.com/Kludex/python-multipart) |
+| **python-dotenv** | BSD 3-Clause | Laden von Umgebungsvariablen aus `.env` | [github.com/theskumar/python-dotenv](https://github.com/theskumar/python-dotenv) |
 | **Qdrant** | Apache 2.0 | Vektordatenbank (lokale Container-Instanz) | [qdrant.tech](https://qdrant.tech/) |
 | **Qdrant Client** | Apache 2.0 | Python SDK für Vektoroperationen & Payload-Indexe | [github.com/qdrant/qdrant-client](https://github.com/qdrant/qdrant-client) |
 | **PyTorch** | BSD-Style | Deep-Learning-Framework (Inferenz für CLIP & ArcFace) | [pytorch.org](https://pytorch.org/) |
 | **Torchvision** | BSD 3-Clause | Bildverarbeitungs-Pipelines für PyTorch | [github.com/pytorch/vision](https://github.com/pytorch/vision) |
 | **OpenCLIP** | MIT License | Multimodale Text- und Bild-Embeddings (ViT-B-32) | [github.com/mlfoundations/open_clip](https://github.com/mlfoundations/open_clip) |
-| **ONNX Runtime** | MIT License | Leistungsoptimierte Inferenz-Engine für Gesichtsmodelle | [onnxruntime.ai](https://onnxruntime.ai/) |
+| **ONNX Runtime (GPU)** | MIT License | Leistungsoptimierte Inferenz-Engine für Gesichtsmodelle | [onnxruntime.ai](https://onnxruntime.ai/) |
+| **InsightFace** | Non-Commercial / MIT | Gesichtslokalisierung (RetinaFace) & Extraktion | [github.com/deepinsight/insightface](https://github.com/deepinsight/insightface) |
 | **Pillow (PIL)** | HPND License | Bilddekodierung, EXIF/IPTC-Extraktion, Caching | [python-pillow.org](https://python-pillow.org/) |
+| **NumPy** | BSD 3-Clause | Mathematische Vektor- & Matrixoperationen | [numpy.org](https://numpy.org/) |
+| **Scikit-learn** | BSD 3-Clause | DBSCAN-Clustering für Personengruppierung | [scikit-learn.org](https://scikit-learn.org/) |
+| **SQLite (sqlite3)** | Public Domain | Relationale Metadaten-, Fixity- & Cluster-DB | [sqlite.org](https://sqlite.org/) |
 | **OpenSeadragon** | New BSD License | Lokaler IIIF 3.0 Deep-Zoom Viewer für Gigapixel-Scans | [openseadragon.github.io](https://openseadragon.github.io/) |
 | **Cropper.js** | MIT License | Interaktive Bildausschnitt-Markierung (Crop-to-Search) | [fengyuanchen.github.io/cropperjs](https://fengyuanchen.github.io/cropperjs/) |
-| **SQLite (sqlite3)** | Public Domain | Lokale Metadaten-, Zweiblatt- & Thesaurus-Datenbank | [sqlite.org](https://sqlite.org/) |
-| **NumPy** | BSD 3-Clause | Mathematische Vektoroperationen | [numpy.org](https://numpy.org/) |
-| **Scikit-learn** | BSD 3-Clause | DBSCAN-Clustering für Personengruppierung | [scikit-learn.org](https://scikit-learn.org/) |
-| **Pydantic** | MIT License | Datenvalidierung, Schemadefinition & Settings | [docs.pydantic.dev](https://docs.pydantic.dev/) |
 | **Tailwind CSS** | MIT License | Lokales Standalone-CSS (100 % offline, kein CDN) | [tailwindcss.com](https://tailwindcss.com/) |
 | **tqdm** | MIT & MPL 2.0 | CLI-Fortschrittsanzeige beim Indexieren | [github.com/tqdm/tqdm](https://github.com/tqdm/tqdm) |
+| **pytest & anyio** | MIT License | Testframework & asynchrone Testausführung | [pytest.org](https://pytest.org/) |
+| **Python-Markdown** | BSD 3-Clause | Generierung eigenständiger Offline-Dokumentationen | [python-markdown.github.io](https://python-markdown.github.io/) |
 
 ---
 

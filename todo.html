@@ -220,9 +220,9 @@
 <li>Automatische Invalidierung des Thumbnail-Caches und Live-Reindexierung in Qdrant (aufgerichtetes CLIP-Embedding &amp; Gesichts-Detektion).</li>
 </ul>
 </li>
-<li>[ ] <strong>Historische Zeitleiste &amp; Facettierung:</strong><ul>
-<li>Interaktiver Schieberegler nach Entstehungsjahr/Epoche (z. B. <em>1880–1914</em>, <em>1914–1939</em>, <em>1945–1970</em>) unter Nutzung von Qdrant-Bereichsfiltern (<code>gte</code>/<code>lte</code>).</li>
-<li>Filter nach bekannten Archivsignaturen, Beständen oder Fotografen/Ateliers.</li>
+<li>[x] <strong>Historische Zeitleiste &amp; Facettierung:</strong><ul>
+<li>Interaktiver Schieberegler nach Entstehungsjahr/Epoche (z. B. <em>1880–1914</em>, <em>1914–1939</em>, <em>1945–1970</em>) mit flexibler Zeitraum-Filterung und 1-Klick-Epochen.</li>
+<li>Facettenfilter nach Archivsignaturen, Beständen und Fotografen/Ateliers mit Autovervollständigung und interaktiven Filter-Pills im Suchergebnis.</li>
 </ul>
 </li>
 </ul>
@@ -810,9 +810,9 @@
 <li><em>Stärken:</em> Herausragende semantische OpenCLIP- und Gesichts-Vektorsuche, Sub-5ms SQLite-Metadaten-Cache, Dublin-Core XMP-Sidecars, IIIF 3.0 API, Recto/Verso-Kopplung und Akzessionsjournal.</li>
 <li><em>Handlungsbedarfe:</em> Unveränderlichkeit der Master-Digitalisate (Schutz vor In-situ-Modifikation), fehlende Netzwerk-Authentifizierung, kryptographische Fixity-Prüfsummen und Filesystem-Stabilität des Speicherorts (GVFS-Ablösung).</li>
 <li><strong>Priorisierte Aufgaben:</strong></li>
-<li>[ ] <strong>Priorität 1: Unveränderlichkeit der Archiv-Master bei Bilddrehungen (Bitstream Preservation):</strong><ul>
-<li><em>Problem:</em> <code>image_rotation_service.py</code> modifiziert aktuell physisch die Master-JPEG-Datei auf dem Storage via <code>jpegtran</code>. Dies verletzt das archivarische Gebot der unveränderten Originalerhaltung (OAIS).</li>
-<li><em>Lösung:</em> Umstellung auf rein <strong>virtuelle Drehungen</strong> über das Metadatenfeld <code>edit_settings: {"rotation": 90}</code> in SQLite/Qdrant oder Generierung separater Derivate im Cache. Der physische Bitstream des Original-Digitalisats bleibt zu 100 % unverändert und kann schreibgeschützt gemountet werden.</li>
+<li>[x] <strong>Priorität 1: Unveränderlichkeit der Archiv-Master bei Bilddrehungen (Bitstream Preservation):</strong><ul>
+<li><em>Problem:</em> <code>image_rotation_service.py</code> modifizierte früher physisch die Master-JPEG-Datei auf dem Storage. Dies verletzte das archivarische Gebot der unveränderten Originalerhaltung (OAIS).</li>
+<li><em>Lösung:</em> Umstellung auf rein <strong>virtuelle Drehungen</strong> über das Metadatenfeld <code>edit_settings: {"rotation": 90}</code> in SQLite und Qdrant. Der physische Bitstream des Original-Digitalisats bleibt zu 100 % unverändert ("Never touch the master!"), Thumbnails und Vorschaubilder werden on-the-fly im Cache gedreht.</li>
 </ul>
 </li>
 <li>[ ] <strong>Priorität 1: Netzwerk-Authentifizierung &amp; Rollenbasierte Zugriffskontrolle (RBAC):</strong><ul>
@@ -827,9 +827,14 @@
 <li><em>Lösung:</em> Dokumentation und Umstellung auf einen nativen Linux-Kernel-Mount via <code>/etc/fstab</code> (<code>cifs</code> mit <code>credentials</code>, <code>iocharset=utf8</code>, <code>actimeo=60</code> und bevorzugt <code>ro</code>-Flag für den Masterbestand).</li>
 </ul>
 </li>
-<li>[ ] <strong>Priorität 2: Kryptographische Fixity-Prüfsummen (SHA-256) nach PREMIS:</strong><ul>
-<li><em>Problem:</em> Bisher werden nur perzeptuelle Hashes (<code>pHash</code>, <code>dHash</code>) zur Duplikatserkennung erfasst, die jedoch keine Integritätsprüfung gegen Bit-Rot (schleichende Datenträger-Degeneration) ermöglichen.</li>
-<li><em>Lösung:</em> Automatische Berechnung eines SHA-256-Hashes beim Import in <code>indexer.py</code> und <code>indexing_worker.py</code>. Ablage in <code>metadata.sha256</code> sowie CLI-Befehl <code>python indexer.py --verify-fixity</code> zur automatisierten periodischen Unversehrtheitsprüfung.</li>
+<li>[x] <strong>Priorität 2: Kryptographische Fixity-Prüfsummen (SHA-256) nach PREMIS:</strong><ul>
+<li><em>Problem:</em> Bisher wurden nur perzeptuelle Hashes (<code>pHash</code>, <code>dHash</code>) zur Duplikatserkennung erfasst, die jedoch keine Integritätsprüfung gegen Bit-Rot (schleichende Datenträger-Degeneration) ermöglichten.</li>
+<li><em>Lösung:</em> Vollständige PREMIS Fixity &amp; Bitstream Preservation implementiert:</li>
+<li>Speichereffiziente Streaming-SHA-256-Berechnung (<code>compute_file_sha256</code>) in <a href="file:///home/norbert/Bilderdatenbank/app/services/metadata_service.py">metadata_service.py</a>.</li>
+<li>Erweiterung der SQLite-Metadatentabelle (<code>metadata.sha256</code>, <code>last_fixity_check</code>, <code>fixity_status</code>) inklusive WAL-Indizes in <a href="file:///home/norbert/Bilderdatenbank/app/services/metadata_db.py">metadata_db.py</a>.</li>
+<li>Synchronisation in Qdrant Point-Payloads (<code>archive_images</code>) beim CLI-Ingest und Worker-Ingest in <a href="file:///home/norbert/Bilderdatenbank/app/services/indexing_service.py">indexing_service.py</a>.</li>
+<li>Periodische Unversehrtheitsprüfung und Baseline-Generierung via CLI <code>python indexer.py --verify-fixity</code> (Erkennung von Bit-Rot, Dateimodifikation und fehlenden Master-Dateien ohne KI-/VRAM-Overhead) mit detailliertem PREMIS-Auditbericht.</li>
+<li>Automatische Unit-Tests in <a href="file:///home/norbert/Bilderdatenbank/tests/test_fixity.py">test_fixity.py</a> verifiziert.</li>
 </ul>
 </li>
 <li>[ ] <strong>Priorität 2: Automatisierte Datenbank- &amp; Vektor-Snapshots:</strong><ul>
@@ -839,14 +844,66 @@
 <li>Automatischer Aufruf der Qdrant-Snapshot-API (<code>/collections/{name}/snapshots</code>) mit Rotation der letzten 7 Sicherungen.</li>
 </ul>
 </li>
-<li>[ ] <strong>Priorität 2: Archivische Export-Schnittstellen (EAD, METS, CSV):</strong><ul>
+<li>[ ] <strong>Priorität 2: Archivische Export-Schnittstellen (EAD, METS):</strong><ul>
 <li><em>Problem:</em> Facharchive benötigen strukturierte Übergaben an zentrale Archivinformationssysteme (AIS wie <em>ScopeArchiv, Faust, ACTApro</em>) oder Portale (<em>DDB, Europeana</em>).</li>
-<li><em>Lösung:</em> Implementierung von Export-Filtern für Rechercheergebnisse nach EAD-XML (Bestände &amp; Tektonik), METS/MODS (Digitalisat-Metadaten) sowie Standard-CSV mit Dublin-Core-Spalten.</li>
+<li><em>Lösung:</em> Implementierung von Export-Filtern für Rechercheergebnisse nach EAD-XML (Bestände &amp; Tektonik) sowie METS/MODS (Digitalisat-Metadaten).</li>
 </ul>
 </li>
 <li>[ ] <strong>Priorität 3: Normdatenanbindung (GND / Wikidata / VIAF):</strong><ul>
 <li><em>Problem:</em> Personen- und Körperschaftsnamen sind aktuell reine Freitexte ohne Verknüpfung zu kontrollierten Vokabularen.</li>
 <li><em>Lösung:</em> Autovervollständigung und optionale URI-Verknüpfung mit der Gemeinsamen Normdatei (GND) der Deutschen Nationalbibliothek im Personen-Modal.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="30-ui-konsistenz-personen-nomenklatur-curation-workflows-senior-developer-review">30. UI-Konsistenz, Personen-Nomenklatur &amp; Curation-Workflows (Senior Developer Review)</h2>
+<ul>
+<li><strong>Ziel:</strong> Lückenlose Konsistenz und universelle Verfügbarkeit der Personen-Namensvergabe an allen Schnittstellen der Anwendung (Cluster-Übersicht, Detail-Modal, Bounding-Boxes, Metadaten-Editor, Beziehungsnetzwerk und Leuchttisch-Stapel) gemäß archivischer Best-Practice.</li>
+<li><strong>Bereits implementiert &amp; verifiziert (Stand 15.10.2026):</strong></li>
+<li>[x] <strong>1. Universelles Personen-Namensmodal (<code>#rename-person-modal</code>):</strong><ul>
+<li>Vollständiger Ersatz ungestylter Browser-<code>prompt()</code>-Aufrufe durch ein einheitliches, barrierefreies und tastaturbedienbares (Enter / Esc) Modal im Archiv-Design.</li>
+</ul>
+</li>
+<li>[x] <strong>2. Konsistente Namensvergabe an allen kritischen UI-Orten:</strong><ul>
+<li><strong>Bild-Detail-Modal:</strong> Klickbare Bounding-Boxen auf dem Canvas zur direkten Benennung des anvisierten Gesichts; ✏️-Aktionsbuttons an jedem erkannten Gesichts-Tag-Chip in der rechten Leiste.</li>
+<li><strong>Target-Face-Verifikationsbanner:</strong> Behebung des Kontext-Bugs (<code>currentModalTargetFaceContext</code>), sodass der Verifikations-Banner beim Klick aus Cluster-Ansichten zuverlässig erscheint und einen direkten Umbenennen-Trigger bietet.</li>
+<li><strong>Einzelne Personenporträts / Noise-Faces:</strong> Neuer Endpunkt <code>POST /faces/{face_id}/label</code> und Erweiterung von <code>label_face</code> in <code>ClusteringService</code>, womit auch isolierte Einzelporträts (<code>cluster_id=None</code> bei DBSCAN <code>min_samples=2</code>) direkt benannt und archivisch erschlossen werden können.</li>
+<li><strong>Beziehungs-Netzwerkgraph:</strong> ✏️-Button direkt in der Personen-Info-Karte (<code>#network-node-card</code>) zur sofortigen Korrektur von Namensansetzungen ohne Tab-Wechsel.</li>
+<li><strong>Archivischer Metadaten-Editor:</strong> Eigenständiges Feld <em>„Dargestellte Person(en)“</em> (<code>#edit-meta-persons</code>) mit Speicherung in der neuen SQLite-Spalte <code>metadata.persons</code>, Synchronisation im Qdrant-Vektorpayload und XMP-Sidecar-Generierung (<code>Iptc4xmpExt:PersonInImage</code>).</li>
+</ul>
+</li>
+<li>[x] <strong>3. Datalist-Autovervollständigung (<code>known-persons-datalist</code>):</strong><ul>
+<li>Automatische, alphabetisch sortierte Erfassung aller im Archiv bekannten Personennamen (aus Clustern, Metadaten und Leuchttisch-Mappen) als Vorschlagsliste in allen Eingabefeldern für Personennamen.</li>
+</ul>
+</li>
+<li>[x] <strong>4. Leuchttisch-Stapelverarbeitung (<code>openLightboxBatchPersonModal</code>):</strong><ul>
+<li>Neuer Aktionsbutton <em>„Person zuweisen“</em> auf dem Leuchttisch zur simultanen Zuweisung einer dargestellten Person an alle Bilder einer Arbeitsmappe mit automatischer Aktualisierung von SQLite, Qdrant und XMP-Sidecars.</li>
+</ul>
+</li>
+<li>[x] <strong>5. Metadata Working Group (MWG) Regionen im XMP-Sidecar (<code>mwg-rs:Regions</code>):</strong><ul>
+<li>Standardkonforme Ausgabe der Gesichts-Koordinaten als <code>mwg-rs:Regions</code> (mit <code>AppliedToDimensions</code>, <code>RegionList</code> und normalisierten <code>stArea</code>-Zentrumskoordinaten) im XMP-Sidecar für externe Foto- und Katalogsysteme (DigiKam, Adobe Bridge, Lightroom, ExifTool).</li>
+<li>Automatische Einbettung des kuratorischen Status (<code>Description = VERIFIED</code> bzw. <code>KI_AUTO</code>) direkt im XML-Element jeder Gesichtsregion.</li>
+</ul>
+</li>
+<li>[x] <strong>6. Kuratorische Status-Flags für Gesichter (<code>KI_AUTO</code> vs. <code>VERIFIED</code>):</strong><ul>
+<li>Saubere archivarische Trennung zwischen automatischer KI-Erkennung (<code>KI_AUTO</code>) und geprüften/bestätigten Identifikationen (<code>VERIFIED</code>).</li>
+<li>Neuer Endpunkt <code>POST /faces/{face_id}/curation-status</code> zur Umschaltung des Status sowie automatische Verifikation beim manuellen Vergeben eines Personennamens.</li>
+<li>Visuelle Kennzeichnung im Web-Interface: Status-Badges auf den Bounding-Boxen (<code>✓ Verifiziert</code> vs. <code>🤖 KI</code>), interaktive Umschalt-Schaltflächen an allen Gesichts-Tag-Chips und Bestätigungs-Button direkt im Cluster-Kontrollbanner (<code>#modal-cluster-verify-banner</code>).</li>
+</ul>
+</li>
+<li>
+<p>[x] <strong>7. Findbuch- &amp; Tabellenexport (CSV / Excel) vom Leuchttisch (<code>POST /export/findbuch-csv</code>):</strong></p>
+<ul>
+<li>Export archivischer Findbücher als UTF-8 mit BOM formatierte CSV-Datei für sofortige, fehlerfreie Darstellung in Microsoft Excel, LibreOffice Calc und Archivinformationssystemen (AIS).</li>
+<li>Umfassende Spaltenstruktur nach ISAD(G) / Dublin Core: Lfd. Nr., Archivsignatur, Titel/Enthält-Vermerk, Datierung, Urheber/Fotograf, Dargestellte Personen, Archivalische Notizen, Dateiname und Pfad.</li>
+<li>Integrierter Export-Button <em>„Findbuch (CSV)“</em> direkt in der Leuchttisch-Werkzeugleiste (<code>#lightbox-export-findbuch-btn</code>).</li>
+</ul>
+</li>
+<li>
+<p><strong>Archivarische Weiterentwicklung &amp; Backlog:</strong></p>
+</li>
+<li>[ ] <strong>GND- / Normdatei-Strategie (Offline-First):</strong><ul>
+<li>Um die 100%ige Offline-Fähigkeit und Air-Gap-Sicherheit des Archivs zu wahren, keine externen Live-API-Calls ins Internet: Stattdessen optionale Bereitstellung lokaler, vorkompilierter GND-Personen-Dumps (z. B. Theologen, Bischöfe, regionale Persönlichkeiten) als lokale SQLite-Tabelle.</li>
 </ul>
 </li>
 </ul>

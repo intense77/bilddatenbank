@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initModalZoomAndPan();
   initSplitSliderDrag();
   loadImportBatches();
+  initFacets();
   // Vorbelegung Suche falls gewünscht
   const urlParams = new URLSearchParams(window.location.search);
   const q = urlParams.get('q');
@@ -239,6 +240,259 @@ function updateFaceRecognitionUI() {
   }
 }
 
+// --- Historische Zeitleiste & Facettierung ---
+let currentActiveEpoch = '';
+let facetsData = null;
+
+async function initFacets() {
+  try {
+    const res = await fetch('/search/facets');
+    if (!res.ok) return;
+    facetsData = await res.json();
+
+    const creatorsDatalist = document.getElementById('facet-creators-datalist');
+    if (creatorsDatalist && facetsData.creators) {
+      creatorsDatalist.innerHTML = facetsData.creators
+        .map(c => `<option value="${escapeHtml(c)}"></option>`)
+        .join('');
+    }
+
+    const signaturesDatalist = document.getElementById('facet-signatures-datalist');
+    if (signaturesDatalist && facetsData.signatures) {
+      signaturesDatalist.innerHTML = facetsData.signatures
+        .map(s => `<option value="${escapeHtml(s)}"></option>`)
+        .join('');
+    }
+
+    if (facetsData.years) {
+      const minYear = facetsData.years.min || 1860;
+      const maxYear = facetsData.years.max || 2026;
+      const minLabel = document.getElementById('slider-min-label');
+      const maxLabel = document.getElementById('slider-max-label');
+      const rangeSlider = document.getElementById('facet-range-slider');
+      const fromInput = document.getElementById('facet-year-from');
+      const toInput = document.getElementById('facet-year-to');
+
+      if (minLabel) minLabel.textContent = minYear;
+      if (maxLabel) maxLabel.textContent = maxYear;
+      if (rangeSlider) {
+        rangeSlider.min = minYear;
+        rangeSlider.max = maxYear;
+        rangeSlider.value = minYear;
+      }
+      if (fromInput) fromInput.min = minYear;
+      if (toInput) toInput.max = maxYear;
+      updateTimelineDisplay();
+    }
+  } catch (err) {
+    console.debug("Konnte Suchfacetten nicht initialisieren:", err);
+  }
+}
+
+function toggleFacetsPanel() {
+  const panel = document.getElementById('search-facets-panel');
+  const btn = document.getElementById('toggle-facets-btn');
+  if (!panel) return;
+  const isHidden = panel.classList.contains('hidden');
+  if (isHidden) {
+    panel.classList.remove('hidden');
+    if (btn) {
+      btn.classList.add('border-amber-500', 'text-amber-400', 'bg-amber-500/10');
+    }
+  } else {
+    panel.classList.add('hidden');
+    if (btn && !isAnyFacetActive()) {
+      btn.classList.remove('border-amber-500', 'text-amber-400', 'bg-amber-500/10');
+    }
+  }
+}
+
+function selectEpoch(epochId) {
+  currentActiveEpoch = epochId || '';
+  updateEpochChipsHighlight();
+
+  const fromInput = document.getElementById('facet-year-from');
+  const toInput = document.getElementById('facet-year-to');
+
+  const epochRanges = {
+    'kaiserreich': [1860, 1914],
+    'weimar': [1914, 1939],
+    'nachkrieg': [1939, 1965],
+    'konzil': [1965, 1990],
+    'modern': [1990, 2030],
+  };
+
+  if (currentActiveEpoch && epochRanges[currentActiveEpoch]) {
+    const [yFrom, yTo] = epochRanges[currentActiveEpoch];
+    if (fromInput) fromInput.value = yFrom;
+    if (toInput) toInput.value = yTo;
+    const rangeSlider = document.getElementById('facet-range-slider');
+    if (rangeSlider) rangeSlider.value = yFrom;
+  } else {
+    if (fromInput) fromInput.value = '';
+    if (toInput) toInput.value = '';
+    const rangeSlider = document.getElementById('facet-range-slider');
+    if (rangeSlider && facetsData && facetsData.years) {
+      rangeSlider.value = facetsData.years.min;
+    }
+  }
+
+  updateTimelineDisplay();
+  handleFacetChanged();
+}
+
+function handleSliderChanged(val) {
+  const fromInput = document.getElementById('facet-year-from');
+  if (fromInput) {
+    fromInput.value = val;
+  }
+  currentActiveEpoch = '';
+  updateEpochChipsHighlight();
+  updateTimelineDisplay();
+  handleFacetChanged();
+}
+
+function handleYearInputChanged() {
+  const fromInput = document.getElementById('facet-year-from');
+  const rangeSlider = document.getElementById('facet-range-slider');
+  if (fromInput && rangeSlider && fromInput.value) {
+    rangeSlider.value = fromInput.value;
+  }
+  currentActiveEpoch = '';
+  updateEpochChipsHighlight();
+  updateTimelineDisplay();
+  handleFacetChanged();
+}
+
+function updateEpochChipsHighlight() {
+  const chips = document.querySelectorAll('.epoch-chip');
+  chips.forEach(c => {
+    if (c.getAttribute('data-epoch') === currentActiveEpoch) {
+      c.className = 'epoch-chip px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 shadow-sm transition';
+    } else {
+      c.className = 'epoch-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition flex items-center gap-1.5';
+    }
+  });
+}
+
+function updateTimelineDisplay() {
+  const fromVal = document.getElementById('facet-year-from')?.value;
+  const toVal = document.getElementById('facet-year-to')?.value;
+  const display = document.getElementById('slider-range-display');
+  if (!display) return;
+
+  if (fromVal && toVal) {
+    display.textContent = `${fromVal} – ${toVal}`;
+  } else if (fromVal) {
+    display.textContent = `ab ${fromVal}`;
+  } else if (toVal) {
+    display.textContent = `bis ${toVal}`;
+  } else if (facetsData && facetsData.years) {
+    display.textContent = `${facetsData.years.min} – ${facetsData.years.max}`;
+  } else {
+    display.textContent = '1860 – 2026';
+  }
+}
+
+function isAnyFacetActive() {
+  const yFrom = document.getElementById('facet-year-from')?.value.trim();
+  const yTo = document.getElementById('facet-year-to')?.value.trim();
+  const creator = document.getElementById('facet-creator-input')?.value.trim();
+  const sig = document.getElementById('facet-signature-input')?.value.trim();
+  return !!(yFrom || yTo || currentActiveEpoch || creator || sig);
+}
+
+function handleFacetChanged() {
+  const badge = document.getElementById('facets-active-badge');
+  const toggleBtn = document.getElementById('toggle-facets-btn');
+  const statusText = document.getElementById('facets-status-text');
+  const active = isAnyFacetActive();
+
+  if (badge) {
+    if (active) badge.classList.remove('hidden');
+    else badge.classList.add('hidden');
+  }
+
+  if (toggleBtn) {
+    if (active) {
+      toggleBtn.classList.add('border-amber-500', 'text-amber-400', 'bg-amber-500/10');
+    } else {
+      const panel = document.getElementById('search-facets-panel');
+      if (panel && panel.classList.contains('hidden')) {
+        toggleBtn.classList.remove('border-amber-500', 'text-amber-400', 'bg-amber-500/10');
+      }
+    }
+  }
+
+  if (statusText) {
+    if (!active) {
+      statusText.textContent = 'Keine Filter aktiv';
+    } else {
+      const parts = [];
+      const yFrom = document.getElementById('facet-year-from')?.value.trim();
+      const yTo = document.getElementById('facet-year-to')?.value.trim();
+      if (yFrom || yTo) parts.push(`Zeitraum: ${yFrom || '–'} bis ${yTo || '–'}`);
+      const creator = document.getElementById('facet-creator-input')?.value.trim();
+      if (creator) parts.push(`Fotograf: "${creator}"`);
+      const sig = document.getElementById('facet-signature-input')?.value.trim();
+      if (sig) parts.push(`Signatur: "${sig}"`);
+      statusText.textContent = 'Aktiv: ' + parts.join(', ');
+    }
+  }
+}
+
+function resetAllFacets(triggerSearch = false) {
+  currentActiveEpoch = '';
+  const fromInput = document.getElementById('facet-year-from');
+  const toInput = document.getElementById('facet-year-to');
+  const creatorInput = document.getElementById('facet-creator-input');
+  const sigInput = document.getElementById('facet-signature-input');
+  const slider = document.getElementById('facet-range-slider');
+
+  if (fromInput) fromInput.value = '';
+  if (toInput) toInput.value = '';
+  if (creatorInput) creatorInput.value = '';
+  if (sigInput) sigInput.value = '';
+  if (slider && facetsData && facetsData.years) slider.value = facetsData.years.min;
+
+  updateEpochChipsHighlight();
+  updateTimelineDisplay();
+  handleFacetChanged();
+
+  if (triggerSearch) {
+    executeSearch(currentSearchQuery, currentSearchLimit);
+  }
+}
+
+function clearYearFacet(e) {
+  if (e) e.stopPropagation();
+  const fromInput = document.getElementById('facet-year-from');
+  const toInput = document.getElementById('facet-year-to');
+  if (fromInput) fromInput.value = '';
+  if (toInput) toInput.value = '';
+  currentActiveEpoch = '';
+  updateEpochChipsHighlight();
+  updateTimelineDisplay();
+  handleFacetChanged();
+  executeSearch(currentSearchQuery, currentSearchLimit);
+}
+
+function clearCreatorFacet(e) {
+  if (e) e.stopPropagation();
+  const creatorInput = document.getElementById('facet-creator-input');
+  if (creatorInput) creatorInput.value = '';
+  handleFacetChanged();
+  executeSearch(currentSearchQuery, currentSearchLimit);
+}
+
+function clearSignatureFacet(e) {
+  if (e) e.stopPropagation();
+  const sigInput = document.getElementById('facet-signature-input');
+  if (sigInput) sigInput.value = '';
+  handleFacetChanged();
+  executeSearch(currentSearchQuery, currentSearchLimit);
+}
+
 // --- 1. Semantische Freitext-Suche ---
 
 function setQueryAndSearch(term) {
@@ -252,7 +506,8 @@ function handleSearchSubmit(e) {
   const query = document.getElementById('search-input')?.value.trim() || '';
   const limit = document.getElementById('search-limit')?.value || 24;
   const batchFilterVal = document.getElementById('search-batch-filter')?.value;
-  if (!query && !batchFilterVal) return;
+  const hasFacets = isAnyFacetActive();
+  if (!query && !batchFilterVal && !hasFacets) return;
   executeSearch(query, limit);
 }
 
@@ -301,6 +556,20 @@ async function executeSearch(query, limit = 24) {
     if (batchFilterVal) {
       url += `&batch_id=${encodeURIComponent(batchFilterVal)}`;
     }
+    const yearFromVal = document.getElementById('facet-year-from')?.value.trim();
+    if (yearFromVal) url += `&year_from=${encodeURIComponent(yearFromVal)}`;
+
+    const yearToVal = document.getElementById('facet-year-to')?.value.trim();
+    if (yearToVal) url += `&year_to=${encodeURIComponent(yearToVal)}`;
+
+    if (currentActiveEpoch) url += `&epoch=${encodeURIComponent(currentActiveEpoch)}`;
+
+    const creatorVal = document.getElementById('facet-creator-input')?.value.trim();
+    if (creatorVal) url += `&creator=${encodeURIComponent(creatorVal)}`;
+
+    const signatureVal = document.getElementById('facet-signature-input')?.value.trim();
+    if (signatureVal) url += `&signature=${encodeURIComponent(signatureVal)}`;
+
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Fehler bei der Suche (${res.status})`);
     const data = await res.json();
@@ -376,41 +645,75 @@ function updateSearchFilterPills() {
   const clipCount = currentSearchResults.filter(i => i.match_type === 'clip').length;
 
   const typesCount = (personCount > 0 ? 1 : 0) + (metaCount > 0 ? 1 : 0) + (clipCount > 0 ? 1 : 0);
-  if (typesCount <= 1) {
-    container.innerHTML = '';
-    return;
+
+  let html = '';
+
+  if (typesCount > 1) {
+    const pillClass = (type) => currentSearchFilter === type 
+      ? 'px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 shadow-sm cursor-pointer transition'
+      : 'px-2.5 py-0.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer transition';
+
+    html += `
+      <button type="button" onclick="setSearchFilter('all')" class="${pillClass('all')}">
+        Alle (${currentSearchResults.length})
+      </button>
+    `;
+    if (personCount > 0) {
+      html += `
+        <button type="button" onclick="setSearchFilter('person')" class="${pillClass('person')}">
+          👤 Personen (${personCount})
+        </button>
+      `;
+    }
+    if (metaCount > 0) {
+      html += `
+        <button type="button" onclick="setSearchFilter('metadata')" class="${pillClass('metadata')}">
+          📝 Metadaten (${metaCount})
+        </button>
+      `;
+    }
+    if (clipCount > 0) {
+      html += `
+        <button type="button" onclick="setSearchFilter('clip')" class="${pillClass('clip')}">
+          🔍 Bildmotive (${clipCount})
+        </button>
+      `;
+    }
   }
 
-  const pillClass = (type) => currentSearchFilter === type 
-    ? 'px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 shadow-sm cursor-pointer transition'
-    : 'px-2.5 py-0.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer transition';
+  // Aktive Facetten-Pills mit Entfernen-Button (✕)
+  const yFrom = document.getElementById('facet-year-from')?.value.trim();
+  const yTo = document.getElementById('facet-year-to')?.value.trim();
+  if (yFrom || yTo) {
+    const yrStr = (yFrom && yTo) ? `${yFrom}–${yTo}` : (yFrom ? `ab ${yFrom}` : `bis ${yTo}`);
+    html += `
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm">
+        <span>📅 ${escapeHtml(yrStr)}</span>
+        <button type="button" onclick="clearYearFacet(event)" class="text-amber-400 hover:text-white font-bold transition ml-0.5" title="Zeitraum-Filter entfernen">✕</button>
+      </span>
+    `;
+  }
 
-  let html = `
-    <button type="button" onclick="setSearchFilter('all')" class="${pillClass('all')}">
-      Alle (${currentSearchResults.length})
-    </button>
-  `;
-  if (personCount > 0) {
+  const creatorVal = document.getElementById('facet-creator-input')?.value.trim();
+  if (creatorVal) {
     html += `
-      <button type="button" onclick="setSearchFilter('person')" class="${pillClass('person')}">
-        👤 Personen (${personCount})
-      </button>
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm">
+        <span>📸 ${escapeHtml(creatorVal)}</span>
+        <button type="button" onclick="clearCreatorFacet(event)" class="text-sky-400 hover:text-white font-bold transition ml-0.5" title="Fotografen-Filter entfernen">✕</button>
+      </span>
     `;
   }
-  if (metaCount > 0) {
+
+  const signatureVal = document.getElementById('facet-signature-input')?.value.trim();
+  if (signatureVal) {
     html += `
-      <button type="button" onclick="setSearchFilter('metadata')" class="${pillClass('metadata')}">
-        📝 Metadaten (${metaCount})
-      </button>
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm">
+        <span>🏷️ ${escapeHtml(signatureVal)}</span>
+        <button type="button" onclick="clearSignatureFacet(event)" class="text-purple-400 hover:text-white font-bold transition ml-0.5" title="Signatur-Filter entfernen">✕</button>
+      </span>
     `;
   }
-  if (clipCount > 0) {
-    html += `
-      <button type="button" onclick="setSearchFilter('clip')" class="${pillClass('clip')}">
-        🔍 Bildmotive (${clipCount})
-      </button>
-    `;
-  }
+
   container.innerHTML = html;
 }
 
@@ -479,6 +782,19 @@ async function loadMoreSearchResults() {
     if (batchFilterVal) {
       url += `&batch_id=${encodeURIComponent(batchFilterVal)}`;
     }
+    const yearFromVal = document.getElementById('facet-year-from')?.value.trim();
+    if (yearFromVal) url += `&year_from=${encodeURIComponent(yearFromVal)}`;
+
+    const yearToVal = document.getElementById('facet-year-to')?.value.trim();
+    if (yearToVal) url += `&year_to=${encodeURIComponent(yearToVal)}`;
+
+    if (currentActiveEpoch) url += `&epoch=${encodeURIComponent(currentActiveEpoch)}`;
+
+    const creatorVal = document.getElementById('facet-creator-input')?.value.trim();
+    if (creatorVal) url += `&creator=${encodeURIComponent(creatorVal)}`;
+
+    const signatureVal = document.getElementById('facet-signature-input')?.value.trim();
+    if (signatureVal) url += `&signature=${encodeURIComponent(signatureVal)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Fehler beim Nachladen (${res.status})`);
     const newData = await res.json();

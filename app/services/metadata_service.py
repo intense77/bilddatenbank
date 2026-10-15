@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import xml.etree.ElementTree as ET
@@ -6,6 +7,26 @@ from typing import Any, Dict, List, Optional, Union
 from PIL import Image, ExifTags, IptcImagePlugin
 
 logger = logging.getLogger(__name__)
+
+
+def compute_file_sha256(file_path: Union[str, Path], chunk_size: int = 65536) -> Optional[str]:
+    """
+    Berechnet die kryptographische SHA-256 Prüfsumme (PREMIS Fixity) einer Datei
+    im speicherschonenden Streaming-Verfahren (64 KB Chunks).
+    Erkennt Bit-Rot, unvollständige Kopiervorgänge und stille Datenverfälschungen.
+    """
+    try:
+        p = Path(file_path)
+        if not p.is_file():
+            return None
+        hasher = hashlib.sha256()
+        with open(p, "rb") as f:
+            while chunk := f.read(chunk_size):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+    except Exception as e:
+        logger.error("Fehler bei SHA-256 Fixity-Berechnung für %s: %s", file_path, e)
+        return None
 
 
 def _sanitize_for_json(val: Any) -> Any:

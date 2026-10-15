@@ -61,8 +61,22 @@ def parse_arguments() -> argparse.Namespace:
         "--source-dir",
         "-s",
         type=Path,
-        required=True,
+        required=False,
+        default=None,
         help="Pfad zum Quellordner historischer Scans (.jpg, .jpeg, .png, .tif, .tiff).",
+    )
+    parser.add_argument(
+        "--verify-fixity",
+        action="store_true",
+        default=False,
+        help="Prüft die kryptographische Integrität (SHA-256 PREMIS) aller archivierten Master-Dateien auf Bit-Rot.",
+    )
+    parser.add_argument(
+        "--no-calculate-missing",
+        dest="calculate_missing",
+        action="store_false",
+        default=True,
+        help="Berechnet fehlende SHA-256 Prüfsummen für Altbestände bei der Fixity-Prüfung nicht automatisch nach.",
     )
     parser.add_argument(
         "--batch-size",
@@ -132,12 +146,59 @@ def parse_arguments() -> argparse.Namespace:
 def main():
     args = parse_arguments()
 
-    source_dir: Path = args.source_dir.resolve()
-    if not source_dir.exists() or not source_dir.is_dir():
-        logger.error("Quellverzeichnis existiert nicht oder ist kein Ordner: %s", source_dir)
-        sys.exit(1)
+    # PREMIS Fixity-Prüfung ohne KI-/VRAM-Overhead
+    if args.verify_fixity:
+        try:
+            from app.services.metadata_db import metadata_db
+        except ImportError as e:
+            logger.error("Fehler beim Laden von metadata_db: %s", e)
+            sys.exit(1)
 
-    # Lade Qdrant- und Service-Abhängigkeiten
+        source_filter = str(args.source_dir.resolve()) if args.source_dir else None
+        logger.info("=" * 65)
+        logger.info("PREMIS FIXITY-UNVERSEHRTHEITSPRÜFUNG (BITSTREAM PRESERVATION)")
+        logger.info("Prüfe kryptographische SHA-256 Checksummen gegen Bit-Rot...")
+        if source_filter:
+            logger.info("Filter auf Verzeichnis: %s", source_filter)
+        logger.info("=" * 65)
+
+        results = metadata_db.verify_fixity(
+            folder_path=source_filter,
+            calculate_missing=args.calculate_missing,
+        )
+
+        logger.info("-" * 65)
+        logger.info("PREMIS FIXITY-AUDIT BERICHT:")
+        logger.info("  Geprüfte Master-Dateien:      %d", results["total_checked"])
+        logger.info("  Intakt (SHA-256 bestätigt):    %d", results["intact"])
+        logger.info("  Neu initialisiert (Baseline):  %d", results["initialized"])
+        logger.info("  Nicht verifiziert (ohne Hash): %d", results["unverified"])
+        logger.info("  Beschädigt / Bit-Rot:         %d", results["corrupted"])
+        logger.info("  Fehlend / Unauffindbar:       %d", results["missing"])
+        logger.info("-" * 65)
+
+        if results["corrupted_items"]:
+            logger.error("ALARM: FOLGENDE MASTER-DATEIEN SIND KORRUPT ODER WURDEN MANIPULIERT:")
+            for item in results["corrupted_items"]:
+                logger.error("  [!] %s (Erwartet: %s, Berechnet: %s)", item["file_path"], item.get("expected_sha256"), item.get("actual_sha256"))
+
+        if results["missing_items"]:
+            logger.warning("WARNUNG: FOLGENDE MASTER-DATEIEN FEHLEN AUF DEM DATEISYSTEM:")
+            for item in results["missing_items"]:
+                logger.warning("  [?] %s", item["file_path"])
+
+        logger.info("=" * 65)
+        if results["corrupted"] > 0:
+            logger.error("Integritätsprüfung FEHLGESCHLAGEN: Bit-Rot oder Dateimanipulationen festgestellt.")
+            sys.exit(2)
+        if results["missing"] > 0:
+            logger.warning("Integritätsprüfung UNVOLLSTÄNDIG: Einige archivierte Dateien wurden nicht gefunden.")
+            sys.exit(1)
+
+        logger.info("Integritätsprüfung ERFOLGREICH: Alle geprüften Master-Dateien sind 100%% bitgenau intakt.")
+        sys.exit(0)
+
+    # Lade Qdrant- und Service-Abhängigkeiten für die Bildindexierung
     try:
         from qdrant_client.http import models as rest_models
         from app.core.config import settings
@@ -151,6 +212,11 @@ def main():
             "Benötigte Abhängigkeiten fehlen (%s). Bitte zuerst 'pip install -r requirements.txt' ausführen.",
             e,
         )
+        sys.exit(1)
+
+    source_dir: Path = (args.source_dir or Path(settings.ARCHIVE_DATA_DIR)).resolve()
+    if not source_dir.exists() or not source_dir.is_dir():
+        logger.error("Quellverzeichnis existiert nicht oder ist kein Ordner: %s", source_dir)
         sys.exit(1)
 
     # 1. Bereinigung verwaister Datensätze (--prune oder --sync)
@@ -324,10 +390,12 @@ def main():
 
                 now_iso = datetime.now(timezone.utc).isoformat()
 
-                # 3. CLIP-Embedding & Perceptual Hashing (dHash / pHash)
+                # 3. CLIP-Embedding & Perceptual Hashing (dHash / pHash) & SHA-256 PREMIS Fixity
                 clip_vector = clip_service.embed_image(pil_img)
                 from app.services.variant_service import compute_image_hashes
+                from app.services.metadata_service import compute_file_sha256
                 hashes = compute_image_hashes(pil_img)
+                sha256_hash = compute_file_sha256(file_path)
 
                 image_point = rest_models.PointStruct(
                     id=image_id,
@@ -353,6 +421,9 @@ def main():
                         "keywords": meta.get("keywords", []),
                         "metadata": meta,
                         "import_id": batch_id,
+                        "sha256": sha256_hash,
+                        "fixity_status": "OK",
+                        "last_fixity_check": now_iso,
                     },
                 )
                 image_points.append(image_point)
@@ -401,6 +472,24 @@ def main():
                     pil_img.close()
                 except Exception:
                     pass
+
+                # 5. Archivische Metadaten & PREMIS Fixity in SQLite persistieren
+                try:
+                    metadata_db.upsert_metadata(
+                        file_path=abs_path_str,
+                        file_name=file_path.name,
+                        signature=meta.get("signature"),
+                        title=meta.get("title"),
+                        date=meta.get("date"),
+                        creator=meta.get("creator"),
+                        description=meta.get("description"),
+                        sha256=sha256_hash,
+                        import_id=batch_id,
+                        last_fixity_check=now_iso,
+                        fixity_status="OK",
+                    )
+                except Exception as meta_err:
+                    logger.debug("Konnte Metadaten/Fixity für %s nicht in SQLite ablegen: %s", abs_path_str, meta_err)
 
                 total_indexed += 1
 

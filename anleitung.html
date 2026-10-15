@@ -267,6 +267,9 @@
 
 # 3. Synchronisation: Gelöschte Dateien aus dem Index entfernen und neue aufnehmen
 .venv/bin/python indexer.py --source-dir /pfad/zu/den/archivbildern --sync
+
+# 4. PREMIS Fixity-Unversehrtheitsprüfung (Integritätsaudit gegen Bit-Rot / Datenkorruption)
+.venv/bin/python indexer.py --verify-fixity
 </code></pre>
 <h3 id="parameter-ubersicht-cli">Parameter-Übersicht (CLI)</h3>
 <table>
@@ -278,8 +281,16 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>--source-dir /pfad</code></td>
-<td style="text-align: left;"><strong>(Pflicht)</strong> Pfad zum Ordner mit Bilddateien. Durchsucht automatisch alle Unterordner rekursiv.</td>
+<td style="text-align: left;"><code>--source-dir /pfad</code>, <code>-s</code></td>
+<td style="text-align: left;">Pfad zum Ordner mit Bilddateien. Durchsucht automatisch alle Unterordner rekursiv. (Optional bei <code>--verify-fixity</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--verify-fixity</code></td>
+<td style="text-align: left;"><strong>PREMIS Fixity-Audit</strong>: Prüft die kryptographische SHA-256 Checksumme aller archivierten Originaldateien auf Bit-Rot und Dateimanipulation (100 % offline, 0 MB GPU-Overhead).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--no-calculate-missing</code></td>
+<td style="text-align: left;">Berechnet bei der Fixity-Prüfung fehlende Hashes für Altbestände nicht automatisch nach.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--enable-faces</code></td>
@@ -292,6 +303,14 @@
 <tr>
 <td style="text-align: left;"><code>--cluster-faces</code></td>
 <td style="text-align: left;">Führt nach dem Einlesen das DBSCAN-Clustering durch, um erkannte Personen zusammenzufassen.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--batch-name "Name"</code></td>
+<td style="text-align: left;">Sprechender Bestandsname für das archivische Akzessionsjournal / Provenienz.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--batch-notes "Text"</code></td>
+<td style="text-align: left;">Optionale Provenienz-Notizen zum importierten Bestand.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>--prune</code></td>
@@ -310,7 +329,7 @@
 <td style="text-align: left;">Vorschau: Scannt den Ordner und zeigt neue/gelöschte Dateien an, ohne Änderungen in der DB vorzunehmen.</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>--force</code></td>
+<td style="text-align: left;"><code>--force</code>, <code>-f</code></td>
 <td style="text-align: left;">Erzwingt die Neuindexierung bereits eingelesener Dateien.</td>
 </tr>
 </tbody>
@@ -358,9 +377,14 @@ Bei Archiven mit mehr als 5.000 Gesichtern wird das automatische Clustering nach
 <hr />
 <h2 id="5-nutzung-des-web-frontends">5. Nutzung des Web-Frontends</h2>
 <p>Nach dem Start erreichen Sie die Oberfläche unter <strong><a href="http://localhost:8000/">http://localhost:8000/</a></strong>.</p>
-<h3 id="tab-1-freitext-suche">Tab 1: Freitext-Suche</h3>
+<h3 id="tab-1-freitext-suche-historische-zeitleiste">Tab 1: Freitext-Suche &amp; Historische Zeitleiste</h3>
 <ol>
 <li><strong>Suchleiste:</strong> Geben Sie ein Motiv, ein Thema, eine Epoche oder einen Personennamen ein (z. B. <em>„gotischer Altar“</em>, <em>„Marktplatz 1910“</em>, <em>„Soldaten im Feld“</em> oder <em>„Bischof Ulrich“</em>).</li>
+<li><strong>Historische Zeitleiste &amp; Facettierung (Button <em>„⏱️ Zeitleiste &amp; Filter“</em>):</strong><br />
+   * <strong>Epochen-Schnellauswahl:</strong> Filtern Sie die Treffer mit einem Klick nach geschichtlichen Zeiträumen (<em>„Vor 1900“</em>, <em>„1900–1918“</em>, <em>„1918–1933“</em>, <em>„1933–1945“</em>, <em>„1945–1970“</em>, <em>„Ab 1970“</em>).<br />
+   * <strong>Stufenloser Dual-Range-Slider:</strong> Grenzen Sie das Aufnahmejahr exakt von/bis ein.<br />
+   * <strong>Fotografen- &amp; Signatur-Facetten:</strong> Dynamische Auswahllisten zeigen alle im Bestand vertretenen Urheber und Signaturen inklusive der Anzahl zugehöriger Digitalisate.<br />
+   * <strong>Filter-Pills:</strong> Aktive Filterkriterien werden als übersichtliche Badges über den Suchergebnissen angezeigt und können einzeln per <code>✕</code>-Button oder gesammelt zurückgesetzt werden.</li>
 <li><strong>Hybride Personensuche:</strong> Sobald Sie nach dem Namen einer erfassten Person suchen, erkennt das System dies automatisch. Treffer, auf denen diese Person zu sehen ist, werden mit <strong>100 % Relevanz</strong> ganz oben platziert und mit einem Personen-Badge (z. B. <code>👤 Bischof Ulrich</code>) optisch hervorgehoben.</li>
 <li><strong>Relevanz-Filter (Schwellenwert):</strong><br />
    * <em>Standard (ab 23 %)</em>: Filtert unpassende Zufallstreffer aus (empfohlen).<br />
@@ -369,21 +393,27 @@ Bei Archiven mit mehr als 5.000 Gesichtern wird das automatische Clustering nach
    * <em>Alle Treffer</em>: Zeigt stets die nächsten mathematischen Nachbarn.</li>
 <li><strong>Ergebnis-Karten:</strong> Jedes Bild zeigt den berechneten Score (z. B. <code>78% Score</code>), den archivalischen Titel, den Dateinamen, Tags für Datierung/Signatur sowie erkannte Personen.</li>
 </ol>
-<h3 id="tab-2-personen-cluster">Tab 2: Personen &amp; Cluster</h3>
+<h3 id="tab-2-personen-cluster-kuratierung">Tab 2: Personen, Cluster &amp; Kuratierung</h3>
 <p><em>(Nur aktiv, wenn <code>ENABLE_FACE_RECOGNITION=true</code> bzw. der Gesichtserkennungs-Schalter aktiv ist)</em><br />
 1. <strong>Echtzeit-Suchfeld &amp; Schnellfilter:</strong><br />
    * <strong>Suchleiste:</strong> Filtern Sie die Personenliste in Echtzeit nach Namen oder Cluster-ID.<br />
    * <strong>Filterchips:</strong> Wechseln Sie mit einem Klick zwischen <em>„Alle“</em>, <em>„Benannt“</em> (nur Personen mit vergebenem Klarnamen) und <em>„Unbenannt“</em> (offene Personen-Cluster zur Erschließung).<br />
 2. <strong>Cluster-Übersicht:</strong> Zeigt runde Porträtausschnitte aller Gesichter, die die KI als dieselbe Person identifiziert hat, inklusive Anzahl der Vorkommen im Archiv.<br />
 3. <strong>Cluster ansehen:</strong> Klick auf eine Person öffnet die Detailansicht mit allen Archivbildern, auf denen die Person vorkommt. Das Gesicht wird auf jedem Scan präzise mit einer goldenen Bounding Box umrahmt (inkl. automatischer EXIF-Entzerrung bei hochformatigen oder gedrehten Scans).<br />
-4. <strong>Klarname zuweisen:</strong> Tragen Sie den Personennamen ein (z. B. <em>„Bischof Ulrich“</em>) und klicken Sie auf <strong>Speichern</strong>. Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen und automatisch für die Freitextsuche in den Bildmetadaten synchronisiert.<br />
-5. <strong>Cluster zusammenführen (Merge):</strong><br />
-   * Mit dem Button <strong>„Zusammenführen…“</strong> können Sie zwei getrennte Cluster vereinen (z. B. wenn eine Persönlichkeit in jungen Jahren und im Seniorenalter aufgrund veränderter Gesichtszüge getrennt gruppiert wurde).<br />
-   * Wählen Sie das Ziel-Cluster aus und vergeben Sie den gemeinsamen Klarnamen. Alle Gesichter und Elternbilder werden sofort konsolidiert.<br />
-6. <strong>Falsch zugeordnete Gesichter ausschließen (Split / „Nicht diese Person“):</strong><br />
+4. <strong>Klarname zuweisen &amp; Autovervollständigung:</strong><br />
+   * Tragen Sie den Personennamen ein (z. B. <em>„Bischof Ulrich“</em>). Eine archivweite Vorschlagsliste (<code>datalist</code>) schlägt bereits bekannte Namen vor.<br />
+   * Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen und automatisch für die Freitextsuche in den Bildmetadaten synchronisiert.<br />
+5. <strong>Klickbare Gesichts-Bounding-Boxes:</strong><br />
+   * Im Bild-Modal können Sie Gesichter direkt auf dem Canvas oder über den Stift-Button (<code>✏️</code>) in der rechten Seitenleiste anklicken, um Personen sofort zu benennen.<br />
+   * Auch einzelne Porträts ohne Cluster (<em>Noise Faces</em>) können direkt erschlossen und benannt werden.<br />
+6. <strong>Leuchttisch-Stapelverarbeitung (<em>„Person zuweisen“</em>):</strong><br />
+   * Weisen Sie mehreren ausgewählten Bildern auf dem Leuchttisch gleichzeitig eine dargestellte Person zu (<code>metadata.persons</code>, Qdrant-Vektorpayload und XMP-Sidecar <code>Iptc4xmpExt:PersonInImage</code>).<br />
+7. <strong>Cluster zusammenführen (Merge):</strong><br />
+   * Mit dem Button <strong>„Zusammenführen…“</strong> können Sie zwei getrennte Cluster vereinen (z. B. wenn eine Persönlichkeit in jungen Jahren und im Seniorenalter getrennt gruppiert wurde).<br />
+8. <strong>Falsch zugeordnete Gesichter ausschließen (Split / „Nicht diese Person“):</strong><br />
    * Auf jeder Bildkarte in der Cluster-Detailansicht befindet sich der Button <strong>„Entfernen“</strong> (<em>„Nicht diese Person“</em>).<br />
    * Entfernt ein versehentlich zugeordnetes Porträt aus dem Cluster und aktualisiert das Elternbild, ohne die übrigen Gesichter zu verändern.<br />
-7. <strong>Cluster neu berechnen:</strong> Ein Klick auf <em>„Cluster neu berechnen“</em> führt das DBSCAN-Clustering über alle archivierten Gesichter erneut aus.</p>
+9. <strong>Cluster neu berechnen:</strong> Ein Klick auf <em>„Cluster neu berechnen“</em> führt das DBSCAN-Clustering über alle archivierten Gesichter erneut aus.</p>
 <h3 id="tab-3-bestande-upload">Tab 3: Bestände &amp; Upload</h3>
 <p>Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:<br />
 1. <strong>Bestehende Ordner ohne Verschieben einbinden:</strong><br />
@@ -525,6 +555,21 @@ Bei Archiven mit mehr als 5.000 Gesichtern wird das automatische Clustering nach
    # SQLite-Metadaten &amp; Personenzuweisungen
    cp data/archive_metadata.db /pfad/zum/backup/</code><br />
 3. Qdrant wieder starten: <code>docker compose start</code></p>
+<h3 id="bitstream-preservation-fixity-prufung-premis-oais">Bitstream Preservation &amp; Fixity-Prüfung (PREMIS / OAIS)</h3>
+<p>Zum Schutz vor unbemerktem Datenverlust durch Bit-Rot (schleichende Zersetzung magnetischer oder optischer Datenträger) oder versehentliche Dateimodifikationen:<br />
+* Das System berechnet bei jedem Ingest automatisch eine kryptographische <strong>SHA-256 Prüfsumme</strong> und speichert diese manipulationsgeschützt in SQLite (<code>metadata.sha256</code>) und Qdrant.<br />
+* <strong>Regelmäßiges Unversehrtheits-Audit:</strong> Führen Sie periodisch (z. B. monatlich per Cronjob) den Fixity-Prüfbefehl aus:<br />
+<code>bash
+  .venv/bin/python indexer.py --verify-fixity</code><br />
+* Das Tool vergleicht die aktuellen Byte-Streams aller archivierten Master-Dateien mit den archivierten Hashes und gibt einen strukturierten Audit-Bericht aus:<br />
+  * <code>Intakt</code>: Die Datei ist auf Bit-Ebene 100 % unverändert erhalten.<br />
+  * <code>Neu initialisiert</code>: Für Altbestände wurde die initiale Fixity-Baseline gesetzt.<br />
+  * <code>Beschädigt / Bit-Rot</code>: Alarm! Die Prüfsumme weicht ab (z. B. Hardwaredefekt oder Dateimanipulation).<br />
+  * <code>Fehlend</code>: Die Master-Datei existiert nicht mehr am gespeicherten Pfad (z. B. versehentlich verschoben oder Netzlaufwerk getrennt).<br />
+* <strong>Rückgabewerte für Monitoring-Skripte:</strong><br />
+  * <code>0</code>: Alle Dateien intakt.<br />
+  * <code>1</code>: Fehlende Dateien entdeckt.<br />
+  * <code>2</code>: Korrupte Dateien (Bit-Rot) entdeckt.</p>
 <h3 id="fehlerbehebung">Fehlerbehebung</h3>
 <h4 id="verbindung-zum-server-unter-localhost8000-fehlgeschlagen">„Verbindung zum Server unter localhost:8000 fehlgeschlagen“</h4>
 <ul>

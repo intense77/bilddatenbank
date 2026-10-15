@@ -93,21 +93,28 @@ Für automatisierte Skripte oder Cron-Jobs steht das CLI-Tool `indexer.py` berei
 
 # 3. Synchronisation: Gelöschte Dateien aus dem Index entfernen und neue aufnehmen
 .venv/bin/python indexer.py --source-dir /pfad/zu/den/archivbildern --sync
+
+# 4. PREMIS Fixity-Unversehrtheitsprüfung (Integritätsaudit gegen Bit-Rot / Datenkorruption)
+.venv/bin/python indexer.py --verify-fixity
 ```
 
 ### Parameter-Übersicht (CLI)
 
 | Parameter | Beschreibung |
 | :--- | :--- |
-| `--source-dir /pfad` | **(Pflicht)** Pfad zum Ordner mit Bilddateien. Durchsucht automatisch alle Unterordner rekursiv. |
+| `--source-dir /pfad`, `-s` | Pfad zum Ordner mit Bilddateien. Durchsucht automatisch alle Unterordner rekursiv. (Optional bei `--verify-fixity`). |
+| `--verify-fixity` | **PREMIS Fixity-Audit**: Prüft die kryptographische SHA-256 Checksumme aller archivierten Originaldateien auf Bit-Rot und Dateimanipulation (100 % offline, 0 MB GPU-Overhead). |
+| `--no-calculate-missing` | Berechnet bei der Fixity-Prüfung fehlende Hashes für Altbestände nicht automatisch nach. |
 | `--enable-faces` | Erzwingt die biometrische Gesichtserkennung (InsightFace/ArcFace) für diesen Lauf. |
 | `--skip-faces` | Deaktiviert die Gesichtserkennung explizit (spart ~1,5–2 GB Arbeitsspeicher). |
 | `--cluster-faces` | Führt nach dem Einlesen das DBSCAN-Clustering durch, um erkannte Personen zusammenzufassen. |
+| `--batch-name "Name"` | Sprechender Bestandsname für das archivische Akzessionsjournal / Provenienz. |
+| `--batch-notes "Text"` | Optionale Provenienz-Notizen zum importierten Bestand. |
 | `--prune` | **Bereinigung (Art. 17 DSGVO)**: Löscht Vektoren aus Qdrant, deren Bilddateien im Quellordner nicht mehr existieren. |
 | `--sync` | **Vollständige Synchronisation**: Führt erst `--prune` aus und liest anschließend neue Bilder ein. |
 | `--batch-size 32` | Anzahl der Bilder pro Rechenschritt (Standard: 32). |
 | `--dry-run` | Vorschau: Scannt den Ordner und zeigt neue/gelöschte Dateien an, ohne Änderungen in der DB vorzunehmen. |
-| `--force` | Erzwingt die Neuindexierung bereits eingelesener Dateien. |
+| `--force`, `-f` | Erzwingt die Neuindexierung bereits eingelesener Dateien. |
 
 ### Unterstützte Dateiformate
 * `.jpg`, `.jpeg`
@@ -161,31 +168,42 @@ Legen Sie im gleichen Verzeichnis wie das Bild eine Begleitdatei ab:
 
 Nach dem Start erreichen Sie die Oberfläche unter **[http://localhost:8000/](http://localhost:8000/)**.
 
-### Tab 1: Freitext-Suche
+### Tab 1: Freitext-Suche & Historische Zeitleiste
 1. **Suchleiste:** Geben Sie ein Motiv, ein Thema, eine Epoche oder einen Personennamen ein (z. B. *„gotischer Altar“*, *„Marktplatz 1910“*, *„Soldaten im Feld“* oder *„Bischof Ulrich“*).
-2. **Hybride Personensuche:** Sobald Sie nach dem Namen einer erfassten Person suchen, erkennt das System dies automatisch. Treffer, auf denen diese Person zu sehen ist, werden mit **100 % Relevanz** ganz oben platziert und mit einem Personen-Badge (z. B. `👤 Bischof Ulrich`) optisch hervorgehoben.
-3. **Relevanz-Filter (Schwellenwert):**
+2. **Historische Zeitleiste & Facettierung (Button *„⏱️ Zeitleiste & Filter“*):**
+   * **Epochen-Schnellauswahl:** Filtern Sie die Treffer mit einem Klick nach geschichtlichen Zeiträumen (*„Vor 1900“*, *„1900–1918“*, *„1918–1933“*, *„1933–1945“*, *„1945–1970“*, *„Ab 1970“*).
+   * **Stufenloser Dual-Range-Slider:** Grenzen Sie das Aufnahmejahr exakt von/bis ein.
+   * **Fotografen- & Signatur-Facetten:** Dynamische Auswahllisten zeigen alle im Bestand vertretenen Urheber und Signaturen inklusive der Anzahl zugehöriger Digitalisate.
+   * **Filter-Pills:** Aktive Filterkriterien werden als übersichtliche Badges über den Suchergebnissen angezeigt und können einzeln per `✕`-Button oder gesammelt zurückgesetzt werden.
+3. **Hybride Personensuche:** Sobald Sie nach dem Namen einer erfassten Person suchen, erkennt das System dies automatisch. Treffer, auf denen diese Person zu sehen ist, werden mit **100 % Relevanz** ganz oben platziert und mit einem Personen-Badge (z. B. `👤 Bischof Ulrich`) optisch hervorgehoben.
+4. **Relevanz-Filter (Schwellenwert):**
    * *Standard (ab 23 %)*: Filtert unpassende Zufallstreffer aus (empfohlen).
    * *Streng (ab 25 %)*: Zeigt nur sehr eindeutige Treffer.
    * *Locker (ab 20 %)*: Zeigt auch Bilder mit entfernter thematischer Ähnlichkeit.
    * *Alle Treffer*: Zeigt stets die nächsten mathematischen Nachbarn.
-4. **Ergebnis-Karten:** Jedes Bild zeigt den berechneten Score (z. B. `78% Score`), den archivalischen Titel, den Dateinamen, Tags für Datierung/Signatur sowie erkannte Personen.
+5. **Ergebnis-Karten:** Jedes Bild zeigt den berechneten Score (z. B. `78% Score`), den archivalischen Titel, den Dateinamen, Tags für Datierung/Signatur sowie erkannte Personen.
 
-### Tab 2: Personen & Cluster
+### Tab 2: Personen, Cluster & Kuratierung
 *(Nur aktiv, wenn `ENABLE_FACE_RECOGNITION=true` bzw. der Gesichtserkennungs-Schalter aktiv ist)*
 1. **Echtzeit-Suchfeld & Schnellfilter:**
    * **Suchleiste:** Filtern Sie die Personenliste in Echtzeit nach Namen oder Cluster-ID.
    * **Filterchips:** Wechseln Sie mit einem Klick zwischen *„Alle“*, *„Benannt“* (nur Personen mit vergebenem Klarnamen) und *„Unbenannt“* (offene Personen-Cluster zur Erschließung).
 2. **Cluster-Übersicht:** Zeigt runde Porträtausschnitte aller Gesichter, die die KI als dieselbe Person identifiziert hat, inklusive Anzahl der Vorkommen im Archiv.
 3. **Cluster ansehen:** Klick auf eine Person öffnet die Detailansicht mit allen Archivbildern, auf denen die Person vorkommt. Das Gesicht wird auf jedem Scan präzise mit einer goldenen Bounding Box umrahmt (inkl. automatischer EXIF-Entzerrung bei hochformatigen oder gedrehten Scans).
-4. **Klarname zuweisen:** Tragen Sie den Personennamen ein (z. B. *„Bischof Ulrich“*) und klicken Sie auf **Speichern**. Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen und automatisch für die Freitextsuche in den Bildmetadaten synchronisiert.
-5. **Cluster zusammenführen (Merge):**
-   * Mit dem Button **„Zusammenführen…“** können Sie zwei getrennte Cluster vereinen (z. B. wenn eine Persönlichkeit in jungen Jahren und im Seniorenalter aufgrund veränderter Gesichtszüge getrennt gruppiert wurde).
-   * Wählen Sie das Ziel-Cluster aus und vergeben Sie den gemeinsamen Klarnamen. Alle Gesichter und Elternbilder werden sofort konsolidiert.
-6. **Falsch zugeordnete Gesichter ausschließen (Split / „Nicht diese Person“):**
+4. **Klarname zuweisen & Autovervollständigung:**
+   * Tragen Sie den Personennamen ein (z. B. *„Bischof Ulrich“*). Eine archivweite Vorschlagsliste (`datalist`) schlägt bereits bekannte Namen vor.
+   * Der Name wird allen Gesichtern dieser Person in der Datenbank zugewiesen und automatisch für die Freitextsuche in den Bildmetadaten synchronisiert.
+5. **Klickbare Gesichts-Bounding-Boxes:**
+   * Im Bild-Modal können Sie Gesichter direkt auf dem Canvas oder über den Stift-Button (`✏️`) in der rechten Seitenleiste anklicken, um Personen sofort zu benennen.
+   * Auch einzelne Porträts ohne Cluster (*Noise Faces*) können direkt erschlossen und benannt werden.
+6. **Leuchttisch-Stapelverarbeitung (*„Person zuweisen“*):**
+   * Weisen Sie mehreren ausgewählten Bildern auf dem Leuchttisch gleichzeitig eine dargestellte Person zu (`metadata.persons`, Qdrant-Vektorpayload und XMP-Sidecar `Iptc4xmpExt:PersonInImage`).
+7. **Cluster zusammenführen (Merge):**
+   * Mit dem Button **„Zusammenführen…“** können Sie zwei getrennte Cluster vereinen (z. B. wenn eine Persönlichkeit in jungen Jahren und im Seniorenalter getrennt gruppiert wurde).
+8. **Falsch zugeordnete Gesichter ausschließen (Split / „Nicht diese Person“):**
    * Auf jeder Bildkarte in der Cluster-Detailansicht befindet sich der Button **„Entfernen“** (*„Nicht diese Person“*).
    * Entfernt ein versehentlich zugeordnetes Porträt aus dem Cluster und aktualisiert das Elternbild, ohne die übrigen Gesichter zu verändern.
-7. **Cluster neu berechnen:** Ein Klick auf *„Cluster neu berechnen“* führt das DBSCAN-Clustering über alle archivierten Gesichter erneut aus.
+9. **Cluster neu berechnen:** Ein Klick auf *„Cluster neu berechnen“* führt das DBSCAN-Clustering über alle archivierten Gesichter erneut aus.
 
 ### Tab 3: Bestände & Upload
 Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:
@@ -292,6 +310,23 @@ Um alle indizierten Merkmale, erkannten Gesichter, Klarnamen und Metadaten-Ergä
    cp data/archive_metadata.db /pfad/zum/backup/
    ```
 3. Qdrant wieder starten: `docker compose start`
+
+### Bitstream Preservation & Fixity-Prüfung (PREMIS / OAIS)
+Zum Schutz vor unbemerktem Datenverlust durch Bit-Rot (schleichende Zersetzung magnetischer oder optischer Datenträger) oder versehentliche Dateimodifikationen:
+* Das System berechnet bei jedem Ingest automatisch eine kryptographische **SHA-256 Prüfsumme** und speichert diese manipulationsgeschützt in SQLite (`metadata.sha256`) und Qdrant.
+* **Regelmäßiges Unversehrtheits-Audit:** Führen Sie periodisch (z. B. monatlich per Cronjob) den Fixity-Prüfbefehl aus:
+  ```bash
+  .venv/bin/python indexer.py --verify-fixity
+  ```
+* Das Tool vergleicht die aktuellen Byte-Streams aller archivierten Master-Dateien mit den archivierten Hashes und gibt einen strukturierten Audit-Bericht aus:
+  * `Intakt`: Die Datei ist auf Bit-Ebene 100 % unverändert erhalten.
+  * `Neu initialisiert`: Für Altbestände wurde die initiale Fixity-Baseline gesetzt.
+  * `Beschädigt / Bit-Rot`: Alarm! Die Prüfsumme weicht ab (z. B. Hardwaredefekt oder Dateimanipulation).
+  * `Fehlend`: Die Master-Datei existiert nicht mehr am gespeicherten Pfad (z. B. versehentlich verschoben oder Netzlaufwerk getrennt).
+* **Rückgabewerte für Monitoring-Skripte:**
+  * `0`: Alle Dateien intakt.
+  * `1`: Fehlende Dateien entdeckt.
+  * `2`: Korrupte Dateien (Bit-Rot) entdeckt.
 
 ### Fehlerbehebung
 

@@ -182,9 +182,83 @@ def test_metadata_db_batch_filtering():
         assert batch_b_res[0]["file_path"] == "/img2.jpg"
 
 
+def test_timeline_and_facet_filtering():
+    """Prüft historische Zeitleiste (Jahresfilter / Epochen), Signaturen- und Urheberfilter."""
+    from app.api.search import extract_year_from_item, item_matches_facets
+
+    # 1. Jahres-Extraktion testen
+    assert extract_year_from_item("1928:05:14 12:00:00") == 1928
+    assert extract_year_from_item("2010-10-31") == 2010
+    assert extract_year_from_item("ca. 1895") == 1895
+    assert extract_year_from_item(None, "/archive/1914_Kaiserreich/foto1.jpg") == 1914
+    assert extract_year_from_item(None, "/archive/unbekannt/foto.jpg") is None
+
+    # 2. item_matches_facets mit Zeitraum
+    item_payload = {"date": "1925-06-01", "signature": "Sig-1925-A", "creator": "Atelier Müller"}
+    assert item_matches_facets(item_payload, "/img.jpg", year_from=1914, year_to=1939) is True
+    assert item_matches_facets(item_payload, "/img.jpg", year_from=1930, year_to=1945) is False
+    assert item_matches_facets(item_payload, "/img.jpg", year_from=1880, year_to=1920) is False
+
+    # 3. Signature & Creator Filter
+    assert item_matches_facets(item_payload, "/img.jpg", signature_filter="Sig-1925") is True
+    assert item_matches_facets(item_payload, "/img.jpg", signature_filter="Sig-9999") is False
+    assert item_matches_facets(item_payload, "/img.jpg", creator_filter="müller") is True
+    assert item_matches_facets(item_payload, "/img.jpg", creator_filter="schmidt") is False
+
+    # 4. search_semantic mit Epoche 'weimar' (1914-1939)
+    mock_clip = MagicMock()
+    mock_clip.embed_text.return_value = [0.1] * 512
+    mock_qdrant = MagicMock()
+    mock_variant = MagicMock()
+    mock_variant.stack_search_results.side_effect = lambda hits, **kwargs: hits
+
+    hit1 = MagicMock()
+    hit1.id = "1"
+    hit1.score = 0.8
+    hit1.payload = {"file_path": "/img_weimar.jpg", "file_name": "weimar.jpg", "date": "1928"}
+
+    hit2 = MagicMock()
+    hit2.id = "2"
+    hit2.score = 0.75
+    hit2.payload = {"file_path": "/img_modern.jpg", "file_name": "modern.jpg", "date": "2005"}
+
+    mock_qdrant.search_images.return_value = [hit1, hit2]
+    mock_qdrant.client.scroll.return_value = ([], None)
+
+    results = search_semantic(
+        q="feier",
+        epoch="weimar",
+        clip_service=mock_clip,
+        qdrant=mock_qdrant,
+        variant_service=mock_variant,
+    )
+    assert len(results) == 1
+    assert results[0].file_path == "/img_weimar.jpg"
+
+
+def test_facets_summary_endpoint():
+    """Prüft die Aggregierung der Metadaten-Facetten in MetadataDatabase."""
+    with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
+        db = MetadataDatabase(db_path=Path(tmp.name))
+        db.upsert_metadata("/img1.jpg", file_name="img1.jpg", date="1910", creator="Fotoatelier Karl", signature="Sig-001")
+        db.upsert_metadata("/img2.jpg", file_name="img2.jpg", date="1968", creator="Presseamt", signature="Sig-002")
+
+        facets = db.get_facets_summary()
+        assert "years" in facets
+        assert "epochs" in facets
+        assert "creators" in facets
+        assert "signatures" in facets
+        assert "Fotoatelier Karl" in facets["creators"]
+        assert "Presseamt" in facets["creators"]
+        assert "Sig-001" in facets["signatures"]
+        assert facets["years"]["min"] <= 1910
+
+
 if __name__ == "__main__":
     test_search_pagination_and_person_separation()
     test_batch_browsing_empty_query()
     test_batch_search_leakage_prevention()
     test_metadata_db_batch_filtering()
+    test_timeline_and_facet_filtering()
+    test_facets_summary_endpoint()
     print("All search tests passed successfully!")

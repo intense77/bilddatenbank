@@ -20,9 +20,9 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
     * Mathematisch verlustfreie Transformation für PNG, TIFF und WebP.
     * Schnellzugriff per `↺ 90°` und `↻ 90°` im Bild-Detailmodal sowie Schnell-Drehbutton auf Suchkarten.
     * Automatische Invalidierung des Thumbnail-Caches und Live-Reindexierung in Qdrant (aufgerichtetes CLIP-Embedding & Gesichts-Detektion).
-  - [ ] **Historische Zeitleiste & Facettierung:**
-    * Interaktiver Schieberegler nach Entstehungsjahr/Epoche (z. B. *1880–1914*, *1914–1939*, *1945–1970*) unter Nutzung von Qdrant-Bereichsfiltern (`gte`/`lte`).
-    * Filter nach bekannten Archivsignaturen, Beständen oder Fotografen/Ateliers.
+  - [x] **Historische Zeitleiste & Facettierung:**
+    * Interaktiver Schieberegler nach Entstehungsjahr/Epoche (z. B. *1880–1914*, *1914–1939*, *1945–1970*) mit flexibler Zeitraum-Filterung und 1-Klick-Epochen.
+    * Facettenfilter nach Archivsignaturen, Beständen und Fotografen/Ateliers mit Autovervollständigung und interaktiven Filter-Pills im Suchergebnis.
 
 ---
 
@@ -475,9 +475,14 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   - [ ] **Priorität 1: Robuster Kernel-CIFS-Mount statt Desktop-GVFS:**
     * *Problem:* Aktuell ist das NAS über GNOME-GVFS (`/run/user/1000/gvfs/...`) angebunden. GVFS ist ein Desktop-Userspace-Daemon und friert bei Netzwerk-Latenzen im Kernel `D-State` ein.
     * *Lösung:* Dokumentation und Umstellung auf einen nativen Linux-Kernel-Mount via `/etc/fstab` (`cifs` mit `credentials`, `iocharset=utf8`, `actimeo=60` und bevorzugt `ro`-Flag für den Masterbestand).
-  - [ ] **Priorität 2: Kryptographische Fixity-Prüfsummen (SHA-256) nach PREMIS:**
-    * *Problem:* Bisher werden nur perzeptuelle Hashes (`pHash`, `dHash`) zur Duplikatserkennung erfasst, die jedoch keine Integritätsprüfung gegen Bit-Rot (schleichende Datenträger-Degeneration) ermöglichen.
-    * *Lösung:* Automatische Berechnung eines SHA-256-Hashes beim Import in `indexer.py` und `indexing_worker.py`. Ablage in `metadata.sha256` sowie CLI-Befehl `python indexer.py --verify-fixity` zur automatisierten periodischen Unversehrtheitsprüfung.
+  - [x] **Priorität 2: Kryptographische Fixity-Prüfsummen (SHA-256) nach PREMIS:**
+    * *Problem:* Bisher wurden nur perzeptuelle Hashes (`pHash`, `dHash`) zur Duplikatserkennung erfasst, die jedoch keine Integritätsprüfung gegen Bit-Rot (schleichende Datenträger-Degeneration) ermöglichten.
+    * *Lösung:* Vollständige PREMIS Fixity & Bitstream Preservation implementiert:
+      * Speichereffiziente Streaming-SHA-256-Berechnung (`compute_file_sha256`) in [metadata_service.py](file:///home/norbert/Bilderdatenbank/app/services/metadata_service.py).
+      * Erweiterung der SQLite-Metadatentabelle (`metadata.sha256`, `last_fixity_check`, `fixity_status`) inklusive WAL-Indizes in [metadata_db.py](file:///home/norbert/Bilderdatenbank/app/services/metadata_db.py).
+      * Synchronisation in Qdrant Point-Payloads (`archive_images`) beim CLI-Ingest und Worker-Ingest in [indexing_service.py](file:///home/norbert/Bilderdatenbank/app/services/indexing_service.py).
+      * Periodische Unversehrtheitsprüfung und Baseline-Generierung via CLI `python indexer.py --verify-fixity` (Erkennung von Bit-Rot, Dateimodifikation und fehlenden Master-Dateien ohne KI-/VRAM-Overhead) mit detailliertem PREMIS-Auditbericht.
+      * Automatische Unit-Tests in [test_fixity.py](file:///home/norbert/Bilderdatenbank/tests/test_fixity.py) verifiziert.
   - [ ] **Priorität 2: Automatisierte Datenbank- & Vektor-Snapshots:**
     * *Problem:* Ein Ausfall oder Defekt der SQLite-DB oder der Qdrant-Instanz erfordert aufwendige Re-Indexierungen von hunderttausenden Vektoren.
     * *Lösung:* Integrierter täglicher Online-Backup-Task:

@@ -120,7 +120,9 @@ class IndexingService:
             width, height = pil_img.size
 
         from app.services.variant_service import compute_image_hashes
+        from app.services.metadata_service import compute_file_sha256
         hashes = compute_image_hashes(pil_img)
+        sha256_hash = compute_file_sha256(abs_path)
 
         return {
             "file_path": file_path,
@@ -133,6 +135,7 @@ class IndexingService:
             "height": height,
             "meta": meta,
             "hashes": hashes,
+            "sha256": sha256_hash,
         }
 
     def process_prepared_image(
@@ -212,6 +215,9 @@ class IndexingService:
                 "keywords": meta.get("keywords", []),
                 "metadata": meta,
                 "import_id": import_id,
+                "sha256": prepared.get("sha256"),
+                "fixity_status": "OK",
+                "last_fixity_check": now_iso,
             },
         )
 
@@ -258,12 +264,24 @@ class IndexingService:
             )
             face_points.append(face_point)
 
-        if import_id:
-            try:
-                from app.services.metadata_db import metadata_db
-                metadata_db.update_metadata_import_id(path_str, import_id)
-            except Exception:
-                pass
+        # 6. Archivische Metadaten & PREMIS Fixity in SQLite speichern
+        try:
+            from app.services.metadata_db import metadata_db
+            metadata_db.upsert_metadata(
+                file_path=path_str,
+                file_name=file_path.name,
+                signature=meta.get("signature"),
+                title=meta.get("title"),
+                date=meta.get("date"),
+                creator=meta.get("creator"),
+                description=meta.get("description"),
+                sha256=prepared.get("sha256"),
+                import_id=import_id,
+                last_fixity_check=now_iso,
+                fixity_status="OK",
+            )
+        except Exception as db_err:
+            logger.debug("Konnte Metadaten nicht in SQLite speichern (%s): %s", path_str, db_err)
 
         if upsert:
             self.qdrant.upsert_images([image_point], wait=False)
