@@ -1293,8 +1293,10 @@
           class="hover:text-amber-400 transition underline underline-offset-4">Bedienungsanleitung</a>
         <a href="/datenschutz.html" target="_blank"
           class="hover:text-amber-400 transition underline underline-offset-4">Datenschutz &amp; DSGVO</a>
-        <a href="/lizenzen.html" target="_blank"
-          class="hover:text-amber-400 transition underline underline-offset-4">Lizenzen &amp; Urheberrecht</a>
+        <button type="button" onclick="openLicensesModal()"
+          class="hover:text-amber-400 transition underline underline-offset-4 cursor-pointer inline-flex items-center gap-1">
+          <span>⚖️ Lizenzen &amp; Urheberrecht</span>
+        </button>
         <a href="/todo.html" target="_blank"
           class="hover:text-amber-400 transition underline underline-offset-4">Roadmap &amp; Backlog</a>
         <a href="/docs" target="_blank" class="hover:text-amber-400 transition underline underline-offset-4">API
@@ -2633,7 +2635,10 @@
           </div>
         </div>
       </div>
-      <div class="pt-3 border-t border-slate-800 flex justify-end">
+      <div class="pt-3 border-t border-slate-800 flex items-center justify-between">
+        <button type="button" onclick="closeShortcutsModal(); openLicensesModal();" class="text-xs text-amber-400 hover:text-amber-300 transition underline underline-offset-4 flex items-center gap-1 font-medium">
+          <span>⚖️ Lizenzen &amp; Open Source</span>
+        </button>
         <button type="button" onclick="closeShortcutsModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition text-xs font-medium">
           Schließen
         </button>
@@ -2681,6 +2686,236 @@
           <span>Rollback durchführen</span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: In-App Lizenzen & Open-Source-Hinweise (Rechtliche Compliance) -->
+  <div id="licenses-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-fadeIn select-none">
+    <div class="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden select-text">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 sticky top-0 z-20">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-xl flex-shrink-0">
+            ⚖️
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+              <span>Lizenzen &amp; Open-Source-Hinweise</span>
+              <span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-mono font-medium">MIT &amp; Third-Party</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Rechtliche Transparenz, Urheberrechte &amp; Third-Party Compliance gemäß ISO/IEC 5230
+            </p>
+          </div>
+        </div>
+        <button type="button" onclick="closeLicensesModal()"
+          class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 flex items-center justify-center transition text-base"
+          title="Schließen (Esc)">
+          ✕
+        </button>
+      </div>
+
+      <!-- Navigation Tabs im Modal -->
+      <div class="px-5 pt-3 border-b border-slate-800 bg-slate-950/60 flex items-center gap-2">
+        <button type="button" id="lic-tab-components-btn" onclick="switchLicenseTab('lic-tab-components')"
+          class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 transition">
+          1. Software-Komponenten
+        </button>
+        <button type="button" id="lic-tab-models-btn" onclick="switchLicenseTab('lic-tab-models')"
+          class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 transition">
+          2. KI-Modelle &amp; Gewichte
+        </button>
+        <button type="button" id="lic-tab-texts-btn" onclick="switchLicenseTab('lic-tab-texts')"
+          class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 transition">
+          3. Vollständige Lizenztexte
+        </button>
+      </div>
+
+      <!-- Scrollbarer Inhalt -->
+      <div class="p-5 sm:p-6 overflow-y-auto space-y-6 text-xs text-slate-300">
+
+        <!-- TAB 1: Software-Komponenten -->
+        <div id="lic-tab-components" class="space-y-4">
+          <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-slate-200">
+            <span class="font-bold text-amber-400">Projektlizenz:</span> Dieses Archivsystem steht unter der 
+            <strong>MIT-Lizenz</strong> (Copyright &copy; 2026 Archiv &amp; Museum). Alle Daten, Vektoren und Metadaten 
+            verbleiben zu 100 % lokal auf Ihrer Infrastruktur.
+          </div>
+
+          <div class="border border-slate-800 rounded-xl overflow-hidden">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead class="bg-slate-950 text-slate-400 font-mono text-[11px] uppercase border-b border-slate-800">
+                <tr>
+                  <th class="p-2.5 sm:px-3.5">Komponente</th>
+                  <th class="p-2.5 sm:px-3.5">Lizenz</th>
+                  <th class="p-2.5 sm:px-3.5">Verwendung im System</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-sans">
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">FastAPI &amp; Uvicorn</td>
+                  <td class="p-2.5 sm:px-3.5 text-amber-400 font-mono text-[11px]">MIT / BSD-3</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">Asynchrones Web-Framework &amp; ASGI Server</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">Qdrant &amp; Client</td>
+                  <td class="p-2.5 sm:px-3.5 text-amber-400 font-mono text-[11px]">Apache 2.0</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">Vektordatenbank (lokale Container-Instanz)</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">PyTorch &amp; Torchvision</td>
+                  <td class="p-2.5 sm:px-3.5 text-amber-400 font-mono text-[11px]">BSD-Style</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">GPU/CPU Tensor-Inferenz &amp; Merkmalsextraktion</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">OpenCLIP</td>
+                  <td class="p-2.5 sm:px-3.5 text-amber-400 font-mono text-[11px]">MIT License</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">Multimodale Text- und Bild-Vektoreinbettungen</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">ONNX Runtime (GPU)</td>
+                  <td class="p-2.5 sm:px-3.5 text-amber-400 font-mono text-[11px]">MIT License</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">Hochperformante Ausführung von Gesichtsmodellen</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">Pillow (PIL)</td>
+                  <td class="p-2.5 sm:px-3.5 text-amber-400 font-mono text-[11px]">HPND</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">Bilddekodierung, EXIF/IPTC/XMP &amp; Caching</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">NumPy &amp; Scikit-learn</td>
+                  <td class="p-2.5 sm:px-3.5 text-amber-400 font-mono text-[11px]">BSD 3-Clause</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">Vektormathematik &amp; DBSCAN-Clustering</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">SQLite (sqlite3)</td>
+                  <td class="p-2.5 sm:px-3.5 text-emerald-400 font-mono text-[11px]">Public Domain</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">Metadaten-, Zweiblatt- &amp; Fixity-Speicherung</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">OpenSeadragon</td>
+                  <td class="p-2.5 sm:px-3.5 text-amber-400 font-mono text-[11px]">New BSD</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">IIIF 3.0 Deep-Zoom Kachelbetrachter</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30">
+                  <td class="p-2.5 sm:px-3.5 font-bold text-slate-100">Cropper.js &amp; Tailwind</td>
+                  <td class="p-2.5 sm:px-3.5 text-amber-400 font-mono text-[11px]">MIT License</td>
+                  <td class="p-2.5 sm:px-3.5 text-slate-400">Bildausschnitt-Suche &amp; 100% Offline-UI</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TAB 2: KI-Modelle & Gewichte -->
+        <div id="lic-tab-models" class="space-y-4 hidden">
+          <div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+            <h4 class="font-bold text-slate-100 text-sm flex items-center gap-2">
+              <span>A. OpenCLIP (ViT-B-32 / laion2b_s34b_b79k)</span>
+              <span class="px-2 py-0.2 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[10px]">MIT License</span>
+            </h4>
+            <p class="text-slate-300">
+              OpenCLIP dient der semantischen Bild- und Freitextsuche. Es bildet visuelle Motive und natürliche 
+              Sprache in denselben 512-dimensionalen Vektorraum ab.
+            </p>
+            <div class="text-[11px] text-slate-400">
+              • <strong>Trainingsdaten:</strong> LAION-2B (öffentlich zugängliche Bild-Text-Paare)<br>
+              • <strong>Rechtliche Einordnung:</strong> Frei nutzbar für wissenschaftliche, kulturelle, private und gewerbliche Zwecke.
+            </div>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+            <h4 class="font-bold text-slate-100 text-sm flex items-center gap-2">
+              <span>B. InsightFace (ArcFace &amp; RetinaFace / buffalo_l)</span>
+              <span class="px-2 py-0.2 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px]">Non-Commercial Research</span>
+            </h4>
+            <p class="text-slate-300">
+              InsightFace wird für die Gesichtsdetektion und biometrische Merkmalsextraktion auf Porträts eingesetzt.
+            </p>
+            <div class="p-3 rounded-lg bg-amber-950/20 border border-amber-500/20 text-[11px] text-amber-200/90 space-y-1">
+              <p class="font-semibold text-amber-300">Wichtiger rechtlicher Nutzungshinweis:</p>
+              <p>
+                Die Modellgewichte von InsightFace stehen unter einer <strong>nicht-kommerziellen Lizenz für Forschung, Bildung und Gemeinnützigkeit</strong>.
+                Die Nutzung durch Museen, Bibliotheken, Archive und wissenschaftliche Forschungseinrichtungen im Rahmen des öffentlichen Kulturauftrags fällt unter die freie, nicht-kommerzielle Nutzung.
+              </p>
+              <p class="text-slate-400">
+                Für eine kommerzielle Weitervermarktung in gewerblichen Cloud-Produkten ist eine gesonderte Lizenz der Autoren erforderlich oder die biometrische Gesichtserkennung zu deaktivieren (`ENABLE_FACE_RECOGNITION=false`).
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: Lizenz-Volltexte -->
+        <div id="lic-tab-texts" class="space-y-4 hidden">
+          <p class="text-slate-400 text-xs">
+            Nachfolgend finden Sie die vollständigen, standardisierten Lizenz- und Haftungsausschlusstexte der verwendeten Komponenten:
+          </p>
+
+          <details class="group border border-slate-800 rounded-xl bg-slate-950 p-3">
+            <summary class="font-bold text-slate-200 cursor-pointer flex items-center justify-between text-xs">
+              <span>MIT License (Volltext &amp; Disclaimer)</span>
+              <span class="text-slate-500 group-open:rotate-180 transition">▼</span>
+            </summary>
+            <pre class="mt-3 p-3 bg-slate-900 rounded-lg text-[11px] font-mono text-slate-300 whitespace-pre-wrap leading-relaxed border border-slate-800">Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</pre>
+          </details>
+
+          <details class="group border border-slate-800 rounded-xl bg-slate-950 p-3">
+            <summary class="font-bold text-slate-200 cursor-pointer flex items-center justify-between text-xs">
+              <span>BSD 3-Clause License (Volltext &amp; Disclaimer)</span>
+              <span class="text-slate-500 group-open:rotate-180 transition">▼</span>
+            </summary>
+            <pre class="mt-3 p-3 bg-slate-900 rounded-lg text-[11px] font-mono text-slate-300 whitespace-pre-wrap leading-relaxed border border-slate-800">Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre>
+          </details>
+
+          <details class="group border border-slate-800 rounded-xl bg-slate-950 p-3">
+            <summary class="font-bold text-slate-200 cursor-pointer flex items-center justify-between text-xs">
+              <span>Apache License, Version 2.0 (Auszug)</span>
+              <span class="text-slate-500 group-open:rotate-180 transition">▼</span>
+            </summary>
+            <pre class="mt-3 p-3 bg-slate-900 rounded-lg text-[11px] font-mono text-slate-300 whitespace-pre-wrap leading-relaxed border border-slate-800">Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at: http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.</pre>
+          </details>
+
+          <details class="group border border-slate-800 rounded-xl bg-slate-950 p-3">
+            <summary class="font-bold text-slate-200 cursor-pointer flex items-center justify-between text-xs">
+              <span>HPND License — Pillow / Secret Labs AB</span>
+              <span class="text-slate-500 group-open:rotate-180 transition">▼</span>
+            </summary>
+            <pre class="mt-3 p-3 bg-slate-900 rounded-lg text-[11px] font-mono text-slate-300 whitespace-pre-wrap leading-relaxed border border-slate-800">Permission to use, copy, modify, and distribute this software and its documentation for any purpose and without fee is hereby granted, provided that the above copyright notice appear in all copies and that both that copyright notice and this permission notice appear in supporting documentation.
+
+SECRET LABS AB AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL SECRET LABS AB OR THE AUTHOR BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS.</pre>
+          </details>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between bg-slate-950/80">
+        <a href="/lizenzen.html" target="_blank"
+          class="text-xs text-amber-400 hover:text-amber-300 transition underline underline-offset-4 flex items-center gap-1.5 font-medium">
+          <span>📄 Ausführliche Dokumentation (lizenzen.html)</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+          </svg>
+        </a>
+        <button type="button" onclick="closeLicensesModal()"
+          class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition text-xs font-semibold">
+          Schließen
+        </button>
+      </div>
+
     </div>
   </div>
 

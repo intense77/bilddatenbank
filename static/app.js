@@ -3238,6 +3238,36 @@ function toggleShortcutsModal() {
   }
 }
 
+// ================= LIZENZEN & COMPLIANCE MODAL =================
+
+function openLicensesModal() {
+  const modal = document.getElementById('licenses-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeLicensesModal() {
+  const modal = document.getElementById('licenses-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function switchLicenseTab(tabId) {
+  const tabs = ['lic-tab-components', 'lic-tab-models', 'lic-tab-texts'];
+  tabs.forEach(t => {
+    const el = document.getElementById(t);
+    const btn = document.getElementById(t + '-btn');
+    if (el) el.classList.toggle('hidden', t !== tabId);
+    if (btn) {
+      if (t === tabId) {
+        btn.classList.add('bg-amber-500', 'text-slate-950', 'font-semibold');
+        btn.classList.remove('text-slate-400', 'hover:text-slate-200');
+      } else {
+        btn.classList.remove('bg-amber-500', 'text-slate-950', 'font-semibold');
+        btn.classList.add('text-slate-400', 'hover:text-slate-200');
+      }
+    }
+  });
+}
+
 // ================= VERLUSTFREIES DREHEN =================
 
 let isRotatingImage = false;
@@ -4536,6 +4566,12 @@ document.addEventListener('keydown', (e) => {
     const scModal = document.getElementById('shortcuts-modal');
     if (scModal && !scModal.classList.contains('hidden')) {
       closeShortcutsModal();
+      return;
+    }
+    // Lizenzen & Compliance Modal schließen
+    const licModal = document.getElementById('licenses-modal');
+    if (licModal && !licModal.classList.contains('hidden')) {
+      closeLicensesModal();
       return;
     }
     // 1. Modals mit Priorität schließen
