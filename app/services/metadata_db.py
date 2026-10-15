@@ -9,7 +9,7 @@ import sqlite3
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger("archive_app.metadata_db")
 
@@ -55,8 +55,8 @@ class MetadataDatabase:
                 except Exception:
                     pass
 
-                # Migration: Falls Zweiblatt-Spalten (companion_path, sheet_role, verso_notes) oder import_id noch fehlen
-                for col in ["companion_path TEXT", "sheet_role TEXT", "verso_notes TEXT", "import_id TEXT"]:
+                # Migration: Falls Zweiblatt-Spalten (companion_path, sheet_role, verso_notes) oder import_id/persons noch fehlen
+                for col in ["companion_path TEXT", "sheet_role TEXT", "verso_notes TEXT", "import_id TEXT", "persons TEXT"]:
                     try:
                         conn.execute(f"ALTER TABLE metadata ADD COLUMN {col};")
                     except Exception:
@@ -169,6 +169,12 @@ class MetadataDatabase:
                             res["edit_settings"] = json.loads(res["edit_settings"])
                         except Exception:
                             pass
+                    if res.get("persons") and isinstance(res["persons"], str):
+                        import json
+                        try:
+                            res["persons"] = json.loads(res["persons"])
+                        except Exception:
+                            res["persons"] = [p.strip() for p in res["persons"].split(",") if p.strip()]
                     return res
         except Exception as e:
             logger.error("Fehler beim Abrufen der Metadaten aus SQLite für %s: %s", file_path, e)
@@ -213,17 +219,26 @@ class MetadataDatabase:
         date: Optional[str] = None,
         creator: Optional[str] = None,
         description: Optional[str] = None,
+        persons: Optional[Union[List[str], str]] = None,
     ) -> Dict[str, Any]:
         """Erstellt oder aktualisiert den Metadatensatz eines Archivbildes."""
+        import json
         now = datetime.now().isoformat()
         clean_path = str(file_path)
         clean_name = file_name or Path(clean_path).name
 
+        persons_str = None
+        if persons is not None:
+            if isinstance(persons, list):
+                persons_str = json.dumps([p.strip() for p in persons if p and p.strip()], ensure_ascii=False)
+            else:
+                persons_str = str(persons)
+
         try:
             with self._get_connection() as conn:
                 conn.execute("""
-                    INSERT INTO metadata (file_path, file_name, signature, title, date, creator, description, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO metadata (file_path, file_name, signature, title, date, creator, description, persons, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(file_path) DO UPDATE SET
                         file_name = excluded.file_name,
                         signature = COALESCE(excluded.signature, metadata.signature),
@@ -231,8 +246,9 @@ class MetadataDatabase:
                         date = COALESCE(excluded.date, metadata.date),
                         creator = COALESCE(excluded.creator, metadata.creator),
                         description = COALESCE(excluded.description, metadata.description),
+                        persons = COALESCE(excluded.persons, metadata.persons),
                         updated_at = excluded.updated_at
-                """, (clean_path, clean_name, signature, title, date, creator, description, now))
+                """, (clean_path, clean_name, signature, title, date, creator, description, persons_str, now))
                 conn.commit()
 
             return {
@@ -243,6 +259,7 @@ class MetadataDatabase:
                 "date": date,
                 "creator": creator,
                 "description": description,
+                "persons": persons,
                 "updated_at": now,
             }
         except Exception as e:
@@ -477,26 +494,70 @@ class MetadataDatabase:
             logger.debug("Fehler beim Lesen der Verso-Notizen: %s", e)
             return None
 
-    def search_metadata(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Sucht nach Bildmetadaten in title, signature, description, creator, file_name und verso_notes."""
+    def search_metadata(
+        self,
+        query: str,
+        limit: int = 50,
+        import_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Sucht nach Bildmetadaten in title, signature, description, creator, file_name und verso_notes (optional gefiltert nach import_id)."""
         clean_q = query.strip()
         if not clean_q:
             return []
         pattern = f"%{clean_q}%"
         try:
             with self._get_connection() as conn:
-                cursor = conn.execute(
-                    """
+                where_clauses = [
+                    "(title LIKE ? OR signature LIKE ? OR description LIKE ? OR creator LIKE ? OR file_name LIKE ? OR verso_notes LIKE ?)"
+                ]
+                params: List[Any] = [pattern, pattern, pattern, pattern, pattern, pattern]
+                if import_id:
+                    if import_id == "batch_initial_legacy":
+                        where_clauses.append("(import_id = 'batch_initial_legacy' OR import_id IS NULL OR import_id = '')")
+                    else:
+                        where_clauses.append("import_id = ?")
+                        params.append(import_id)
+
+                sql = f"""
                     SELECT * FROM metadata 
-                    WHERE title LIKE ? OR signature LIKE ? OR description LIKE ? OR creator LIKE ? OR file_name LIKE ? OR verso_notes LIKE ?
+                    WHERE {" AND ".join(where_clauses)}
                     ORDER BY updated_at DESC
                     LIMIT ?
-                    """,
-                    (pattern, pattern, pattern, pattern, pattern, pattern, limit)
-                )
+                """
+                params.append(limit)
+                cursor = conn.execute(sql, params)
                 return [dict(r) for r in cursor.fetchall()]
         except Exception as e:
             logger.error("Fehler bei der Metadatensuche in SQLite: %s", e)
+            return []
+
+    def get_metadata_by_import_id(self, import_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
+        """Gibt alle Metadaten-Einträge für einen bestimmten Import-Batch zurück."""
+        try:
+            with self._get_connection() as conn:
+                if import_id == "batch_initial_legacy":
+                    cursor = conn.execute(
+                        """
+                        SELECT * FROM metadata 
+                        WHERE import_id = 'batch_initial_legacy' OR import_id IS NULL OR import_id = ''
+                        ORDER BY file_name ASC
+                        LIMIT ?;
+                        """,
+                        (limit,),
+                    )
+                else:
+                    cursor = conn.execute(
+                        """
+                        SELECT * FROM metadata 
+                        WHERE import_id = ?
+                        ORDER BY file_name ASC
+                        LIMIT ?;
+                        """,
+                        (import_id, limit),
+                    )
+                return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            logger.error("Fehler beim Abrufen von Metadaten für import_id=%s: %s", import_id, e)
             return []
 
     # ------------------ Import-Batches & Akzessionsjournal ------------------

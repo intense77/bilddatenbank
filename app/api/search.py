@@ -75,21 +75,23 @@ class FaceSearchResult(BaseModel):
     det_score: float
     cluster_id: Optional[str] = None
     label: Optional[str] = None
+    curation_status: Optional[str] = None
 
 
 class ClusterLabelRequest(BaseModel):
-    label: str = Field(..., min_length=1, description="Klarname der Person, z. B. 'Bischof Müller'", example="Bischof Müller")
+    label: str = Field(..., min_length=1, description="Klarname der Person, z. B. 'Bischof Müller'", json_schema_extra={"example": "Bischof Müller"})
 
 
 class ClusterMergeRequest(BaseModel):
-    source_cluster_id: str = Field(..., description="ID des Quell-Clusters, das aufgelöst wird", example="cluster_1")
-    target_cluster_id: str = Field(..., description="ID des Ziel-Clusters, in das integriert wird", example="cluster_0")
-    target_label: Optional[str] = Field(None, description="Optionaler gemeinsamer Name für das zusammengeführte Cluster", example="Bischof Ulrich")
+    source_cluster_id: str = Field(..., description="ID des Quell-Clusters, das aufgelöst wird", json_schema_extra={"example": "cluster_1"})
+    target_cluster_id: str = Field(..., description="ID des Ziel-Clusters, in das integriert wird", json_schema_extra={"example": "cluster_0"})
+    target_label: Optional[str] = Field(None, description="Optionaler gemeinsamer Name für das zusammengeführte Cluster", json_schema_extra={"example": "Bischof Ulrich"})
 
 
 class RotateImageRequest(BaseModel):
     path: str = Field(..., description="Lokaler Dateipfad des Archivbildes")
     angle: int = Field(default=90, description="Drehwinkel in Grad: 90 (rechts/CW), 180, 270 bzw. -90 (links/CCW)")
+    virtual: bool = Field(default=True, description="Wenn True (Standard): Revisionssichere virtuelle Drehung (Bitstream Preservation: Master unverändert)")
 
 
 class ClusterFaceItem(BaseModel):
@@ -100,6 +102,7 @@ class ClusterFaceItem(BaseModel):
     orig_width: Optional[int] = None
     orig_height: Optional[int] = None
     det_score: Optional[float] = None
+    curation_status: Optional[str] = None
 
 
 class ClusterResponse(BaseModel):
@@ -131,11 +134,29 @@ class CropSearchRequest(BaseModel):
     stack_variants: bool = Field(default=True, description="Fasst Varianten und Duplikate zu Bildstapeln zusammen")
 
 
+def payload_matches_batch(
+    payload: Dict[str, Any],
+    target_batch_id: Optional[str],
+    file_path: Optional[str] = None,
+) -> bool:
+    """Prüft strikt, ob ein Datenpunkt oder Metadatensatz zu einer bestimmten Import-Charge gehört."""
+    if not target_batch_id:
+        return True
+    item_batch = payload.get("import_id")
+    if not item_batch and file_path:
+        meta = metadata_db.get_metadata(file_path)
+        if meta:
+            item_batch = meta.get("import_id")
+    if target_batch_id == "batch_initial_legacy":
+        return item_batch in ("batch_initial_legacy", None, "")
+    return item_batch == target_batch_id
+
+
 # --- Endpunkte ---
 
 @router.get("/search/semantic", response_model=List[SemanticSearchResult])
 def search_semantic(
-    q: str = Query(..., description="Natürlicher Suchtext (z. B. 'historischer Marktplatz', 'Soldatenporträt')"),
+    q: Optional[str] = Query(default="", description="Natürlicher Suchtext (z. B. 'historischer Marktplatz', 'Soldatenporträt')"),
     limit: int = Query(default=24, ge=1, le=100, description="Maximale Anzahl Ergebnisse pro Seite"),
     offset: int = Query(default=0, ge=0, description="Offset für Paginierung / Mehr laden"),
     score_threshold: Optional[float] = Query(default=None, ge=-1.0, le=1.0, description="Mindest-Ähnlichkeitsscore"),
@@ -151,6 +172,7 @@ def search_semantic(
     ohne 5000er-Scroll-Limit) sowie archivische Metadaten aus SQLite (Signatur, Titel, Urheber,
     Beschreibung) und führt eine transparente Relevanz-Verschmelzung mit sauberer Abgrenzung
     und Paginierung (offset/limit) durch.
+    Wird `batch_id` angegeben, werden strikt nur Bilder dieses Bestands geliefert.
     """
     # Direkte Aufrufe außerhalb von FastAPI (z.B. Tests) absichern:
     if hasattr(score_threshold, "default"):
@@ -161,8 +183,92 @@ def search_semantic(
         offset = offset.default or 0
     if hasattr(stack_variants, "default"):
         stack_variants = stack_variants.default if stack_variants.default is not None else True
+    if hasattr(batch_id, "default"):
+        batch_id = batch_id.default
+    if hasattr(q, "default"):
+        q = q.default or ""
 
-    q_clean = q.strip().lower()
+    q_clean = (q or "").strip().lower()
+
+    # Spezialfall: Kein Suchbegriff oder Wildcard '*' (Reines Durchstöbern eines Bestands)
+    if not q_clean or q_clean == "*":
+        if not batch_id:
+            return []
+
+        # Bilder des Bestands direkt aus Qdrant archive_images abrufen
+        if batch_id == "batch_initial_legacy":
+            batch_filter = rest_models.Filter(
+                should=[
+                    rest_models.FieldCondition(key="import_id", match=rest_models.MatchValue(value=batch_id)),
+                    rest_models.IsEmptyCondition(is_empty=rest_models.PayloadField(key="import_id")),
+                    rest_models.IsNullCondition(is_null=rest_models.PayloadField(key="import_id")),
+                ]
+            )
+        else:
+            batch_filter = rest_models.Filter(
+                must=[
+                    rest_models.FieldCondition(key="import_id", match=rest_models.MatchValue(value=batch_id))
+                ]
+            )
+
+        all_records = []
+        next_scroll_offset = None
+        max_to_fetch = min(5000, max(200, (offset + limit) * 2))
+        while True:
+            records, next_scroll_offset = qdrant.client.scroll(
+                collection_name=settings.COLLECTION_IMAGES,
+                scroll_filter=batch_filter,
+                limit=1000,
+                offset=next_scroll_offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            all_records.extend(records)
+            if not next_scroll_offset or len(all_records) >= max_to_fetch:
+                break
+
+        # Stabile Sortierung nach Dateiname
+        all_records.sort(
+            key=lambda r: (
+                (r.payload or {}).get("file_name")
+                or (r.payload or {}).get("filename")
+                or Path((r.payload or {}).get("file_path") or "").name
+            ).lower()
+        )
+
+        results = []
+        for rec in all_records:
+            payload = rec.payload or {}
+            file_path = payload.get("file_path") or payload.get("image_path", "")
+            if not file_path:
+                continue
+            file_name = payload.get("file_name") or payload.get("filename") or Path(file_path).name
+            meta_sq = metadata_db.get_metadata(file_path)
+            results.append(
+                SemanticSearchResult(
+                    id=str(rec.id),
+                    score=1.0,
+                    file_path=file_path,
+                    file_name=file_name,
+                    title=(meta_sq.get("title") if meta_sq else None) or payload.get("title"),
+                    creator=(meta_sq.get("creator") if meta_sq else None) or payload.get("creator"),
+                    date=(meta_sq.get("date") if meta_sq else None) or payload.get("date"),
+                    signature=(meta_sq.get("signature") if meta_sq else None) or payload.get("signature"),
+                    description=(meta_sq.get("description") if meta_sq else None) or payload.get("description"),
+                    keywords=payload.get("keywords") or [],
+                    persons=sorted(list(payload.get("persons") or [])),
+                    match_type="metadata",
+                    matched_query=f"Bestand: {batch_id}",
+                    iconclass=None,
+                    thesaurus_category=None,
+                )
+            )
+
+        if stack_variants:
+            results = variant_service.stack_search_results(results, similarity_threshold=0.92)
+
+        return results[offset : offset + limit]
+
     q_words = [w for w in re.split(r"[^\w]+", q_clean) if len(w) >= 2]
 
     # 1. Vollständige Personen-Namenssuche in archive_faces
@@ -171,7 +277,7 @@ def search_semantic(
     is_exact_person_query: bool = False
 
     try:
-        # Gezielter Filter: Nur Punkte mit nicht-leerem Label abfragen (eliminiert 5.000er-Flaschenhals!)
+        # Gezielter Filter: Nur Punkte mit nicht-leerem Label abfragen
         labeled_filter = rest_models.Filter(
             must_not=[rest_models.IsEmptyCondition(is_empty=rest_models.PayloadField(key="label"))]
         )
@@ -192,6 +298,8 @@ def search_semantic(
 
         for r in face_records:
             p = r.payload or {}
+            if batch_id and not payload_matches_batch(p, batch_id):
+                continue
             lbl = p.get("label")
             if not lbl or not isinstance(lbl, str):
                 continue
@@ -218,9 +326,11 @@ def search_semantic(
                 match_score = 0.95
 
             if is_match:
-                matching_person_labels.add(lbl_clean)
                 img_path = p.get("file_path") or p.get("image_path")
                 if img_path:
+                    if batch_id and not payload_matches_batch(p, batch_id, img_path):
+                        continue
+                    matching_person_labels.add(lbl_clean)
                     if img_path not in matched_person_images:
                         matched_person_images[img_path] = {
                             "labels": {lbl_clean},
@@ -260,6 +370,8 @@ def search_semantic(
                     cp = cr.payload or {}
                     img_path = cp.get("file_path") or cp.get("image_path")
                     if img_path:
+                        if batch_id and not payload_matches_batch(cp, batch_id, img_path):
+                            continue
                         m_score = 1.0 if is_exact_person_query else 0.98
                         if img_path not in matched_person_images:
                             matched_person_images[img_path] = {
@@ -294,10 +406,12 @@ def search_semantic(
     try:
         search_terms = list(dict.fromkeys([q] + expansion_terms[:5]))
         for term in search_terms:
-            meta_rows = metadata_db.search_metadata(term, limit=40)
+            meta_rows = metadata_db.search_metadata(term, limit=40, import_id=batch_id)
             for row in meta_rows:
                 m_path = row.get("file_path")
                 if not m_path or m_path in matched_person_images or m_path in matched_metadata_images:
+                    continue
+                if batch_id and not payload_matches_batch(row, batch_id, m_path):
                     continue
                 match_field = f"Thesaurus: {term} ({thesaurus_canonical})" if term != q else "Metadaten"
                 if row.get("signature") and term.lower() in str(row["signature"]).lower():
@@ -349,6 +463,8 @@ def search_semantic(
         hits = [h for h in hits if h.score >= 0.28]
 
     results_map: Dict[str, SemanticSearchResult] = {}
+    payloads_by_id: Dict[str, Dict[str, Any]] = {}
+    payloads_by_path: Dict[str, Dict[str, Any]] = {}
 
     # Zuerst CLIP-Hits verarbeiten
     for hit in hits:
@@ -356,6 +472,10 @@ def search_semantic(
         file_path = payload.get("file_path") or payload.get("image_path", "")
         if not file_path:
             continue
+        if batch_id and not payload_matches_batch(payload, batch_id, file_path):
+            continue
+        payloads_by_id[str(hit.id)] = payload
+        payloads_by_path[file_path] = payload
         file_name = payload.get("file_name") or payload.get("filename") or Path(file_path).name
 
         score = float(hit.score)
@@ -400,13 +520,13 @@ def search_semantic(
     # Fehlende Personen- und Metadaten-Treffer nachladen
     parent_ids_to_fetch = []
     for p_path, p_info in {**matched_person_images, **matched_metadata_images}.items():
+        if batch_id and not payload_matches_batch(p_info.get("metadata_row") or {}, batch_id, p_path):
+            continue
         if p_path not in results_map:
             pid = p_info.get("parent_image_id")
             if pid:
                 parent_ids_to_fetch.append(str(pid))
 
-    payloads_by_id: Dict[str, Dict[str, Any]] = {}
-    payloads_by_path: Dict[str, Dict[str, Any]] = {}
     if parent_ids_to_fetch:
         try:
             records = qdrant.client.retrieve(
@@ -455,6 +575,12 @@ def search_semantic(
             if meta_sq:
                 img_payload = meta_sq
 
+        # Strikte Bestandsprüfung
+        if batch_id and not payload_matches_batch(img_payload, batch_id, file_path):
+            continue
+
+        payloads_by_path[file_path] = img_payload
+
         file_name = img_payload.get("file_name") or img_payload.get("filename") or Path(file_path).name
         all_persons = set(img_payload.get("persons") or [])
         all_persons.update(p_info["labels"])
@@ -483,6 +609,10 @@ def search_semantic(
         if file_path in results_map:
             continue
         m_row = m_info.get("metadata_row") or {}
+        # Strikte Bestandsprüfung
+        if batch_id and not payload_matches_batch(m_row, batch_id, file_path):
+            continue
+
         fallback_id = str(uuid.uuid5(UUID_NAMESPACE, Path(file_path).name))
         results_map[file_path] = SemanticSearchResult(
             id=fallback_id,
@@ -504,6 +634,13 @@ def search_semantic(
 
     # Sortiere nach Score absteigend
     sorted_results = sorted(results_map.values(), key=lambda r: (r.score, r.file_path), reverse=True)
+
+    # Wenn batch_id angegeben ist, stellen wir 100% sicher, dass kein Bild außerhalb des Bestands überlebt
+    if batch_id:
+        sorted_results = [
+            r for r in sorted_results
+            if payload_matches_batch(payloads_by_path.get(r.file_path) or {}, batch_id, r.file_path)
+        ]
 
     # Varianten und Duplikate optional zu Bildstapeln zusammenfassen
     if stack_variants:
@@ -706,6 +843,89 @@ def label_cluster(
     }
 
 
+class FaceLabelRequest(BaseModel):
+    label: str = Field(..., min_length=1, description="Klarname der Person, z. B. 'Bischof Müller'")
+
+
+@router.post("/faces/{face_id}/label")
+def label_single_face(
+    face_id: str,
+    request: FaceLabelRequest,
+    clustering_service: ClusteringService = Depends(get_clustering_service),
+):
+    """
+    Weist einem einzelnen Gesicht einen Klarnamen zu.
+    Falls das Gesicht einem Cluster angehört, wird das Cluster benannt.
+    Andernfalls wird ein neues Cluster für diese Einzelperson angelegt.
+    """
+    if not settings.ENABLE_FACE_RECOGNITION:
+        raise HTTPException(
+            status_code=403,
+            detail="Biometrische Gesichtserkennung ist in der Systemkonfiguration deaktiviert."
+        )
+    try:
+        return clustering_service.label_face(face_id=face_id, label=request.label)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Fehler beim Benennen des Gesichts %s: %s", face_id, e)
+        raise HTTPException(status_code=500, detail=f"Interner Fehler beim Speichern des Personen-Namens: {e}")
+
+
+class FaceCurationStatusRequest(BaseModel):
+    status: str = Field(..., description="Kuratorischer Status: 'VERIFIED' (geprüft/bestätigt) oder 'KI_AUTO' (automatisch erkannt)", json_schema_extra={"example": "VERIFIED"})
+
+
+@router.post("/faces/{face_id}/curation-status")
+def update_face_curation_status(
+    face_id: str,
+    request: FaceCurationStatusRequest,
+    qdrant: QdrantService = Depends(get_qdrant_service),
+):
+    """
+    Aktualisiert den kuratorischen Status eines Gesichts ('VERIFIED' oder 'KI_AUTO') in Qdrant
+    und stößt die Aktualisierung des Adobe XMP-Sidecars (inkl. MWG-Regionen) an.
+    """
+    new_status = request.status.strip().upper()
+    if new_status not in ("VERIFIED", "KI_AUTO"):
+        raise HTTPException(
+            status_code=400,
+            detail="Ungültiger kuratorischer Status. Gültige Werte sind 'VERIFIED' oder 'KI_AUTO'."
+        )
+
+    records, _ = qdrant.client.scroll(
+        collection_name=settings.COLLECTION_FACES,
+        scroll_filter=rest_models.Filter(
+            must=[rest_models.HasIdCondition(has_id=[face_id])]
+        ),
+        limit=1,
+        with_payload=True,
+    )
+    if not records:
+        raise HTTPException(status_code=404, detail=f"Gesichtspunkt '{face_id}' nicht gefunden.")
+
+    qdrant.client.set_payload(
+        collection_name=settings.COLLECTION_FACES,
+        payload={"curation_status": new_status},
+        points=[face_id],
+    )
+
+    try:
+        payload = records[0].payload or {}
+        img_path = payload.get("file_path") or payload.get("image_path")
+        if img_path:
+            from app.services.xmp_service import xmp_service
+            xmp_service.write_sidecar(image_path=img_path)
+    except Exception as xmp_err:
+        logger.debug("Automatisches XMP-Sidecar Update übersprungen: %s", xmp_err)
+
+    return {
+        "status": "success",
+        "face_id": face_id,
+        "curation_status": new_status,
+    }
+
+
 class ClusterNotesRequest(BaseModel):
     notes: str
 
@@ -817,16 +1037,27 @@ def serve_image(
 ):
     """
     Liefert ein Bild aus dem lokalen Archiv-Dateisystem sicher aus.
-    Konvertiert TIFF-Bilder und CMYK automatisch für den Browser in JPEG und nutzt den Thumbnail-Cache.
+    Berücksichtigt revisionssichere virtuelle Drehungen (Bitstream Preservation),
+    konvertiert TIFF/CMYK automatisch in WebP/JPEG und nutzt den schnellen Thumbnail-Cache.
     """
     file_path = validate_safe_image_path(path)
     suffix = file_path.suffix.lower()
 
-    # Wenn TIFF oder Skalierung gewünscht ist, über den Thumbnail-Cache in JPEG ausliefern
-    if suffix in [".tif", ".tiff"] or max_dim is not None:
-        dim = max_dim if max_dim is not None else 1600
+    # Virtuelle Drehung aus Metadaten auslesen
+    virtual_rotation = 0
+    try:
+        from app.services.metadata_db import metadata_db
+        es = metadata_db.get_edit_settings(str(file_path.resolve()))
+        if es and es.get("rotation"):
+            virtual_rotation = int(es["rotation"]) % 360
+    except Exception:
+        pass
+
+    # Wenn TIFF, Skalierung ODER virtuelle Drehung vorliegt, über Thumbnail-Cache ausliefern (Master bleibt 100% unverändert!)
+    if suffix in [".tif", ".tiff"] or max_dim is not None or virtual_rotation != 0:
+        dim = max_dim if max_dim is not None else 2560
         try:
-            thumb_bytes = thumbnail_service.get_or_create_thumbnail(file_path, max_dim=dim)
+            thumb_bytes = thumbnail_service.get_or_create_thumbnail(file_path, max_dim=dim, rotation=virtual_rotation)
             media_type = "image/webp" if thumb_bytes.startswith(b"RIFF") else "image/jpeg"
             return Response(
                 content=thumb_bytes,
@@ -851,15 +1082,13 @@ def rotate_image(
     rotation_service = Depends(get_image_rotation_service),
 ):
     """
-    Dreht eine Bilddatei verlustfrei (z.B. 90° im Uhrzeigersinn oder gegen den Uhrzeigersinn).
-    - JPEG: Echtes physikalisch verlustfreies DCT-Transponieren via jpegtran mit Erhalt aller Metadaten
-    - PNG/TIFF/WebP: Mathematisch verlustfreie Transformation
-    - Normalisierung des EXIF-Orientation-Tags auf 1
-    - Aktualisiert anschließend automatisch den Thumbnail-Cache und den Qdrant-Index (CLIP & Gesichter).
+    Dreht ein Bild:
+    - Standard: Revisionssichere virtuelle Drehung via SQLite/Qdrant edit_settings (Bitstream Preservation: Master bleibt 100% unverändert).
+    - Bei virtual=False: Physische verlustfreie DCT-Transposition.
     """
     file_path = validate_safe_image_path(req.path)
     try:
-        result = rotation_service.rotate_image(file_path=file_path, angle=req.angle)
+        result = rotation_service.rotate_image(file_path=file_path, angle=req.angle, virtual=req.virtual)
         return result
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -888,15 +1117,18 @@ def get_image_details(
         width, height = 0, 0
 
     abs_path_str = str(file_path.resolve())
+    raw_path_str = str(file_path)
     face_records, _ = qdrant.client.scroll(
         collection_name=settings.COLLECTION_FACES,
         scroll_filter=rest_models.Filter(
             should=[
                 rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_path_str)),
                 rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_path_str)),
+                rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=raw_path_str)),
+                rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=raw_path_str)),
             ]
         ),
-        limit=100,
+        limit=200,
         with_payload=True,
         with_vectors=False,
     )
@@ -926,6 +1158,7 @@ def get_image_details(
             "det_score": p.get("det_score", 1.0),
             "cluster_id": p.get("cluster_id"),
             "label": p.get("label"),
+            "curation_status": p.get("curation_status") or ("VERIFIED" if p.get("label") else "KI_AUTO"),
         })
 
     # Metadaten: Zuerst in relationaler SQLite-Datenbank nachschlagen
@@ -1002,6 +1235,7 @@ class ImageMetadataUpdateRequest(BaseModel):
     date: Optional[str] = None
     creator: Optional[str] = None
     description: Optional[str] = None
+    persons: Optional[List[str]] = None
 
 
 @router.post("/images/metadata")
@@ -1010,7 +1244,7 @@ def update_image_metadata(
     qdrant: QdrantService = Depends(get_qdrant_service),
 ):
     """
-    Speichert archivische Metadaten (Signatur, Titel, Datum, Urheber, Notizen)
+    Speichert archivische Metadaten (Signatur, Titel, Datum, Urheber, Notizen, Personen)
     transaktionssicher in SQLite, synchronisiert den Qdrant-Vektorpayload
     und aktualisiert das Adobe XMP-Sidecar.
     """
@@ -1027,6 +1261,7 @@ def update_image_metadata(
         date=data.date,
         creator=data.creator,
         description=data.description,
+        persons=data.persons,
     )
 
     # 2. In Qdrant synchronisieren (Volltext- / Semantiksuche)
@@ -1052,6 +1287,8 @@ def update_image_metadata(
                 "creator": data.creator,
                 "description": data.description,
             }
+            if data.persons is not None:
+                payload_updates["persons"] = data.persons
             qdrant.client.set_payload(
                 collection_name=settings.COLLECTION_IMAGES,
                 payload=payload_updates,
@@ -1063,9 +1300,11 @@ def update_image_metadata(
     # 3. XMP-Sidecar aktualisieren (Never touch the master!)
     try:
         from app.services.xmp_service import xmp_service
-        persons = []
-        if records and records[0].payload:
-            persons = records[0].payload.get("persons") or []
+        persons = data.persons
+        if persons is None:
+            persons = []
+            if records and records[0].payload:
+                persons = records[0].payload.get("persons") or []
         xmp_service.write_sidecar(
             image_path=file_path,
             title=data.title,
@@ -1610,5 +1849,73 @@ def export_xmp_zip(request: XmpBatchRequest):
             "Cache-Control": "no-cache",
         },
     )
+
+
+class FindbuchExportRequest(BaseModel):
+    items: List[XmpExportItem] = Field(..., min_length=1)
+    archive_name: Optional[str] = Field(default="Historisches Archiv", description="Name der Institution / des Archivs")
+    collection_title: Optional[str] = Field(default="Leuchttisch-Bestand", description="Bezeichnung der Mappe / Findbuch-Titel")
+
+
+@router.post("/export/findbuch-csv")
+def export_findbuch_csv(request: FindbuchExportRequest):
+    """
+    Erzeugt ein archivisches Findbuch als Excel-kompatible CSV-Datei (UTF-8 mit BOM, Semikolon-getrennt)
+    gemäß ISAD(G) / Dublin Core Standards.
+    """
+    import csv
+    import io
+    from datetime import datetime
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
+
+    # Header-Informationen
+    writer.writerow([f"# FINDBUCH / BESTANDSÜBERSICHT: {request.collection_title}"])
+    writer.writerow([f"# Institution: {request.archive_name}"])
+    writer.writerow([f"# Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"])
+    writer.writerow([f"# Anzahl Verzeichnungseinheiten: {len(request.items)}"])
+    writer.writerow([])
+
+    # Spaltenköpfe
+    writer.writerow([
+        "Lfd. Nr.",
+        "Archivsignatur",
+        "Titel / Enthält-Vermerk",
+        "Datierung",
+        "Urheber / Fotograf",
+        "Dargestellte Personen",
+        "Archivalische Notizen",
+        "Dateiname",
+        "Dateipfad"
+    ])
+
+    for idx, it in enumerate(request.items, start=1):
+        persons_str = ", ".join(it.persons) if it.persons else ""
+        writer.writerow([
+            idx,
+            it.signature or "",
+            it.title or it.file_name or f"Objekt {idx}",
+            it.date or "",
+            it.creator or "",
+            persons_str,
+            it.notes or "",
+            it.file_name or (Path(it.file_path).name if it.file_path else ""),
+            it.file_path or ""
+        ])
+
+    csv_data = output.getvalue().encode("utf-8-sig")  # UTF-8 mit BOM für Microsoft Excel
+    date_str = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"Findbuch_{date_str}.csv"
+
+    return Response(
+        content=csv_data,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        }
+    )
+
 
 

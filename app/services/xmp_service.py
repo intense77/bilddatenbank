@@ -12,7 +12,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from xml.dom import minidom
 
 from app.core.config import settings
@@ -30,12 +30,65 @@ ET.register_namespace("dc", "http://purl.org/dc/elements/1.1/")
 ET.register_namespace("photoshop", "http://schemas.adobe.com/photoshop/1.0/")
 ET.register_namespace("xmp", "http://ns.adobe.com/xap/1.0/")
 ET.register_namespace("Iptc4xmpExt", "http://iptc.org/std/Iptc4xmpExt/2008-02-29/")
+ET.register_namespace("mwg-rs", "http://www.metadataworkinggroup.com/schemas/regions/")
+ET.register_namespace("stDim", "http://ns.adobe.com/xap/1.0/sType/Dimensions#")
+ET.register_namespace("stArea", "http://ns.adobe.com/xmp/sType/Area#")
 
 
 class XmpService:
 
     def __init__(self, mirror_dir: Optional[Path] = None):
         self.mirror_dir = mirror_dir or DEFAULT_XMP_MIRROR_DIR
+
+    def get_image_regions(
+        self,
+        image_path: Union[str, Path],
+    ) -> Tuple[List[Dict[str, Any]], Optional[int], Optional[int]]:
+        """
+        Liest alle biometrisch detektierten Gesichts-Regionen und Bilddimensionen
+        aus der Qdrant-Vektordatenbank aus.
+        """
+        try:
+            from app.api.deps import get_qdrant_service
+            from qdrant_client.http import models as rest_models
+            qdrant = get_qdrant_service()
+            path_str = str(Path(image_path).resolve())
+            records, _ = qdrant.client.scroll(
+                collection_name=settings.COLLECTION_FACES,
+                scroll_filter=rest_models.Filter(
+                    should=[
+                        rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=path_str)),
+                        rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=path_str)),
+                    ]
+                ),
+                limit=100,
+                with_payload=True,
+                with_vectors=False,
+            )
+            regions: List[Dict[str, Any]] = []
+            img_w = None
+            img_h = None
+            for r in records:
+                p = r.payload or {}
+                if not img_w:
+                    img_w = p.get("orig_width")
+                if not img_h:
+                    img_h = p.get("orig_height")
+                label = p.get("label")
+                cur_status = p.get("curation_status") or ("VERIFIED" if label else "KI_AUTO")
+                regions.append({
+                    "name": label or "",
+                    "type": "Face",
+                    "bbox": p.get("bbox"),
+                    "bbox_percent": p.get("bbox_percent"),
+                    "orig_width": p.get("orig_width"),
+                    "orig_height": p.get("orig_height"),
+                    "curation_status": cur_status,
+                })
+            return regions, img_w, img_h
+        except Exception as e:
+            logger.debug("Konnte Regionen für %s nicht abrufen: %s", image_path, e)
+            return [], None, None
 
     def generate_xmp_content(
         self,
@@ -48,22 +101,41 @@ class XmpService:
         persons: Optional[List[str]] = None,
         keywords: Optional[List[str]] = None,
         iconclass: Optional[str] = None,
+        regions: Optional[List[Dict[str, Any]]] = None,
+        image_width: Optional[int] = None,
+        image_height: Optional[int] = None,
     ) -> str:
         """
         Erzeugt einen standardkonformen Adobe XMP (RDF/XML) Metadaten-String.
-        Unterstützt Dublin Core (dc), Photoshop, IPTC Extension (PersonInImage) und Iconclass-Notationen.
+        Unterstützt Dublin Core (dc), Photoshop, IPTC Extension (PersonInImage),
+        Metadata Working Group (MWG) Regionen (mwg-rs:Regions) und Iconclass-Notationen.
         """
         p = Path(file_path)
         persons_list = [p.strip() for p in (persons or []) if p and p.strip()]
         kw_list = [k.strip() for k in (keywords or []) if k and k.strip()]
-        
+
+        # Falls keine Regionen übergeben wurden: Automatisch aus Qdrant nachladen
+        if regions is None:
+            queried_regions, q_w, q_h = self.get_image_regions(file_path)
+            regions = queried_regions
+            if not image_width:
+                image_width = q_w
+            if not image_height:
+                image_height = q_h
+
+        # Regionen-Namen auch in persons_list übernehmen (Verhinderung von Redundanzen)
+        for reg in (regions or []):
+            reg_name = (reg.get("name") or "").strip()
+            if reg_name and reg_name not in persons_list:
+                persons_list.append(reg_name)
+
         # Iconclass Notation in Schlagworte einbetten
         if iconclass and iconclass.strip():
             ic_clean = iconclass.strip()
             ic_tag = f"Iconclass: {ic_clean}"
             if ic_tag not in kw_list:
                 kw_list.append(ic_tag)
-        
+
         # Dublin Core Subject vereint Personen und Schlagwörter
         all_subjects = list(dict.fromkeys(persons_list + kw_list))
 
@@ -146,7 +218,93 @@ class XmpService:
                 li = ET.SubElement(bag, "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}li")
                 li.text = person
 
-        # 8. xmp:MetadataDate
+        # 8. Metadata Working Group (MWG) Regions (mwg-rs:Regions)
+        if regions:
+            mwg_regions = ET.SubElement(desc, "{http://www.metadataworkinggroup.com/schemas/regions/}Regions")
+            mwg_regions.set("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}parseType", "Resource")
+
+            eff_w = image_width
+            eff_h = image_height
+            if (not eff_w or not eff_h) and regions:
+                eff_w = regions[0].get("orig_width")
+                eff_h = regions[0].get("orig_height")
+
+            if eff_w and eff_h:
+                applied_dim = ET.SubElement(mwg_regions, "{http://www.metadataworkinggroup.com/schemas/regions/}AppliedToDimensions")
+                applied_dim.set("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}parseType", "Resource")
+                dim_w = ET.SubElement(applied_dim, "{http://ns.adobe.com/xap/1.0/sType/Dimensions#}w")
+                dim_w.text = str(eff_w)
+                dim_h = ET.SubElement(applied_dim, "{http://ns.adobe.com/xap/1.0/sType/Dimensions#}h")
+                dim_h.text = str(eff_h)
+                dim_unit = ET.SubElement(applied_dim, "{http://ns.adobe.com/xap/1.0/sType/Dimensions#}unit")
+                dim_unit.text = "pixel"
+
+            reg_list = ET.SubElement(mwg_regions, "{http://www.metadataworkinggroup.com/schemas/regions/}RegionList")
+            bag = ET.SubElement(reg_list, "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}Bag")
+
+            for reg in regions:
+                name = (reg.get("name") or "").strip()
+                reg_type = reg.get("type") or "Face"
+                status = reg.get("curation_status") or ("VERIFIED" if name else "KI_AUTO")
+
+                # Bounding-Box Berechnung in normalisierte MWG-Koordinaten (0.0 .. 1.0)
+                # stArea:x = Zentrum X, stArea:y = Zentrum Y, stArea:w = Breite, stArea:h = Höhe
+                norm_x = None
+                norm_y = None
+                norm_w = None
+                norm_h = None
+
+                bbox_pct = reg.get("bbox_percent")
+                if bbox_pct and "left" in bbox_pct and "top" in bbox_pct and "width" in bbox_pct and "height" in bbox_pct:
+                    l = float(bbox_pct["left"]) / 100.0
+                    t = float(bbox_pct["top"]) / 100.0
+                    w = float(bbox_pct["width"]) / 100.0
+                    h = float(bbox_pct["height"]) / 100.0
+                    norm_x = round(l + (w / 2.0), 6)
+                    norm_y = round(t + (h / 2.0), 6)
+                    norm_w = round(w, 6)
+                    norm_h = round(h, 6)
+                elif reg.get("bbox") and len(reg["bbox"]) == 4:
+                    x1, y1, x2, y2 = reg["bbox"]
+                    img_w_ref = reg.get("orig_width") or eff_w
+                    img_h_ref = reg.get("orig_height") or eff_h
+                    if img_w_ref and img_h_ref and img_w_ref > 0 and img_h_ref > 0:
+                        w = float(x2 - x1) / float(img_w_ref)
+                        h = float(y2 - y1) / float(img_h_ref)
+                        norm_x = round((float(x1 + x2) / 2.0) / float(img_w_ref), 6)
+                        norm_y = round((float(y1 + y2) / 2.0) / float(img_h_ref), 6)
+                        norm_w = round(w, 6)
+                        norm_h = round(h, 6)
+
+                if norm_x is not None and norm_y is not None and norm_w is not None and norm_h is not None:
+                    li = ET.SubElement(bag, "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}li")
+                    li.set("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}parseType", "Resource")
+
+                    if name:
+                        r_name = ET.SubElement(li, "{http://www.metadataworkinggroup.com/schemas/regions/}Name")
+                        r_name.text = name
+
+                    r_type = ET.SubElement(li, "{http://www.metadataworkinggroup.com/schemas/regions/}Type")
+                    r_type.text = reg_type
+
+                    r_desc = ET.SubElement(li, "{http://www.metadataworkinggroup.com/schemas/regions/}Description")
+                    r_desc.text = status  # 'VERIFIED' oder 'KI_AUTO'
+
+                    area = ET.SubElement(li, "{http://www.metadataworkinggroup.com/schemas/regions/}Area")
+                    area.set("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}parseType", "Resource")
+
+                    ax = ET.SubElement(area, "{http://ns.adobe.com/xmp/sType/Area#}x")
+                    ax.text = f"{norm_x:.6f}"
+                    ay = ET.SubElement(area, "{http://ns.adobe.com/xmp/sType/Area#}y")
+                    ay.text = f"{norm_y:.6f}"
+                    aw = ET.SubElement(area, "{http://ns.adobe.com/xmp/sType/Area#}w")
+                    aw.text = f"{norm_w:.6f}"
+                    ah = ET.SubElement(area, "{http://ns.adobe.com/xmp/sType/Area#}h")
+                    ah.text = f"{norm_h:.6f}"
+                    aunit = ET.SubElement(area, "{http://ns.adobe.com/xmp/sType/Area#}unit")
+                    aunit.text = "normalized"
+
+        # 9. xmp:MetadataDate
         now_iso = datetime.now().isoformat()
         meta_date = ET.SubElement(desc, "{http://ns.adobe.com/xap/1.0/}MetadataDate")
         meta_date.text = now_iso
@@ -177,6 +335,9 @@ class XmpService:
         persons: Optional[List[str]] = None,
         keywords: Optional[List[str]] = None,
         iconclass: Optional[str] = None,
+        regions: Optional[List[Dict[str, Any]]] = None,
+        image_width: Optional[int] = None,
+        image_height: Optional[int] = None,
         force_mirror: bool = False,
     ) -> Dict[str, Any]:
         """
@@ -196,6 +357,9 @@ class XmpService:
             persons=persons,
             keywords=keywords,
             iconclass=iconclass,
+            regions=regions,
+            image_width=image_width,
+            image_height=image_height,
         )
 
         target_path = self.get_sidecar_path(validated_path)

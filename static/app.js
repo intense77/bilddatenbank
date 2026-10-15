@@ -248,10 +248,11 @@ function setQueryAndSearch(term) {
 }
 
 function handleSearchSubmit(e) {
-  e.preventDefault();
-  const query = document.getElementById('search-input').value.trim();
-  const limit = document.getElementById('search-limit').value;
-  if (!query) return;
+  if (e && e.preventDefault) e.preventDefault();
+  const query = document.getElementById('search-input')?.value.trim() || '';
+  const limit = document.getElementById('search-limit')?.value || 24;
+  const batchFilterVal = document.getElementById('search-batch-filter')?.value;
+  if (!query && !batchFilterVal) return;
   executeSearch(query, limit);
 }
 
@@ -321,7 +322,22 @@ async function executeSearch(query, limit = 24) {
                   (clipCount > 0 ? ` <span class="text-slate-400">(${clipCount} Motive)</span>` : '');
     }
     resultsCount.innerHTML = countHtml;
-    resultsQuery.textContent = `Suchbegriff: "${query}"`;
+
+    const batchFilterSelect = document.getElementById('search-batch-filter');
+    const selectedBatchName = batchFilterSelect?.selectedOptions?.[0]?.text;
+    const isBatchActive = batchFilterSelect && batchFilterSelect.value;
+
+    if (query) {
+      if (isBatchActive && selectedBatchName) {
+        resultsQuery.textContent = `Suche: "${query}" in Bestand: ${selectedBatchName}`;
+      } else {
+        resultsQuery.textContent = `Suchbegriff: "${query}"`;
+      }
+    } else if (isBatchActive && selectedBatchName) {
+      resultsQuery.textContent = `Bestand: ${selectedBatchName}`;
+    } else {
+      resultsQuery.textContent = '';
+    }
 
     const addAllBtn = document.getElementById('add-all-results-to-lightbox-btn');
     if (addAllBtn) {
@@ -331,7 +347,13 @@ async function executeSearch(query, limit = 24) {
 
     if (data.length === 0) {
       empty.classList.remove('hidden');
-      empty.querySelector('p').textContent = `Keine Treffer für "${query}"`;
+      if (query) {
+        empty.querySelector('p').textContent = `Keine Treffer für "${query}"`;
+      } else if (isBatchActive && selectedBatchName) {
+        empty.querySelector('p').textContent = `Keine Bilder im Bestand "${selectedBatchName}" vorhanden`;
+      } else {
+        empty.querySelector('p').textContent = `Keine Bilder vorhanden`;
+      }
       updateLoadMoreVisibility(0);
       return;
     }
@@ -846,33 +868,206 @@ function normalizeClusterId(cid) {
   return str.startsWith('cluster_') ? str : `cluster_${str}`;
 }
 
-async function quickRenameClusterPrompt(clusterId, currentLabel) {
-  const displayId = String(clusterId).replace('cluster_', '#');
-  const newName = prompt(`Neuen Namen für Personen-Cluster ${displayId} eingeben:`, currentLabel || '');
-  if (newName === null) return;
-  const trimmed = newName.trim();
+let activeRenameTarget = null;
+
+function updateKnownPersonsDatalist() {
+  const dl = document.getElementById('known-persons-datalist');
+  if (!dl) return;
+  const names = new Set();
+
+  if (typeof allLoadedClusters !== 'undefined' && Array.isArray(allLoadedClusters)) {
+    allLoadedClusters.forEach(c => {
+      if (c && c.label && c.label.trim()) names.add(c.label.trim());
+    });
+  }
+
+  if (typeof lightboxItems !== 'undefined' && Array.isArray(lightboxItems)) {
+    lightboxItems.forEach(it => {
+      if (Array.isArray(it.persons)) {
+        it.persons.forEach(p => { if (p && p.trim()) names.add(p.trim()); });
+      } else if (typeof it.persons === 'string' && it.persons.trim()) {
+        names.add(it.persons.trim());
+      }
+    });
+  }
+
+  if (typeof currentModalImageDetails !== 'undefined' && currentModalImageDetails && Array.isArray(currentModalImageDetails.persons)) {
+    currentModalImageDetails.persons.forEach(p => { if (p && p.trim()) names.add(p.trim()); });
+  }
+
+  const sorted = Array.from(names).sort((a, b) => a.localeCompare(b, 'de', { sensitivity: 'base' }));
+  dl.innerHTML = sorted.map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
+}
+
+function openRenamePersonModal(clusterId, currentLabel = '', faceId = null) {
+  activeRenameTarget = { clusterId, currentLabel, faceId };
+  updateKnownPersonsDatalist();
+  const modal = document.getElementById('rename-person-modal');
+  const input = document.getElementById('rename-person-input');
+  const title = document.getElementById('rename-person-modal-title');
+  const subtitle = document.getElementById('rename-person-modal-subtitle');
+  if (!modal || !input) return;
+
+  const displayId = clusterId ? String(clusterId).replace('cluster_', '#') : (faceId ? `Gesicht #${String(faceId).substring(0, 6)}` : 'Person');
+  if (title) title.textContent = currentLabel ? 'Person umbenennen' : 'Personenname vergeben';
+  if (subtitle) subtitle.textContent = clusterId ? `Cluster ${displayId}` : (faceId ? `Einzelnes Gesicht (${displayId})` : 'Archivperson');
+
+  input.value = currentLabel || '';
+  modal.classList.remove('hidden');
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 50);
+}
+
+function openLightboxBatchPersonModal() {
+  if (!lightboxItems || lightboxItems.length === 0) {
+    showToast('Fügen Sie zuerst Bilder zum Leuchttisch hinzu.', true);
+    return;
+  }
+  activeRenameTarget = { isLightboxBatch: true, count: lightboxItems.length };
+  updateKnownPersonsDatalist();
+  const modal = document.getElementById('rename-person-modal');
+  const input = document.getElementById('rename-person-input');
+  const title = document.getElementById('rename-person-modal-title');
+  const subtitle = document.getElementById('rename-person-modal-subtitle');
+  if (!modal || !input) return;
+
+  if (title) title.textContent = 'Person zuweisen (Leuchttisch-Stapel)';
+  if (subtitle) subtitle.textContent = `Batch-Zuweisung für alle ${lightboxItems.length} Bilder auf dem Leuchttisch`;
+
+  input.value = '';
+  modal.classList.remove('hidden');
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 50);
+}
+
+function closeRenamePersonModal() {
+  const modal = document.getElementById('rename-person-modal');
+  if (modal) modal.classList.add('hidden');
+  activeRenameTarget = null;
+}
+
+async function handleRenamePersonSubmit(e) {
+  if (e) e.preventDefault();
+  if (!activeRenameTarget) return;
+
+  const input = document.getElementById('rename-person-input');
+  const submitBtn = document.getElementById('rename-person-submit-btn');
+  const trimmed = input ? input.value.trim() : '';
+
   if (!trimmed) {
     showToast('Name darf nicht leer sein.', true);
     return;
   }
-  if (trimmed === (currentLabel || '')) return;
+
+  // Branch A: Batch-Zuweisung für alle Bilder auf dem Leuchttisch
+  if (activeRenameTarget.isLightboxBatch) {
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>⏳</span> <span>Aktualisiere Stapel...</span>';
+    }
+    try {
+      let updatedCount = 0;
+      for (const item of lightboxItems) {
+        let persons = Array.isArray(item.persons)
+          ? [...item.persons]
+          : (typeof item.persons === 'string' && item.persons ? [item.persons] : []);
+        if (!persons.includes(trimmed)) {
+          persons.push(trimmed);
+        }
+        item.persons = persons;
+
+        // In SQLite, Qdrant & XMP sichern
+        try {
+          await fetch('/images/metadata', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: item.file_path,
+              signature: item.signature || null,
+              title: item.title || null,
+              date: item.date || null,
+              creator: item.creator || null,
+              description: item.notes || null,
+              persons: persons
+            })
+          });
+          updatedCount++;
+        } catch (itemErr) {
+          console.error('Fehler bei Batch-Metadaten-Update für', item.file_path, itemErr);
+        }
+      }
+
+      saveLightboxState();
+      renderLightboxView();
+      closeRenamePersonModal();
+      updateKnownPersonsDatalist();
+      showToast(`✓ Person "${trimmed}" für ${updatedCount} Bild(er) auf dem Leuchttisch gespeichert!`, false);
+      return;
+    } catch (err) {
+      showToast(`Fehler bei Batch-Zuweisung: ${err.message}`, true);
+      return;
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>💾</span> <span>Speichern</span>';
+      }
+    }
+  }
+
+  // Branch B: Einzelnes Gesicht oder Cluster
+  const { clusterId, faceId, currentLabel } = activeRenameTarget;
+  if (trimmed === (currentLabel || '')) {
+    closeRenamePersonModal();
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>⏳</span> <span>Speichere...</span>';
+  }
 
   try {
-    showToast(`Speichere Name "${trimmed}"...`, false);
-    const res = await fetch(`/faces/clusters/${encodeURIComponent(clusterId)}/label`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: trimmed }),
-    });
-    if (!res.ok) throw new Error(`Fehler beim Speichern (${res.status})`);
-    const data = await res.json();
-
-    const normId = normalizeClusterId(clusterId);
-    const target = allLoadedClusters.find(c => normalizeClusterId(c.cluster_id) === normId);
-    if (target) {
-      target.label = trimmed;
+    let res;
+    if (faceId) {
+      res = await fetch(`/faces/${encodeURIComponent(faceId)}/label`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: trimmed }),
+      });
+    } else if (clusterId) {
+      res = await fetch(`/faces/clusters/${encodeURIComponent(clusterId)}/label`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: trimmed }),
+      });
+    } else {
+      throw new Error('Weder faceId noch clusterId angegeben.');
     }
-    if (activeCluster && normalizeClusterId(activeCluster.cluster_id) === normId) {
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Fehler beim Speichern (${res.status})`);
+    }
+
+    const data = await res.json();
+    const assignedCid = data.cluster_id || clusterId;
+    closeRenamePersonModal();
+
+    // 1. In allLoadedClusters aktualisieren
+    if (assignedCid) {
+      const normId = normalizeClusterId(assignedCid);
+      const target = allLoadedClusters.find(c => normalizeClusterId(c.cluster_id) === normId);
+      if (target) {
+        target.label = trimmed;
+      }
+    }
+
+    // 2. Falls aktives Cluster geöffnet: Header aktualisieren
+    if (activeCluster && assignedCid && normalizeClusterId(activeCluster.cluster_id) === normalizeClusterId(assignedCid)) {
       activeCluster.label = trimmed;
       const cdTitleText = document.getElementById('cd-title-text');
       if (cdTitleText) cdTitleText.textContent = trimmed;
@@ -882,12 +1077,112 @@ async function quickRenameClusterPrompt(clusterId, currentLabel) {
       if (cdInput) cdInput.value = trimmed;
     }
 
+    // 3. Falls Bild-Modal geöffnet ist: Banner und Gesichts-Tags aktualisieren
+    if (currentModalImageDetails) {
+      if (currentModalTargetFaceContext && (
+        (assignedCid && isSameCluster(currentModalTargetFaceContext.clusterId, assignedCid)) ||
+        (faceId && String(currentModalTargetFaceContext.faceId) === String(faceId))
+      )) {
+        currentModalTargetFaceContext.personName = trimmed;
+        currentModalTargetFaceContext.clusterLabel = trimmed;
+        const verifyPerson = document.getElementById('modal-cluster-verify-person');
+        if (verifyPerson) verifyPerson.textContent = trimmed;
+      }
+
+      if (currentModalImageDetails.filePath) {
+        openImageModal(
+          currentModalImageDetails.filePath,
+          currentModalImageDetails.fileName,
+          Date.now(),
+          currentModalTargetFaceContext
+        );
+      }
+    }
+
+    // 4. Falls Network-Node ausgewählt
+    const nncName = document.getElementById('nnc-name');
+    if (nncName && activeRenameTarget) {
+      nncName.textContent = trimmed;
+    }
+    if (typeof networkSelectedNode !== 'undefined' && networkSelectedNode) {
+      networkSelectedNode.label = trimmed;
+    }
+
     updateClusterCounts();
+    updateKnownPersonsDatalist();
     applyClusterFilters();
-    showToast(`✓ Name "${trimmed}" für ${data.updated_faces} Gesichter gespeichert!`, false);
+    showToast(`✓ Name "${trimmed}" für ${data.updated_faces || 1} Foto(s) gespeichert!`, false);
   } catch (err) {
     showToast(`Fehler beim Umbenennen: ${err.message}`, true);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>💾</span> <span>Speichern</span>';
+    }
   }
+}
+
+function quickRenameClusterPrompt(clusterId, currentLabel) {
+  openRenamePersonModal(clusterId, currentLabel);
+}
+
+function renameCurrentModalTargetFace() {
+  if (!currentModalTargetFaceContext) return;
+  openRenamePersonModal(
+    currentModalTargetFaceContext.clusterId || null,
+    currentModalTargetFaceContext.personName || '',
+    currentModalTargetFaceContext.faceId || null
+  );
+}
+
+async function toggleFaceCurationStatus(faceId, currentStatus, event) {
+  if (event) event.stopPropagation();
+  if (!faceId) return;
+  const newStatus = (currentStatus === 'VERIFIED') ? 'KI_AUTO' : 'VERIFIED';
+  try {
+    const res = await fetch(`/faces/${encodeURIComponent(faceId)}/curation-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Serverfehler (${res.status})`);
+    }
+    showToast(newStatus === 'VERIFIED' ? '✓ Gesicht als verifiziert bestätigt!' : 'Status auf KI-Erkennung zurückgesetzt.', false);
+
+    if (currentModalImageDetails && currentModalImageDetails.filePath) {
+      openImageModal(
+        currentModalImageDetails.filePath,
+        currentModalImageDetails.fileName,
+        Date.now(),
+        currentModalTargetFaceContext
+      );
+    }
+  } catch (err) {
+    showToast(`Fehler beim Aktualisieren des Status: ${err.message}`, true);
+  }
+}
+
+async function confirmTargetFaceVerification() {
+  if (!currentModalTargetFaceContext) return;
+  let fid = currentModalTargetFaceContext.faceId;
+  if (!fid && currentModalImageDetails && Array.isArray(currentModalImageDetails.faces)) {
+    const match = currentModalImageDetails.faces.find(f => isSameCluster(f.cluster_id, currentModalTargetFaceContext.clusterId));
+    if (match) fid = match.face_id;
+  }
+  if (!fid) {
+    showToast('Kein spezifisches Gesicht im Fokus.', true);
+    return;
+  }
+  await toggleFaceCurationStatus(fid, 'KI_AUTO');
+}
+
+function renameSelectedNetworkNode() {
+  if (typeof networkSelectedNode === 'undefined' || !networkSelectedNode) return;
+  const nid = networkSelectedNode.id;
+  const curName = networkSelectedNode.label || '';
+  openRenamePersonModal(nid, curName);
 }
 
 function updateClusterCounts() {
@@ -902,6 +1197,8 @@ function updateClusterCounts() {
   if (countAll) countAll.textContent = allCount;
   if (countNamed) countNamed.textContent = namedCount;
   if (countUnnamed) countUnnamed.textContent = unnamedCount;
+
+  updateKnownPersonsDatalist();
 }
 
 let clusterPageSize = 60;
@@ -1710,14 +2007,90 @@ async function triggerClustering() {
 let currentModalTargetFaceContext = null;
 let targetFaceBoxCoords = null;
 
+function isSameCluster(c1, c2) {
+  if (!c1 || !c2) return false;
+  if (c1 === c2) return true;
+  const s1 = String(c1).trim();
+  const s2 = String(c2).trim();
+  if (s1 === s2) return true;
+  const norm1 = s1.startsWith('cluster_') ? s1 : `cluster_${s1}`;
+  const norm2 = s2.startsWith('cluster_') ? s2 : `cluster_${s2}`;
+  return norm1 === norm2;
+}
+
+function isTargetFaceMatch(f, targetCtx) {
+  if (!targetCtx) return false;
+  if (targetCtx.faceId && String(f.face_id) === String(targetCtx.faceId)) {
+    return true;
+  }
+  if (targetCtx.clusterId && isSameCluster(f.cluster_id, targetCtx.clusterId)) {
+    return true;
+  }
+  return false;
+}
+
 function openClusterFaceModal(filePath, fileName, faceId, clusterId, clusterLabel) {
-  const personName = clusterLabel || (clusterId ? `Person ${clusterId.replace('cluster_', '#')}` : 'Diese Person');
+  const personName = clusterLabel || (clusterId ? `Person ${String(clusterId).replace('cluster_', '#')}` : 'Diese Person');
   openImageModal(filePath, fileName, null, {
     faceId: faceId || null,
     clusterId: clusterId || null,
     clusterLabel: clusterLabel || '',
     personName
   });
+}
+
+function updateModalNavigationButtons() {
+  const prevBtn = document.getElementById('modal-nav-prev-btn');
+  const nextBtn = document.getElementById('modal-nav-next-btn');
+  if (!prevBtn || !nextBtn) return;
+
+  const hasClusterNav = !!(currentModalTargetFaceContext && activeCluster && activeCluster.faces && activeCluster.faces.length > 1);
+  const hasSearchNav = !!(currentSearchResults && currentSearchResults.length > 1);
+
+  if (hasClusterNav || hasSearchNav) {
+    prevBtn.classList.remove('hidden');
+    nextBtn.classList.remove('hidden');
+  } else {
+    prevBtn.classList.add('hidden');
+    nextBtn.classList.add('hidden');
+  }
+}
+
+function navigateModalImage(direction) {
+  if (cropperInstance) return;
+
+  // 1. Navigation innerhalb eines Personen-Clusters (falls aus Cluster geöffnet)
+  if (currentModalTargetFaceContext && activeCluster && activeCluster.faces && activeCluster.faces.length > 1) {
+    const curFaceIdx = activeCluster.faces.findIndex(f => 
+      (currentModalTargetFaceContext.faceId && String(f.face_id) === String(currentModalTargetFaceContext.faceId)) ||
+      (f.file_path === currentModalImageDetails?.filePath)
+    );
+    if (curFaceIdx !== -1) {
+      const nextFaceIdx = direction > 0
+        ? (curFaceIdx + 1) % activeCluster.faces.length
+        : (curFaceIdx - 1 + activeCluster.faces.length) % activeCluster.faces.length;
+      const nextFace = activeCluster.faces[nextFaceIdx];
+      if (nextFace && nextFace.file_path) {
+        const fn = nextFace.file_path.split('/').pop();
+        openClusterFaceModal(nextFace.file_path, fn, nextFace.face_id, activeCluster.cluster_id, activeCluster.label);
+        return;
+      }
+    }
+  }
+
+  // 2. Navigation durch allgemeine Suchergebnisse
+  if (currentSearchResults && currentSearchResults.length > 1 && currentModalImageDetails) {
+    const curIdx = currentSearchResults.findIndex(it => it.file_path === currentModalImageDetails.filePath);
+    if (curIdx !== -1) {
+      const nextIdx = direction > 0
+        ? (curIdx + 1) % currentSearchResults.length
+        : (curIdx - 1 + currentSearchResults.length) % currentSearchResults.length;
+      const nextItem = currentSearchResults[nextIdx];
+      if (nextItem) {
+        openImageModal(nextItem.file_path, nextItem.file_name);
+      }
+    }
+  }
 }
 
 async function openImageModal(filePath, fileName, cacheBuster = null, targetFaceContext = null) {
@@ -1733,6 +2106,7 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   const mySeq = ++modalOpenSeq;
   currentModalImageDetails = { filePath, fileName };
   targetFaceBoxCoords = null;
+  currentModalTargetFaceContext = targetFaceContext;
 
   toggleCropMode(false);
   toggleSplitSlider(false);
@@ -1740,6 +2114,30 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   toggleModalCardFlip(false);
   currentTwoSidedInfo = null;
   resetModalZoom();
+  updateModalNavigationButtons();
+
+  // Garantiere strikte Höhenkontrolle gegen Footer-Explosionen bei vielen Gesichtern
+  const footerElem = document.getElementById('modal-faces-footer');
+  if (footerElem) {
+    footerElem.style.maxHeight = '85px';
+    footerElem.style.overflow = 'hidden';
+    footerElem.style.flexShrink = '0';
+  }
+  if (facesList) {
+    facesList.style.maxHeight = '60px';
+    facesList.style.overflowY = 'auto';
+    facesList.style.overflowX = 'hidden';
+  }
+  const mainStage = document.querySelector('.modal-main-stage');
+  if (mainStage) {
+    mainStage.style.minHeight = '400px';
+    mainStage.style.flex = '1 1 auto';
+  }
+  const viewportStage = document.querySelector('.modal-viewport-stage');
+  if (viewportStage) {
+    viewportStage.style.minHeight = '360px';
+    viewportStage.style.flex = '1 1 auto';
+  }
 
   // Cluster-Personen-Kontrollleiste im Modal steuern
   const verifyBanner = document.getElementById('modal-cluster-verify-banner');
@@ -1747,15 +2145,27 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   if (verifyBanner) {
     if (currentModalTargetFaceContext) {
       verifyBanner.classList.remove('hidden');
-      if (verifyPerson) {
-        verifyPerson.textContent = currentModalTargetFaceContext.personName;
+      let counterText = '';
+      if (activeCluster && Array.isArray(activeCluster.faces) && activeCluster.faces.length > 1) {
+        const total = activeCluster.faces.length;
+        const curIdx = activeCluster.faces.findIndex(f => 
+          (currentModalTargetFaceContext.faceId && String(f.face_id) === String(currentModalTargetFaceContext.faceId)) ||
+          (f.file_path === filePath)
+        );
+        if (curIdx !== -1) {
+          counterText = ` (Bild ${curIdx + 1} von ${total})`;
+        }
       }
-      // Gesichtsrahmen automatisch aktivieren
-      setFaceBoundingBoxesVisible(true);
+      if (verifyPerson) {
+        verifyPerson.textContent = `${currentModalTargetFaceContext.personName}${counterText}`;
+      }
     } else {
       verifyBanner.classList.add('hidden');
     }
   }
+
+  // Gesichtsrahmen standardmäßig immer sichtbar und aktiv schalten
+  setFaceBoundingBoxesVisible(true);
 
   const backToOverviewBtn = document.getElementById('modal-back-to-overview-btn') || document.getElementById('modal-back-to-cluster-btn');
   const backToOverviewLabel = document.getElementById('modal-back-to-overview-label');
@@ -1842,9 +2252,13 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
       description: data.metadata?.description || null,
       width: data.width,
       height: data.height,
+      faces: data.faces || [],
       keywords: data.metadata?.keywords || [],
       copyright: data.metadata?.copyright || null,
-      persons: (data.faces || []).map(f => f.label).filter(Boolean)
+      persons: Array.from(new Set([
+        ...(Array.isArray(data.metadata?.persons) ? data.metadata.persons : (data.metadata?.persons ? [data.metadata.persons] : [])),
+        ...(data.faces || []).map(f => f.label).filter(Boolean)
+      ]))
     };
     updateModalLightboxButtonState(filePath);
     toggleMetadataEditMode(false);
@@ -1915,6 +2329,22 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
             <p class="text-slate-300 leading-relaxed text-[11px] bg-slate-950/40 p-2 rounded-lg border border-slate-800/80 max-h-28 overflow-y-auto">${escapeHtml(meta.description)}</p>
           </div>`;
       }
+      if (currentModalImageDetails.persons && currentModalImageDetails.persons.length > 0) {
+        const pChips = currentModalImageDetails.persons.map(p => `
+          <button type="button" onclick="setQueryAndSearch('${escapeHtml(p)}'); closeImageModal();" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-medium text-[11px] transition" title="Nach allen Bildern von '${escapeHtml(p)}' suchen">
+            <span>👤</span>
+            <span>${escapeHtml(p)}</span>
+          </button>
+        `).join('');
+        metaHtml += `
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-amber-400 text-[10px] uppercase tracking-wider font-semibold">Dargestellte Person(en)</span>
+              <span class="text-[10px] text-slate-500 font-mono">IPTC / Dublin Core</span>
+            </div>
+            <div class="flex flex-wrap gap-1">${pChips}</div>
+          </div>`;
+      }
       if (meta.keywords && meta.keywords.length > 0) {
         const chips = meta.keywords.map(kw => `
           <button onclick="setQueryAndSearch('${escapeHtml(kw)}'); closeImageModal();" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-amber-500/20 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 text-slate-300 font-mono text-[10px] transition" title="Nach '#${escapeHtml(kw)}' suchen">
@@ -1973,18 +2403,16 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
     }
 
     facesList.innerHTML = '';
+    const faceCount = (data.faces || []).length;
+    const countLabel = document.getElementById('modal-faces-count-label');
+    if (countLabel) {
+      countLabel.textContent = faceCount > 0 ? `Erkannte Gesichter (${faceCount}):` : 'Erkannte Gesichter:';
+    }
     if (!data.faces || data.faces.length === 0) {
       facesList.innerHTML = '<span class="text-slate-500">Keine Gesichter detektiert</span>';
     } else {
       data.faces.forEach((f, idx) => {
-        let isTargetFace = false;
-        if (currentModalTargetFaceContext) {
-          if (currentModalTargetFaceContext.faceId && String(f.face_id) === String(currentModalTargetFaceContext.faceId)) {
-            isTargetFace = true;
-          } else if (!currentModalTargetFaceContext.faceId && currentModalTargetFaceContext.clusterId && f.cluster_id === currentModalTargetFaceContext.clusterId) {
-            isTargetFace = true;
-          }
-        }
+        const isTargetFace = isTargetFaceMatch(f, currentModalTargetFaceContext);
 
         const tagWrapper = document.createElement('div');
         tagWrapper.className = 'inline-flex items-center rounded-lg border border-slate-700 bg-slate-800 overflow-hidden';
@@ -2001,10 +2429,40 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
           tagBtn.innerHTML = `<span>⭐ Diese Person: ${escapeHtml(pName)}</span> <span class="font-mono text-[10px]">(${(f.det_score * 100).toFixed(0)}%)</span>`;
         } else {
           tagBtn.className = 'px-2 py-0.5 text-slate-300 hover:bg-slate-700/80 font-mono text-[11px] transition';
-          const name = f.label || (f.cluster_id ? `Person ${f.cluster_id.replace('cluster_', '#')}` : `Gesicht #${idx + 1}`);
+          const name = f.label || (f.cluster_id ? `Person ${String(f.cluster_id).replace('cluster_', '#')}` : `Gesicht #${idx + 1}`);
           tagBtn.textContent = `${name} (${(f.det_score * 100).toFixed(0)}%)`;
         }
         tagWrapper.appendChild(tagBtn);
+
+        // Stift-Button zur direkten Namensvergabe
+        const editFaceBtn = document.createElement('button');
+        editFaceBtn.type = 'button';
+        editFaceBtn.title = 'Namen dieser Person bearbeiten / zuweisen';
+        editFaceBtn.className = isTargetFace
+          ? 'px-1.5 py-1 bg-amber-600/50 hover:bg-amber-600/80 text-slate-950 transition border-l border-amber-600 text-xs'
+          : 'px-1.5 py-0.5 bg-slate-900/60 hover:bg-amber-500/20 text-slate-400 hover:text-amber-400 transition border-l border-slate-700 text-xs';
+        editFaceBtn.innerHTML = '✏️';
+        editFaceBtn.onclick = (e) => {
+          e.stopPropagation();
+          openRenamePersonModal(f.cluster_id || null, f.label || '', f.face_id || null);
+        };
+        tagWrapper.appendChild(editFaceBtn);
+
+        // Kuratorischer Status-Button (VERIFIED vs KI_AUTO)
+        const isVerified = (f.curation_status === 'VERIFIED');
+        const statusBtn = document.createElement('button');
+        statusBtn.type = 'button';
+        statusBtn.title = isVerified
+          ? 'Kuratorischer Status: Verifiziert / Bestätigt (Klicken zum Umschalten auf KI-Erkennung)'
+          : 'Kuratorischer Status: Automatische KI-Erkennung (Klicken zum Bestätigen als Verifiziert)';
+        statusBtn.className = isVerified
+          ? 'px-1.5 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 transition border-l border-slate-700 text-[10px] font-semibold'
+          : 'px-1.5 py-0.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 hover:text-sky-300 transition border-l border-slate-700 text-[10px] font-medium';
+        statusBtn.innerHTML = isVerified ? '✓' : '🤖 KI';
+        statusBtn.onclick = (e) => {
+          toggleFaceCurationStatus(f.face_id, f.curation_status, e);
+        };
+        tagWrapper.appendChild(statusBtn);
 
         if (f.cluster_id) {
           const jumpBtn = document.createElement('button');
@@ -2058,14 +2516,7 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
           return;
         }
 
-        let isTargetFace = false;
-        if (currentModalTargetFaceContext) {
-          if (currentModalTargetFaceContext.faceId && String(f.face_id) === String(currentModalTargetFaceContext.faceId)) {
-            isTargetFace = true;
-          } else if (!currentModalTargetFaceContext.faceId && currentModalTargetFaceContext.clusterId && f.cluster_id === currentModalTargetFaceContext.clusterId) {
-            isTargetFace = true;
-          }
-        }
+        const isTargetFace = isTargetFaceMatch(f, currentModalTargetFaceContext);
 
         const box = document.createElement('div');
         box.id = `modal-face-box-${idx}`;
@@ -2074,20 +2525,48 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
         box.style.top = `${top}%`;
         box.style.width = `${width}%`;
         box.style.height = `${height}%`;
+        box.style.pointerEvents = 'auto';
+        box.style.cursor = 'pointer';
+        box.title = 'Klicken zum Fokussieren (220% Lupe)';
+        box.addEventListener('click', (e) => {
+          if (didModalPanMove) return;
+          e.stopPropagation();
+          focusFaceByIndex(idx);
+        });
 
         const tag = document.createElement('div');
+        tag.style.pointerEvents = 'auto';
+        tag.style.cursor = 'pointer';
+
+        const isVerified = (f.curation_status === 'VERIFIED');
+        const statusBadge = isVerified
+          ? '<span class="bg-emerald-500/40 text-emerald-200 px-1 py-0.2 rounded text-[9px] mr-1 font-semibold border border-emerald-400/50">✓ Verifiziert</span>'
+          : '<span class="bg-sky-500/30 text-sky-200 px-1 py-0.2 rounded text-[9px] mr-1 border border-sky-400/30">🤖 KI</span>';
 
         if (isTargetFace) {
-          box.className = 'face-bbox highlight-target';
+          box.className = isVerified ? 'face-bbox highlight-target ring-2 ring-emerald-400/60' : 'face-bbox highlight-target';
           const pName = currentModalTargetFaceContext.personName || f.label || 'Diese Person';
           targetFaceBoxCoords = { left, top, width, height, name: pName, idx };
           tag.className = 'face-bbox-tag highlight-target-tag';
-          tag.innerHTML = `⭐ <b>${escapeHtml(pName)}</b> <span class="font-mono text-[10px] opacity-90">(${(f.det_score * 100).toFixed(0)}%)</span>`;
+          tag.innerHTML = `${statusBadge}⭐ <b>${escapeHtml(pName)}</b> <span class="font-mono text-[10px] opacity-90">(${(f.det_score * 100).toFixed(0)}%)</span>`;
         } else {
           box.className = currentModalTargetFaceContext ? 'face-bbox other-face' : 'face-bbox';
+          if (isVerified) box.classList.add('border-emerald-500');
           tag.className = 'face-bbox-tag';
-          tag.textContent = f.label || (f.cluster_id ? `Person ${f.cluster_id.replace('cluster_', '#')}` : `Gesicht #${idx + 1}`);
+          const name = f.label || (f.cluster_id ? `Person ${String(f.cluster_id).replace('cluster_', '#')}` : `Gesicht #${idx + 1}`);
+          tag.innerHTML = `${statusBadge}<span>${escapeHtml(name)}</span> <span class="font-mono text-[9px] opacity-75">(${(f.det_score * 100).toFixed(0)}%)</span>`;
         }
+
+        if (top < 6) {
+          tag.style.bottom = 'auto';
+          tag.style.top = 'calc(100% + 4px)';
+        }
+
+        tag.title = 'Klicken, um Person zu benennen / zuweisen';
+        tag.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openRenamePersonModal(f.cluster_id || null, f.label || '', f.face_id || null);
+        });
 
         box.appendChild(tag);
         wrapper.appendChild(box);
@@ -3731,6 +4210,12 @@ document.addEventListener('keydown', (e) => {
       closeThesaurusModal();
       return;
     }
+    // Person Umbenennen Modal schließen
+    const renameModal = document.getElementById('rename-person-modal');
+    if (renameModal && !renameModal.classList.contains('hidden')) {
+      closeRenamePersonModal();
+      return;
+    }
     // Tastaturkürzel Modal schließen
     const scModal = document.getElementById('shortcuts-modal');
     if (scModal && !scModal.classList.contains('hidden')) {
@@ -3893,38 +4378,9 @@ document.addEventListener('keydown', (e) => {
     // Pfeiltasten Navigation im Bild-Modal (Vorheriges / Nächstes Bild)
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       if (cropperInstance) return; // Nicht während der Rahmenwahl blättern
-
-      // 1. Navigation innerhalb eines Personen-Clusters (falls aus Cluster geöffnet)
-      if (currentModalTargetFaceContext && activeCluster && activeCluster.faces && activeCluster.faces.length > 1) {
-        const curFaceIdx = activeCluster.faces.findIndex(f => f.face_id === currentModalTargetFaceContext.faceId);
-        if (curFaceIdx !== -1) {
-          e.preventDefault();
-          const nextFaceIdx = e.key === 'ArrowRight'
-            ? (curFaceIdx + 1) % activeCluster.faces.length
-            : (curFaceIdx - 1 + activeCluster.faces.length) % activeCluster.faces.length;
-          const nextFace = activeCluster.faces[nextFaceIdx];
-          if (nextFace && nextFace.file_path) {
-            const fn = nextFace.file_path.split('/').pop();
-            openClusterFaceModal(nextFace.file_path, fn, nextFace.face_id, activeCluster.cluster_id, activeCluster.label);
-            return;
-          }
-        }
-      }
-
-      // 2. Navigation durch allgemeine Suchergebnisse
-      if (currentSearchResults && currentSearchResults.length > 1 && currentModalImageDetails) {
-        const curIdx = currentSearchResults.findIndex(it => it.file_path === currentModalImageDetails.filePath);
-        if (curIdx !== -1) {
-          e.preventDefault();
-          const nextIdx = e.key === 'ArrowRight'
-            ? (curIdx + 1) % currentSearchResults.length
-            : (curIdx - 1 + currentSearchResults.length) % currentSearchResults.length;
-          const nextItem = currentSearchResults[nextIdx];
-          if (nextItem) {
-            openImageModal(nextItem.file_path, nextItem.file_name);
-          }
-        }
-      }
+      e.preventDefault();
+      navigateModalImage(e.key === 'ArrowRight' ? 1 : -1);
+      return;
     }
   }
 });
@@ -4691,6 +5147,70 @@ async function exportLightboxXmpZip() {
   } catch (err) {
     console.error('Fehler beim XMP-Export:', err);
     showToast(`XMP-Export fehlgeschlagen: ${err.message}`, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+
+async function exportLightboxFindbuchCsv() {
+  if (lightboxItems.length === 0) {
+    showToast('Fügen Sie zuerst Bilder zum Leuchttisch hinzu.', true);
+    return;
+  }
+
+  const btn = document.getElementById('lightbox-export-findbuch-btn');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Exportiere...</span>';
+  }
+
+  try {
+    showToast(`Generiere archivisches Findbuch für ${lightboxItems.length} Verzeichnungseinheiten...`, false);
+    const titleInput = document.getElementById('lightbox-title-input');
+    const folderTitle = (titleInput && titleInput.value.trim()) || 'Leuchttisch-Mappe';
+
+    const payload = {
+      items: lightboxItems.map(it => ({
+        file_path: it.file_path,
+        file_name: it.file_name,
+        title: it.title,
+        date: it.date,
+        creator: it.creator,
+        signature: it.signature,
+        persons: Array.isArray(it.persons) ? it.persons : (it.persons ? [it.persons] : []),
+        notes: it.notes || null,
+      })),
+      archive_name: 'Historisches Bildarchiv',
+      collection_title: folderTitle,
+    };
+
+    const res = await fetch('/export/findbuch-csv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error(`Server-Fehler beim Findbuch-Export (${res.status})`);
+
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.download = `Findbuch_${now}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    a.remove();
+
+    showToast(`✓ Findbuch (${lightboxItems.length} Einträge) erfolgreich als CSV exportiert!`, false);
+  } catch (err) {
+    console.error('Fehler beim Findbuch-Export:', err);
+    showToast(`Findbuch-Export fehlgeschlagen: ${err.message}`, true);
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -5749,12 +6269,22 @@ function focusFaceByIndex(idx) {
 }
 
 async function removeTargetFaceFromClusterInModal() {
-  if (!currentModalTargetFaceContext || !currentModalTargetFaceContext.faceId) {
+  if (!currentModalTargetFaceContext) {
+    showToast('Keine Person im Fokus.', true);
+    return;
+  }
+
+  let faceId = currentModalTargetFaceContext.faceId;
+  if (!faceId && currentModalImageDetails && Array.isArray(currentModalImageDetails.faces)) {
+    const match = currentModalImageDetails.faces.find(f => isSameCluster(f.cluster_id, currentModalTargetFaceContext.clusterId));
+    if (match) faceId = match.face_id;
+  }
+
+  if (!faceId) {
     showToast('Keine Gesichts-ID für diese Person gefunden.', true);
     return;
   }
 
-  const faceId = currentModalTargetFaceContext.faceId;
   const pName = currentModalTargetFaceContext.personName || 'diese Person';
 
   if (!confirm(`Möchten Sie dieses Gesicht wirklich aus dem Personen-Cluster „${pName}“ entfernen ("Nicht diese Person")?`)) {
@@ -5847,6 +6377,9 @@ let modalZoomScale = 1.0;
 let modalPanX = 0;
 let modalPanY = 0;
 let isModalPanning = false;
+let didModalPanMove = false;
+let modalPanInitialClientX = 0;
+let modalPanInitialClientY = 0;
 let modalPanStartX = 0;
 let modalPanStartY = 0;
 
@@ -5929,6 +6462,9 @@ function initModalZoomAndPan() {
     if (e.target.closest('#modal-split-divider') || e.target.closest('.face-bbox-tag') || e.target.closest('button')) return;
 
     isModalPanning = true;
+    didModalPanMove = false;
+    modalPanInitialClientX = e.clientX;
+    modalPanInitialClientY = e.clientY;
     modalPanStartX = e.clientX - modalPanX;
     modalPanStartY = e.clientY - modalPanY;
     wrapper.classList.add('is-panning');
@@ -5937,6 +6473,9 @@ function initModalZoomAndPan() {
 
   window.addEventListener('mousemove', (e) => {
     if (!isModalPanning) return;
+    if (Math.hypot(e.clientX - modalPanInitialClientX, e.clientY - modalPanInitialClientY) > 5) {
+      didModalPanMove = true;
+    }
     modalPanX = e.clientX - modalPanStartX;
     modalPanY = e.clientY - modalPanStartY;
     applyModalZoomPan();
@@ -5945,6 +6484,7 @@ function initModalZoomAndPan() {
   window.addEventListener('mouseup', () => {
     if (isModalPanning) {
       isModalPanning = false;
+      setTimeout(() => { didModalPanMove = false; }, 60);
       const w = document.getElementById('modal-bbox-wrapper');
       if (w) w.classList.remove('is-panning');
     }
@@ -6268,6 +6808,11 @@ function toggleMetadataEditMode(forceState = null) {
     document.getElementById('edit-meta-date').value = currentModalImageDetails.date || '';
     document.getElementById('edit-meta-creator').value = currentModalImageDetails.creator || '';
     document.getElementById('edit-meta-description').value = currentModalImageDetails.description || '';
+    const personsInput = document.getElementById('edit-meta-persons');
+    if (personsInput) {
+      personsInput.value = (currentModalImageDetails.persons || []).join(', ');
+    }
+    updateKnownPersonsDatalist();
 
     content.classList.add('hidden');
     form.classList.remove('hidden');
@@ -6294,6 +6839,8 @@ async function saveMetadataEdit(event) {
   const newDate = document.getElementById('edit-meta-date')?.value.trim() || null;
   const newCreator = document.getElementById('edit-meta-creator')?.value.trim() || null;
   const newDesc = document.getElementById('edit-meta-description')?.value.trim() || null;
+  const personsRaw = document.getElementById('edit-meta-persons')?.value.trim();
+  const newPersons = personsRaw ? personsRaw.split(',').map(p => p.trim()).filter(Boolean) : [];
 
   try {
     const payload = {
@@ -6302,7 +6849,8 @@ async function saveMetadataEdit(event) {
       title: newTitle,
       date: newDate,
       creator: newCreator,
-      description: newDesc
+      description: newDesc,
+      persons: newPersons
     };
 
     const res = await fetch('/images/metadata', {
@@ -6320,6 +6868,7 @@ async function saveMetadataEdit(event) {
     currentModalImageDetails.date = newDate;
     currentModalImageDetails.creator = newCreator;
     currentModalImageDetails.description = newDesc;
+    currentModalImageDetails.persons = newPersons;
 
     // Header Titel aktualisieren
     const titleElem = document.getElementById('modal-filename');
@@ -6330,6 +6879,7 @@ async function saveMetadataEdit(event) {
     // Re-render Lesemodus
     renderModalMetadataReadView();
     toggleMetadataEditMode(false);
+    updateKnownPersonsDatalist();
 
     showToast('Metadaten erfolgreich in SQLite & XMP gesichert!', false);
   } catch (err) {
@@ -6404,6 +6954,22 @@ function renderModalMetadataReadView() {
       <div>
         <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold block">Beschreibung</span>
         <p class="text-slate-300 leading-relaxed text-[11px] bg-slate-950/40 p-2 rounded-lg border border-slate-800/80 max-h-28 overflow-y-auto">${escapeHtml(meta.description)}</p>
+      </div>`;
+  }
+  if (currentModalImageDetails.persons && currentModalImageDetails.persons.length > 0) {
+    const pChips = currentModalImageDetails.persons.map(p => `
+      <button type="button" onclick="setQueryAndSearch('${escapeHtml(p)}'); closeImageModal();" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-medium text-[11px] transition" title="Nach allen Bildern von '${escapeHtml(p)}' suchen">
+        <span>👤</span>
+        <span>${escapeHtml(p)}</span>
+      </button>
+    `).join('');
+    metaHtml += `
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-amber-400 text-[10px] uppercase tracking-wider font-semibold">Dargestellte Person(en)</span>
+          <span class="text-[10px] text-slate-500 font-mono">IPTC / Dublin Core</span>
+        </div>
+        <div class="flex flex-wrap gap-1">${pChips}</div>
       </div>`;
   }
   if (meta.keywords && meta.keywords.length > 0) {
@@ -7471,10 +8037,8 @@ function filterSearchByBatch(batchId) {
   }
   const searchInput = document.getElementById('search-input');
   if (searchInput) {
-    if (!searchInput.value.trim()) {
-      searchInput.value = 'Foto';
-    }
-    executeSearch(searchInput.value.trim());
+    searchInput.value = '';
+    executeSearch('');
   }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }

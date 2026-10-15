@@ -464,9 +464,9 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   * *Stärken:* Herausragende semantische OpenCLIP- und Gesichts-Vektorsuche, Sub-5ms SQLite-Metadaten-Cache, Dublin-Core XMP-Sidecars, IIIF 3.0 API, Recto/Verso-Kopplung und Akzessionsjournal.
   * *Handlungsbedarfe:* Unveränderlichkeit der Master-Digitalisate (Schutz vor In-situ-Modifikation), fehlende Netzwerk-Authentifizierung, kryptographische Fixity-Prüfsummen und Filesystem-Stabilität des Speicherorts (GVFS-Ablösung).
 * **Priorisierte Aufgaben:**
-  - [ ] **Priorität 1: Unveränderlichkeit der Archiv-Master bei Bilddrehungen (Bitstream Preservation):**
-    * *Problem:* `image_rotation_service.py` modifiziert aktuell physisch die Master-JPEG-Datei auf dem Storage via `jpegtran`. Dies verletzt das archivarische Gebot der unveränderten Originalerhaltung (OAIS).
-    * *Lösung:* Umstellung auf rein **virtuelle Drehungen** über das Metadatenfeld `edit_settings: {"rotation": 90}` in SQLite/Qdrant oder Generierung separater Derivate im Cache. Der physische Bitstream des Original-Digitalisats bleibt zu 100 % unverändert und kann schreibgeschützt gemountet werden.
+  - [x] **Priorität 1: Unveränderlichkeit der Archiv-Master bei Bilddrehungen (Bitstream Preservation):**
+    * *Problem:* `image_rotation_service.py` modifizierte früher physisch die Master-JPEG-Datei auf dem Storage. Dies verletzte das archivarische Gebot der unveränderten Originalerhaltung (OAIS).
+    * *Lösung:* Umstellung auf rein **virtuelle Drehungen** über das Metadatenfeld `edit_settings: {"rotation": 90}` in SQLite und Qdrant. Der physische Bitstream des Original-Digitalisats bleibt zu 100 % unverändert ("Never touch the master!"), Thumbnails und Vorschaubilder werden on-the-fly im Cache gedreht.
   - [ ] **Priorität 1: Netzwerk-Authentifizierung & Rollenbasierte Zugriffskontrolle (RBAC):**
     * *Problem:* Das System lauscht auf `0.0.0.0:8000` ohne Authentifizierung. Jeder Rechner im LAN kann potentiell Ingests auslösen, Metadaten manipulieren oder Cluster löschen.
     * *Lösung:* Implementierung einer leichtgewichtigen HTTP-Basic-Auth oder Token-/Session-Authentifizierung mit mindestens zwei Rollen:
@@ -483,12 +483,47 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
     * *Lösung:* Integrierter täglicher Online-Backup-Task:
       * Atomares SQLite-Backup im laufenden WAL-Betrieb: `PRAGMA vacuum_into('data/backups/archive_metadata_backup.db');`.
       * Automatischer Aufruf der Qdrant-Snapshot-API (`/collections/{name}/snapshots`) mit Rotation der letzten 7 Sicherungen.
-  - [ ] **Priorität 2: Archivische Export-Schnittstellen (EAD, METS, CSV):**
+  - [ ] **Priorität 2: Archivische Export-Schnittstellen (EAD, METS):**
     * *Problem:* Facharchive benötigen strukturierte Übergaben an zentrale Archivinformationssysteme (AIS wie *ScopeArchiv, Faust, ACTApro*) oder Portale (*DDB, Europeana*).
-    * *Lösung:* Implementierung von Export-Filtern für Rechercheergebnisse nach EAD-XML (Bestände & Tektonik), METS/MODS (Digitalisat-Metadaten) sowie Standard-CSV mit Dublin-Core-Spalten.
+    * *Lösung:* Implementierung von Export-Filtern für Rechercheergebnisse nach EAD-XML (Bestände & Tektonik) sowie METS/MODS (Digitalisat-Metadaten).
   - [ ] **Priorität 3: Normdatenanbindung (GND / Wikidata / VIAF):**
     * *Problem:* Personen- und Körperschaftsnamen sind aktuell reine Freitexte ohne Verknüpfung zu kontrollierten Vokabularen.
     * *Lösung:* Autovervollständigung und optionale URI-Verknüpfung mit der Gemeinsamen Normdatei (GND) der Deutschen Nationalbibliothek im Personen-Modal.
+
+---
+
+## 30. UI-Konsistenz, Personen-Nomenklatur & Curation-Workflows (Senior Developer Review)
+* **Ziel:** Lückenlose Konsistenz und universelle Verfügbarkeit der Personen-Namensvergabe an allen Schnittstellen der Anwendung (Cluster-Übersicht, Detail-Modal, Bounding-Boxes, Metadaten-Editor, Beziehungsnetzwerk und Leuchttisch-Stapel) gemäß archivischer Best-Practice.
+* **Bereits implementiert & verifiziert (Stand 15.10.2026):**
+  - [x] **1. Universelles Personen-Namensmodal (`#rename-person-modal`):**
+    * Vollständiger Ersatz ungestylter Browser-`prompt()`-Aufrufe durch ein einheitliches, barrierefreies und tastaturbedienbares (Enter / Esc) Modal im Archiv-Design.
+  - [x] **2. Konsistente Namensvergabe an allen kritischen UI-Orten:**
+    * **Bild-Detail-Modal:** Klickbare Bounding-Boxen auf dem Canvas zur direkten Benennung des anvisierten Gesichts; ✏️-Aktionsbuttons an jedem erkannten Gesichts-Tag-Chip in der rechten Leiste.
+    * **Target-Face-Verifikationsbanner:** Behebung des Kontext-Bugs (`currentModalTargetFaceContext`), sodass der Verifikations-Banner beim Klick aus Cluster-Ansichten zuverlässig erscheint und einen direkten Umbenennen-Trigger bietet.
+    * **Einzelne Personenporträts / Noise-Faces:** Neuer Endpunkt `POST /faces/{face_id}/label` und Erweiterung von `label_face` in `ClusteringService`, womit auch isolierte Einzelporträts (`cluster_id=None` bei DBSCAN `min_samples=2`) direkt benannt und archivisch erschlossen werden können.
+    * **Beziehungs-Netzwerkgraph:** ✏️-Button direkt in der Personen-Info-Karte (`#network-node-card`) zur sofortigen Korrektur von Namensansetzungen ohne Tab-Wechsel.
+    * **Archivischer Metadaten-Editor:** Eigenständiges Feld *„Dargestellte Person(en)“* (`#edit-meta-persons`) mit Speicherung in der neuen SQLite-Spalte `metadata.persons`, Synchronisation im Qdrant-Vektorpayload und XMP-Sidecar-Generierung (`Iptc4xmpExt:PersonInImage`).
+  - [x] **3. Datalist-Autovervollständigung (`known-persons-datalist`):**
+    * Automatische, alphabetisch sortierte Erfassung aller im Archiv bekannten Personennamen (aus Clustern, Metadaten und Leuchttisch-Mappen) als Vorschlagsliste in allen Eingabefeldern für Personennamen.
+  - [x] **4. Leuchttisch-Stapelverarbeitung (`openLightboxBatchPersonModal`):**
+    * Neuer Aktionsbutton *„Person zuweisen“* auf dem Leuchttisch zur simultanen Zuweisung einer dargestellten Person an alle Bilder einer Arbeitsmappe mit automatischer Aktualisierung von SQLite, Qdrant und XMP-Sidecars.
+  - [x] **5. Metadata Working Group (MWG) Regionen im XMP-Sidecar (`mwg-rs:Regions`):**
+    * Standardkonforme Ausgabe der Gesichts-Koordinaten als `mwg-rs:Regions` (mit `AppliedToDimensions`, `RegionList` und normalisierten `stArea`-Zentrumskoordinaten) im XMP-Sidecar für externe Foto- und Katalogsysteme (DigiKam, Adobe Bridge, Lightroom, ExifTool).
+    * Automatische Einbettung des kuratorischen Status (`Description = VERIFIED` bzw. `KI_AUTO`) direkt im XML-Element jeder Gesichtsregion.
+  - [x] **6. Kuratorische Status-Flags für Gesichter (`KI_AUTO` vs. `VERIFIED`):**
+    * Saubere archivarische Trennung zwischen automatischer KI-Erkennung (`KI_AUTO`) und geprüften/bestätigten Identifikationen (`VERIFIED`).
+    * Neuer Endpunkt `POST /faces/{face_id}/curation-status` zur Umschaltung des Status sowie automatische Verifikation beim manuellen Vergeben eines Personennamens.
+    * Visuelle Kennzeichnung im Web-Interface: Status-Badges auf den Bounding-Boxen (`✓ Verifiziert` vs. `🤖 KI`), interaktive Umschalt-Schaltflächen an allen Gesichts-Tag-Chips und Bestätigungs-Button direkt im Cluster-Kontrollbanner (`#modal-cluster-verify-banner`).
+  - [x] **7. Findbuch- & Tabellenexport (CSV / Excel) vom Leuchttisch (`POST /export/findbuch-csv`):**
+    * Export archivischer Findbücher als UTF-8 mit BOM formatierte CSV-Datei für sofortige, fehlerfreie Darstellung in Microsoft Excel, LibreOffice Calc und Archivinformationssystemen (AIS).
+    * Umfassende Spaltenstruktur nach ISAD(G) / Dublin Core: Lfd. Nr., Archivsignatur, Titel/Enthält-Vermerk, Datierung, Urheber/Fotograf, Dargestellte Personen, Archivalische Notizen, Dateiname und Pfad.
+    * Integrierter Export-Button *„Findbuch (CSV)“* direkt in der Leuchttisch-Werkzeugleiste (`#lightbox-export-findbuch-btn`).
+
+* **Archivarische Weiterentwicklung & Backlog:**
+  - [ ] **GND- / Normdatei-Strategie (Offline-First):**
+    * Um die 100%ige Offline-Fähigkeit und Air-Gap-Sicherheit des Archivs zu wahren, keine externen Live-API-Calls ins Internet: Stattdessen optionale Bereitstellung lokaler, vorkompilierter GND-Personen-Dumps (z. B. Theologen, Bischöfe, regionale Persönlichkeiten) als lokale SQLite-Tabelle.
+
+
 
 
 

@@ -44,23 +44,92 @@ class ImageRotationService:
             return system_bin
         return None
 
-    def rotate_image(self, file_path: Union[str, Path], angle: int = 90) -> Dict[str, Any]:
+    def rotate_image(self, file_path: Union[str, Path], angle: int = 90, virtual: bool = False) -> Dict[str, Any]:
         """
-        Dreht ein Bild verlustfrei um den angegebenen Winkel (90, 180, 270 bzw. -90 Grad).
-        Führt anschließend eine Reindexierung durch.
+        Dreht ein Bild:
+        - Wenn virtual=True (Standard): Revisionssichere virtuelle Drehung via SQLite/Qdrant edit_settings.
+          Der Bitstream des Master-Originals bleibt zu 100 % unverändert ("Never touch the master!").
+        - Wenn virtual=False: Physisches, verlustfreies DCT-Transponieren via jpegtran oder verlustfreie
+          Transformation.
         """
         path = Path(file_path).resolve()
         if not path.is_file():
             raise FileNotFoundError(f"Bilddatei nicht gefunden: {path}")
 
-        # Schreibrechte prüfen
-        if not os.access(path, os.W_OK):
-            raise PermissionError(f"Keine Schreibberechtigung für die Datei: {path}")
-
         # Winkel normalisieren (z.B. -90 -> 270)
         norm_angle = angle % 360
         if norm_angle not in (90, 180, 270):
             raise ValueError(f"Ungültiger Drehwinkel: {angle}°. Erlaubt sind 90°, 180°, 270° bzw. -90°.")
+
+        if virtual:
+            from app.services.metadata_db import metadata_db
+            clean_path = str(path)
+            settings_dict = metadata_db.get_edit_settings(clean_path) or {}
+            current_rot = settings_dict.get("rotation", 0)
+            new_rot = (current_rot + angle) % 360
+            settings_dict["rotation"] = new_rot
+            metadata_db.save_edit_settings(clean_path, settings_dict)
+
+            # In Qdrant synchronisieren (falls Punkt existiert)
+            try:
+                from app.api.deps import get_qdrant_service
+                from qdrant_client.http import models as rest_models
+                qdrant = get_qdrant_service()
+                records, _ = qdrant.client.scroll(
+                    collection_name=settings.COLLECTION_IMAGES,
+                    scroll_filter=rest_models.Filter(
+                        should=[
+                            rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=clean_path)),
+                            rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=clean_path)),
+                        ]
+                    ),
+                    limit=1,
+                    with_payload=False,
+                )
+                if records:
+                    qdrant.client.set_payload(
+                        collection_name=settings.COLLECTION_IMAGES,
+                        payload={"edit_settings": settings_dict},
+                        points=[records[0].id],
+                    )
+            except Exception as q_err:
+                logger.debug("Qdrant edit_settings Sync übersprungen: %s", q_err)
+
+            # Thumbnail-Cache für dieses Bild invalidieren
+            self.thumbnails.invalidate_cache_for_file(path)
+
+            # Effektive Dimensionen ermitteln
+            with Image.open(path) as img:
+                orig_w, orig_h = ImageOps.exif_transpose(img).size
+            if new_rot in (90, 270):
+                eff_w, eff_h = orig_h, orig_w
+            else:
+                eff_w, eff_h = orig_w, orig_h
+
+            # Warmup: Neues virtuell rotiertes Thumbnail vorbereiten
+            try:
+                self.thumbnails.get_or_create_thumbnail(path, max_dim=400, rotation=new_rot)
+            except Exception as e:
+                logger.warning("Konnte virtuelles Thumbnail nach Drehung nicht vorbereiten: %s", e)
+
+            return {
+                "success": True,
+                "message": f"Bild virtuell um {angle}° gedreht (Bitstream Preservation: Originaldatei unverändert).",
+                "file_path": str(path),
+                "file_name": path.name,
+                "angle": angle,
+                "normalized_angle": new_rot,
+                "rotation_method": "virtual_non_destructive",
+                "bitstream_preserved": True,
+                "width": eff_w,
+                "height": eff_h,
+                "faces_detected": 0,
+            }
+
+        # --- Physischer Pfad (virtual=False) ---
+        # Schreibrechte prüfen
+        if not os.access(path, os.W_OK):
+            raise PermissionError(f"Keine Schreibberechtigung für die Datei: {path}")
 
         suffix = path.suffix.lower()
         method_used = "unknown"

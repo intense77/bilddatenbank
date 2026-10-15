@@ -253,6 +253,7 @@ class IndexingService:
                     "parent_image_id": image_id,
                     "indexed_at": now_iso,
                     "import_id": import_id,
+                    "curation_status": "KI_AUTO",
                 },
             )
             face_points.append(face_point)

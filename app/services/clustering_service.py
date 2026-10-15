@@ -605,10 +605,10 @@ class ClusteringService:
         if not point_ids:
             return 0
 
-        # 1. Label in archive_faces aktualisieren
+        # 1. Label & kuratorischen Status in archive_faces aktualisieren
         self.qdrant.client.set_payload(
             collection_name=settings.COLLECTION_FACES,
-            payload={"label": clean_label},
+            payload={"label": clean_label, "curation_status": "VERIFIED"},
             points=point_ids,
         )
 
@@ -635,6 +635,70 @@ class ClusteringService:
 
         self.invalidate_clusters_cache()
         return len(point_ids)
+
+    def label_face(self, face_id: str, label: str) -> Dict[str, Any]:
+        """
+        Weist einem spezifischen Gesicht (face_id) einen Klarnamen zu.
+        Falls das Gesicht bereits einem Cluster angehört, wird das gesamte Cluster benannt.
+        Falls das Gesicht noch keinem Cluster angehört (z. B. Einzelfoto oder Rauschen),
+        wird ein neues Cluster erzeugt und die Metadaten synchronisiert.
+        """
+        clean_label = label.strip()
+        if not clean_label:
+            raise ValueError("Klarname darf nicht leer sein.")
+
+        records, _ = self.qdrant.client.scroll(
+            collection_name=settings.COLLECTION_FACES,
+            scroll_filter=rest_models.Filter(
+                must=[
+                    rest_models.HasIdCondition(has_id=[face_id])
+                ]
+            ),
+            limit=1,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not records:
+            raise ValueError(f"Gesichtspunkt '{face_id}' nicht gefunden.")
+
+        payload = records[0].payload or {}
+        cluster_id = payload.get("cluster_id")
+
+        if cluster_id:
+            count = self.label_cluster(cluster_id=cluster_id, label=clean_label)
+            return {
+                "status": "success",
+                "face_id": face_id,
+                "cluster_id": cluster_id,
+                "label": clean_label,
+                "curation_status": "VERIFIED",
+                "updated_faces": count,
+            }
+        else:
+            # Neues Cluster für dieses Einzelgesicht erzeugen
+            new_cid = f"cluster_{str(face_id).replace('-', '')[:10]}"
+            self.qdrant.client.set_payload(
+                collection_name=settings.COLLECTION_FACES,
+                payload={"cluster_id": new_cid, "label": clean_label, "curation_status": "VERIFIED"},
+                points=[face_id],
+            )
+            parent_img_id = payload.get("parent_image_id")
+            if parent_img_id:
+                self._sync_parent_images_persons({parent_img_id})
+
+            try:
+                metadata_db.upsert_cluster(new_cid, name=clean_label, face_count=1)
+            except Exception as e:
+                logger.warning("Konnte neues Einzel-Cluster nicht in SQLite speichern: %s", e)
+
+            self.invalidate_clusters_cache()
+            return {
+                "status": "success",
+                "face_id": face_id,
+                "cluster_id": new_cid,
+                "label": clean_label,
+                "updated_faces": 1,
+            }
 
     def _sync_parent_images_persons(self, parent_img_ids: Set[str]) -> None:
         """

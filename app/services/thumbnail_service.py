@@ -25,27 +25,37 @@ class ThumbnailService:
         except Exception as e:
             logger.warning("Konnte Thumbnail-Cache-Verzeichnis nicht anlegen: %s", e)
 
-    def _get_cache_key(self, file_path: Path, bbox: Optional[List[int]] = None, max_dim: Optional[int] = None) -> str:
-        """Erzeugt einen eindeutigen MD5-Cache-Key basierend auf Dateipfad, Änderungszeit und Zuschnitt."""
+    def _get_cache_key(
+        self,
+        file_path: Path,
+        bbox: Optional[List[int]] = None,
+        max_dim: Optional[int] = None,
+        rotation: Optional[int] = None,
+    ) -> str:
+        """Erzeugt einen eindeutigen MD5-Cache-Key basierend auf Dateipfad, Änderungszeit, Zuschnitt und Rotation."""
         try:
             mtime = os.path.getmtime(file_path)
             size = os.path.getsize(file_path)
         except OSError:
             mtime = 0
             size = 0
-        raw_key = f"{file_path.resolve()}_{mtime}_{size}_{bbox}_{max_dim}"
+        raw_key = f"{file_path.resolve()}_{mtime}_{size}_{bbox}_{max_dim}_{rotation}"
         return hashlib.md5(raw_key.encode("utf-8")).hexdigest()
 
     def invalidate_cache_for_file(self, file_path: Path):
         """
         Invalidiert gecachte Thumbnails für das angegebene Bild.
-        Da mtime und Dateigröße sich beim Drehen ändern, greift automatisch ein neuer Cache-Key.
-        Hier werden zudem gezielt vorhandene Cache-Dateien für diesen Pfad gelöscht, falls ermittelbar.
+        Löscht vorhandene Cache-Dateien für diesen Pfad, um sofortige Aktualisierungen zu gewährleisten.
         """
         try:
             resolved_str = str(file_path.resolve())
-            # Auch bei altem mtime / size nach passenden Keys suchen
-            # Da mtime sich ändert, wird get_or_create_thumbnail ohnehin neu generiert
+            prefix_hash = hashlib.md5(resolved_str.encode("utf-8")).hexdigest()[:8]
+            # Schnelle Bereinigung passender Cache-Dateien
+            for item in self.cache_dir.glob(f"*{prefix_hash}*"):
+                try:
+                    item.unlink(missing_ok=True)
+                except Exception:
+                    pass
         except Exception as e:
             logger.debug("Fehler beim Invalidieren des Thumbnail-Caches: %s", e)
 
@@ -54,9 +64,22 @@ class ThumbnailService:
         file_path: Path,
         max_dim: int = 400,
         quality: int = 80,
+        rotation: Optional[int] = None,
     ) -> bytes:
         """Liefert komprimierte WebP-Bytes für ein Thumbnail aus dem Cache oder erzeugt sie."""
-        cache_key = self._get_cache_key(file_path, max_dim=max_dim)
+        # Falls rotation nicht explizit übergeben wurde: Aus SQLite edit_settings nachschlagen
+        if rotation is None:
+            try:
+                from app.services.metadata_db import metadata_db
+                es = metadata_db.get_edit_settings(str(file_path.resolve()))
+                if es and es.get("rotation"):
+                    rotation = int(es["rotation"]) % 360
+            except Exception:
+                rotation = 0
+        else:
+            rotation = int(rotation) % 360
+
+        cache_key = self._get_cache_key(file_path, max_dim=max_dim, rotation=rotation)
         webp_file = self.cache_dir / f"thumb_{cache_key}_{max_dim}.webp"
         legacy_jpg_file = self.cache_dir / f"thumb_{cache_key}_{max_dim}.jpg"
 
@@ -74,6 +97,15 @@ class ThumbnailService:
         # Neu erzeugen als ressourcenschonendes WebP
         with Image.open(file_path) as raw_img:
             img = load_image_rgb(raw_img)
+            # Revisionssichere virtuelle Drehung anwenden
+            if rotation in (90, 180, 270):
+                if rotation == 90:
+                    img = img.transpose(Image.Transpose.ROTATE_270)
+                elif rotation == 180:
+                    img = img.transpose(Image.Transpose.ROTATE_180)
+                elif rotation == 270:
+                    img = img.transpose(Image.Transpose.ROTATE_90)
+
             if img.width > max_dim or img.height > max_dim:
                 img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
             buffer = io.BytesIO()

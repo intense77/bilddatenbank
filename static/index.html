@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Historisches Bildarchiv — Semantische Suche & Personen-Cluster</title>
   <!-- Lokales Stylesheet (100% offline & datenschutzkonform, kein CDN) -->
-  <link rel="stylesheet" href="/style.css?v=4.4">
+  <link rel="stylesheet" href="/style.css?v=5.2">
   <link rel="stylesheet" href="/cropper.min.css">
 </head>
 
@@ -146,8 +146,7 @@
             </div>
             <input type="text" id="search-input"
               placeholder="Suche nach Szenen, Objekten oder Motiven (z. B. 'Häuser', 'gotischer Altar', 'Gemeindefest')..."
-              class="w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition-all font-sans"
-              required>
+              class="w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition-all font-sans">
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
@@ -413,7 +412,7 @@
           <div class="flex flex-wrap items-center gap-2 sm:gap-3">
             <!-- Inline Label Assignment Form -->
             <form id="cluster-label-form" onsubmit="handleClusterLabelSubmit(event)" class="flex items-center gap-2">
-              <input type="text" id="cluster-label-input" placeholder="Personenname (z. B. Bischof Müller)"
+              <input type="text" id="cluster-label-input" placeholder="Personenname (z. B. Bischof Müller)" list="known-persons-datalist"
                 class="px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 w-48 sm:w-64 transition-all duration-200"
                 required>
               <button type="submit" id="cluster-label-save-btn"
@@ -925,6 +924,27 @@
               <span>XMP-Sidecars (ZIP)</span>
             </button>
 
+            <!-- Findbuch CSV Export Button -->
+            <button type="button" onclick="exportLightboxFindbuchCsv()"
+              id="lightbox-export-findbuch-btn"
+              class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-emerald-400 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+              title="Archivisches Findbuch (CSV/Excel-kompatibel, UTF-8 mit BOM) für alle Bilder dieser Mappe herunterladen">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 10h18M3 14h18m-9-4v8m-7 4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+              </svg>
+              <span>Findbuch (CSV)</span>
+            </button>
+
+            <!-- Batch Person Zuweisen -->
+            <button type="button" onclick="openLightboxBatchPersonModal()"
+              id="lightbox-batch-person-btn"
+              class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-amber-300 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+              title="Allen Bildern auf diesem Leuchttisch eine Person / Dargestellte Persönlichkeit zuweisen">
+              <span>👥</span>
+              <span>Person zuweisen</span>
+            </button>
+
             <!-- Pfade in Zwischenablage kopieren -->
             <button type="button" onclick="copyLightboxPaths()"
               class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
@@ -1083,8 +1103,11 @@
               <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-cyan-400/80 bg-slate-950 flex-shrink-0 shadow-md">
                 <img id="nnc-image" src="" alt="Avatar" class="w-full h-full object-cover">
               </div>
-              <div class="min-w-0">
-                <h4 id="nnc-name" class="text-sm font-bold text-slate-100 truncate">Person</h4>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <h4 id="nnc-name" class="text-sm font-bold text-slate-100 truncate">Person</h4>
+                  <button type="button" onclick="renameSelectedNetworkNode()" class="text-slate-400 hover:text-amber-400 p-0.5 rounded transition text-xs shrink-0" title="Name dieser Person bearbeiten">✏️</button>
+                </div>
                 <p id="nnc-id" class="text-[11px] text-cyan-400 font-mono">Cluster #0</p>
               </div>
             </div>
@@ -1362,9 +1385,52 @@
         </div>
       </div>
 
+      <!-- Cluster Personen-Kontrollleiste (Nur sichtbar bei Klick aus einem Cluster, als dezentes Banner über der Bühne) -->
+      <div id="modal-cluster-verify-banner" class="hidden px-4 py-2 bg-gradient-to-r from-amber-500/15 via-slate-900 to-amber-500/15 border-b border-amber-500/40 flex items-center justify-between gap-3 text-xs flex-shrink-0 select-none backdrop-blur-md">
+        <div class="flex items-center gap-2 truncate">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0"></span>
+          <span class="text-xs font-semibold text-amber-300 shrink-0">Personen-Kuratierung:</span>
+          <span id="modal-cluster-verify-person" class="text-xs font-bold text-slate-100 truncate">Person</span>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" id="btn-verify-target-face-modal" onclick="confirmTargetFaceVerification()"
+            class="px-2.5 py-1 rounded-lg bg-emerald-500/25 hover:bg-emerald-500/40 text-emerald-300 border border-emerald-500/50 text-[11px] font-semibold transition flex items-center gap-1 shadow-sm"
+            title="Zuordnung bestätigen und kuratorischen Status auf 'VERIFIED' setzen">
+            <span>✓</span> <span>Bestätigen</span>
+          </button>
+          <button type="button" onclick="renameCurrentModalTargetFace()"
+            class="px-2.5 py-1 rounded-lg bg-amber-500/25 hover:bg-amber-500/40 text-amber-300 border border-amber-500/50 text-[11px] font-semibold transition flex items-center gap-1 shadow-sm"
+            title="Name dieser Person bearbeiten">
+            <span>✏️</span> <span>Umbenennen</span>
+          </button>
+          <button type="button" id="btn-focus-target-face" onclick="focusTargetFaceInModal()"
+            class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-semibold transition flex items-center gap-1 shadow-sm"
+            title="Direkt auf das Gesicht dieser Person zoomen und zentrieren">
+            <span>🎯</span> <span>Fokussieren</span>
+          </button>
+          <button type="button" id="btn-remove-target-face-modal" onclick="removeTargetFaceFromClusterInModal()"
+            class="px-2.5 py-1 rounded-lg bg-rose-500/25 hover:bg-rose-500/40 text-rose-300 border border-rose-500/50 text-[11px] font-medium transition flex items-center gap-1 shadow-sm"
+            title="Gesicht aus diesem Cluster entfernen (Falsche Zuordnung korrigieren)">
+            <span>✕</span> <span class="hidden sm:inline">Nicht diese Person</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Modal Body (Image Container + Archival Metadata & Edit Sidebar) -->
-      <div class="modal-main-stage">
-        <div class="modal-viewport-stage">
+      <div class="modal-main-stage" style="flex: 1 1 auto; min-height: 400px; height: 100%; display: flex; overflow: hidden;">
+        <div class="modal-viewport-stage" style="flex: 1 1 auto; min-height: 360px; height: 100%; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+          <!-- Blätter-Buttons (Vorheriges / Nächstes Bild) -->
+          <button type="button" id="modal-nav-prev-btn" onclick="navigateModalImage(-1)"
+            class="absolute left-3 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-slate-950/70 hover:bg-amber-500 hover:text-slate-950 text-slate-200 border border-slate-700/80 hover:border-amber-400 flex items-center justify-center transition shadow-xl backdrop-blur-md select-none opacity-60 hover:opacity-100"
+            title="Vorheriges Bild (Taste: Pfeil links ←)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
+          </button>
+          <button type="button" id="modal-nav-next-btn" onclick="navigateModalImage(1)"
+            class="absolute right-3 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-slate-950/70 hover:bg-amber-500 hover:text-slate-950 text-slate-200 border border-slate-700/80 hover:border-amber-400 flex items-center justify-center transition shadow-xl backdrop-blur-md select-none opacity-60 hover:opacity-100"
+            title="Nächstes Bild (Taste: Pfeil rechts →)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
+          </button>
+
           <div class="card-flip-viewport">
             <div id="modal-card-cube" class="card-flip-cube">
               <!-- FRONT FACE (RECTO) -->
@@ -1456,39 +1522,6 @@
             <div id="openseadragon-viewer" class="w-full h-full flex-1"></div>
           </div>
 
-          <!-- Cluster Personen-Kontrollleiste (Nur sichtbar bei Klick aus einem Cluster) -->
-          <div id="modal-cluster-verify-banner" class="hidden absolute top-3 left-3 right-36 z-30 flex items-center justify-between gap-2 bg-slate-900/95 border border-amber-500/50 rounded-xl px-3 py-1.5 shadow-2xl backdrop-blur-md select-none">
-            <div class="flex items-center gap-2 truncate">
-              <!-- Auffälliger Zurück-Button direkt im Kontrollbanner -->
-              <button type="button" onclick="closeImageModal()"
-                class="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition flex items-center gap-1.5 shadow-md shadow-amber-500/20 shrink-0"
-                title="Detailansicht schließen und zurück zur Personen-Übersicht (Taste: Esc)">
-                <span>←</span> <span>Zurück zur Übersicht</span>
-              </button>
-              <div class="w-[1px] h-4 bg-slate-700 mx-1 shrink-0"></div>
-              <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0"></span>
-              <span class="text-xs font-semibold text-amber-300 shrink-0">Personen-Kontrolle:</span>
-              <span id="modal-cluster-verify-person" class="text-xs font-bold text-slate-100 truncate">Person</span>
-            </div>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <button type="button" id="btn-focus-target-face" onclick="focusTargetFaceInModal()"
-                class="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-semibold transition flex items-center gap-1 shadow-sm"
-                title="Direkt auf das Gesicht dieser Person zoomen und zentrieren">
-                <span>🎯</span> <span>Fokussieren</span>
-              </button>
-              <button type="button" id="btn-remove-target-face-modal" onclick="removeTargetFaceFromClusterInModal()"
-                class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-medium transition flex items-center gap-1 shadow-sm"
-                title="Gesicht aus diesem Cluster entfernen (Falsche Zuordnung korrigieren)">
-                <span>✕</span> <span class="hidden md:inline">Nicht diese Person</span>
-              </button>
-              <button type="button" onclick="closeImageModal()"
-                class="p-1 rounded-lg bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white border border-slate-700 hover:border-rose-500 text-xs font-bold transition flex items-center justify-center w-7 h-7 shadow-sm ml-0.5"
-                title="Schließen (Taste: Esc)">
-                ✕
-              </button>
-            </div>
-          </div>
-
           <!-- Gesichtsrahmen Toggle Button direkt im Viewport -->
           <button type="button" id="btn-toggle-face-boxes" onclick="toggleFaceBoxesVisibility()"
             class="absolute top-3 right-3 z-30 px-2.5 py-1 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-amber-400 border border-slate-700/80 text-[11px] font-medium backdrop-blur-md transition flex items-center gap-1.5 shadow-lg select-none"
@@ -1572,6 +1605,11 @@
               <div>
                 <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block mb-1">Urheber / Fotograf</label>
                 <input type="text" id="edit-meta-creator" placeholder="z. B. Fotoatelier Meyer"
+                  class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500">
+              </div>
+              <div>
+                <label class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block mb-1">Dargestellte Person(en) (IPTC / Dublin Core)</label>
+                <input type="text" id="edit-meta-persons" placeholder="z. B. Bischof Müller, Pfarrer Schmidt (durch Komma trennen)" list="known-persons-datalist"
                   class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500">
               </div>
               <div>
@@ -1914,16 +1952,16 @@
       </div>
 
       <!-- Modal Footer (Detected Faces tags) -->
-      <div id="modal-faces-footer"
-        class="px-5 py-3 border-t border-slate-800 bg-slate-900/90 flex items-center justify-between text-xs">
-        <div class="flex items-center gap-2">
-          <span class="text-slate-400">Erkannte Gesichter:</span>
-          <div id="modal-faces-list" class="flex flex-wrap items-center gap-1.5">
+      <div id="modal-faces-footer" style="flex-shrink: 0; max-height: 85px; min-height: 44px; height: auto; overflow: hidden;"
+        class="px-5 py-2 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between text-xs">
+        <div class="flex items-center gap-2 min-w-0 flex-1" style="max-height: 75px; overflow: hidden;">
+          <span class="text-slate-400 shrink-0 font-medium text-[11px]" id="modal-faces-count-label">Erkannte Gesichter:</span>
+          <div id="modal-faces-list" style="max-height: 60px; overflow-y: auto; overflow-x: hidden; display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center;" class="pr-2">
             <!-- Face tags injected here -->
           </div>
         </div>
         <a id="modal-raw-link" href="#" target="_blank"
-          class="text-slate-400 hover:text-amber-400 font-mono transition flex items-center gap-1">
+          class="text-slate-400 hover:text-amber-400 font-mono transition flex items-center gap-1 shrink-0 ml-3">
           <span>Originaldatei öffnen</span>
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -2081,7 +2119,7 @@
 
         <div>
           <label class="block text-xs font-medium text-slate-300 mb-1.5">Zukünftiger Name der Person:</label>
-          <input type="text" id="merge-target-name-input" placeholder="z. B. Bischof Ulrich"
+          <input type="text" id="merge-target-name-input" placeholder="z. B. Bischof Ulrich" list="known-persons-datalist"
             class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50">
           <p class="text-[11px] text-slate-500 mt-1">Dieser Name wird für alle Gesichter des zusammengeführten Bestands
             übernommen.</p>
@@ -2113,6 +2151,59 @@
           <span>Zusammenführen</span>
         </button>
       </div>
+
+    </div>
+  </div>
+
+  <!-- ================= PERSON UMBENENNEN / NAME VERGEBEN MODAL ================= -->
+  <div id="rename-person-modal"
+    class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div
+      class="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-sm">
+            👤
+          </div>
+          <div>
+            <h4 class="text-sm sm:text-base font-semibold text-slate-100" id="rename-person-modal-title">Personenname vergeben</h4>
+            <p class="text-xs text-slate-400" id="rename-person-modal-subtitle">Cluster / Porträt aktualisieren</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeRenamePersonModal()"
+          class="p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <form id="rename-person-form" onsubmit="handleRenamePersonSubmit(event)" class="p-5 space-y-4">
+        <div>
+          <label for="rename-person-input" class="block text-xs font-medium text-slate-300 mb-1.5">
+            Klarname / Person (z. B. Bischof Müller, Bundeskanzler Erhard):
+          </label>
+          <input type="text" id="rename-person-input" required list="known-persons-datalist"
+            placeholder="Personenname eingeben..."
+            class="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+          <p class="text-[11px] text-slate-500 mt-1">Dieser Name wird für alle zugehörigen Fotos im Archiv synchronisiert.</p>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2.5">
+          <button type="button" onclick="closeRenamePersonModal()"
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs sm:text-sm font-medium transition">
+            Abbrechen
+          </button>
+          <button type="submit" id="rename-person-submit-btn"
+            class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm transition flex items-center gap-1.5 shadow-md shadow-amber-500/10">
+            <span>💾</span>
+            <span>Speichern</span>
+          </button>
+        </div>
+      </form>
 
     </div>
   </div>
@@ -2471,7 +2562,10 @@
   <script src="/cropper.min.js"></script>
   <script src="/vis-network.min.js"></script>
   <script src="/openseadragon.min.js"></script>
-  <script src="/app.js?v=6.0.0"></script>
+  <script src="/app.js?v=7.2.0"></script>
+  <!-- Global Datalist for Autocomplete of Known Persons -->
+  <datalist id="known-persons-datalist"></datalist>
+
 </body>
 
 </html>
