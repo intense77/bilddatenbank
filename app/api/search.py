@@ -1345,20 +1345,50 @@ def get_image_details(
 
     abs_path_str = str(file_path.resolve())
     raw_path_str = str(file_path)
-    face_records, _ = qdrant.client.scroll(
-        collection_name=settings.COLLECTION_FACES,
-        scroll_filter=rest_models.Filter(
-            should=[
-                rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_path_str)),
-                rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_path_str)),
-                rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=raw_path_str)),
-                rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=raw_path_str)),
-            ]
-        ),
-        limit=200,
-        with_payload=True,
-        with_vectors=False,
-    )
+    import urllib.parse
+    unquoted_abs_path = urllib.parse.unquote(abs_path_str)
+    unquoted_raw_path = urllib.parse.unquote(raw_path_str)
+
+    # 1. Pfad-Varianten für die Suche vorbereiten
+    path_variants = {abs_path_str, raw_path_str, unquoted_abs_path, unquoted_raw_path}
+    img_filter_should = []
+    for pv in path_variants:
+        img_filter_should.append(rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=pv)))
+        img_filter_should.append(rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=pv)))
+
+    # 2. Datensatz in archive_images abfragen (ermittelt auch deterministische parent_image_id)
+    img_records = None
+    try:
+        img_records, _ = qdrant.client.scroll(
+            collection_name=settings.COLLECTION_IMAGES,
+            scroll_filter=rest_models.Filter(should=img_filter_should),
+            limit=1,
+            with_payload=True,
+            with_vectors=False,
+        )
+    except Exception as e:
+        logger.warning("Abfrage archive_images für %s fehlgeschlagen: %s", abs_path_str, e)
+
+    parent_image_id = str(img_records[0].id) if (img_records and len(img_records) > 0) else None
+
+    # 3. Gesichter aus archive_faces abfragen (nach parent_image_id und allen Pfadvarianten)
+    face_filter_should = list(img_filter_should)
+    if parent_image_id:
+        face_filter_should.append(
+            rest_models.FieldCondition(key="parent_image_id", match=rest_models.MatchValue(value=parent_image_id))
+        )
+
+    face_records = []
+    try:
+        face_records, _ = qdrant.client.scroll(
+            collection_name=settings.COLLECTION_FACES,
+            scroll_filter=rest_models.Filter(should=face_filter_should),
+            limit=200,
+            with_payload=True,
+            with_vectors=False,
+        )
+    except Exception as e:
+        logger.warning("Abfrage archive_faces für %s fehlgeschlagen: %s", abs_path_str, e)
 
     faces = []
     for r in face_records:
@@ -1376,6 +1406,16 @@ def get_image_details(
                 "height": round(((y2 - y1) / orig_h) * 100, 4),
             }
 
+        cluster_id = p.get("cluster_id")
+        label = p.get("label")
+        if not label and cluster_id:
+            try:
+                c_info = metadata_db.get_cluster(cluster_id)
+                if c_info and c_info.get("name"):
+                    label = c_info.get("name")
+            except Exception:
+                pass
+
         faces.append({
             "face_id": str(r.id),
             "bbox": bbox,
@@ -1383,16 +1423,18 @@ def get_image_details(
             "orig_width": orig_w,
             "orig_height": orig_h,
             "det_score": p.get("det_score", 1.0),
-            "cluster_id": p.get("cluster_id"),
-            "label": p.get("label"),
-            "curation_status": p.get("curation_status") or ("VERIFIED" if p.get("label") else "KI_AUTO"),
+            "cluster_id": cluster_id,
+            "label": label,
+            "curation_status": p.get("curation_status") or ("VERIFIED" if label else "KI_AUTO"),
         })
 
     # Metadaten: Zuerst in relationaler SQLite-Datenbank nachschlagen
     metadata: Dict[str, Any] = {}
+    db_meta = None
     try:
-        from app.services.metadata_db import metadata_db
         db_meta = metadata_db.get_metadata(abs_path_str)
+        if not db_meta and unquoted_abs_path != abs_path_str:
+            db_meta = metadata_db.get_metadata(unquoted_abs_path)
         if db_meta:
             metadata = {
                 "title": db_meta.get("title"),
@@ -1407,32 +1449,17 @@ def get_image_details(
 
     # Falls nicht in SQLite vorhanden: Aus Qdrant abrufen
     if not metadata or not any(metadata.values()):
-        try:
-            img_records, _ = qdrant.client.scroll(
-                collection_name=settings.COLLECTION_IMAGES,
-                scroll_filter=rest_models.Filter(
-                    should=[
-                        rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_path_str)),
-                        rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_path_str)),
-                    ]
-                ),
-                limit=1,
-                with_payload=True,
-                with_vectors=False,
-            )
-            if img_records and img_records[0].payload:
-                payload = img_records[0].payload
-                metadata = payload.get("metadata") or {
-                    "title": payload.get("title"),
-                    "creator": payload.get("creator"),
-                    "date": payload.get("date"),
-                    "description": payload.get("description"),
-                    "signature": payload.get("signature"),
-                    "copyright": payload.get("copyright"),
-                    "keywords": payload.get("keywords", []),
-                }
-        except Exception:
-            pass
+        if img_records and img_records[0].payload:
+            payload = img_records[0].payload
+            metadata = payload.get("metadata") or {
+                "title": payload.get("title"),
+                "creator": payload.get("creator"),
+                "date": payload.get("date"),
+                "description": payload.get("description"),
+                "signature": payload.get("signature"),
+                "copyright": payload.get("copyright"),
+                "keywords": payload.get("keywords", []),
+            }
 
     # Fallback: Direkt aus Datei und eventuellen Sidecars extrahieren
     if not metadata or not any(metadata.values()):

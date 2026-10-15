@@ -1870,7 +1870,7 @@ async function openClusterDetail(cluster) {
           .then(r => r.json())
           .then(d => {
             if (d.faces && d.faces.length > 0) {
-              const matched = d.faces.find(f => f.face_id === face.face_id) || d.faces[0];
+              const matched = d.faces.find(f => (face.face_id && f.face_id === face.face_id) || isSameCluster(f.cluster_id, cluster.cluster_id)) || d.faces[0];
               if (matched && matched.bbox_percent) {
                 face.bbox_percent = matched.bbox_percent;
                 renderBox();
@@ -2340,6 +2340,9 @@ function isTargetFaceMatch(f, targetCtx) {
     return true;
   }
   if (targetCtx.clusterId && isSameCluster(f.cluster_id, targetCtx.clusterId)) {
+    return true;
+  }
+  if (targetCtx.personName && f.label && String(targetCtx.personName).trim().toLowerCase() === String(f.label).trim().toLowerCase()) {
     return true;
   }
   return false;

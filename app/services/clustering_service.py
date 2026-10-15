@@ -506,26 +506,40 @@ class ClusteringService:
             return None
 
         faces = []
-        label = None
+        if not label:
+            try:
+                from app.services.metadata_db import metadata_db
+                c_info = metadata_db.get_cluster(cluster_id)
+                if c_info and c_info.get("name"):
+                    label = c_info.get("name")
+            except Exception:
+                pass
 
         for r in records:
             p = r.payload or {}
-            if not label and p.get("label"):
-                label = p.get("label")
+            f_label = p.get("label") or label
             file_path = p.get("file_path") or p.get("image_path")
             bbox = p.get("bbox")
 
             orig_w = p.get("orig_width")
             orig_h = p.get("orig_height")
             bbox_pct = p.get("bbox_percent")
-            if not bbox_pct and orig_w and orig_h and bbox and len(bbox) == 4:
-                x1, y1, x2, y2 = bbox
-                bbox_pct = {
-                    "left": round((x1 / orig_w) * 100, 4),
-                    "top": round((y1 / orig_h) * 100, 4),
-                    "width": round(((x2 - x1) / orig_w) * 100, 4),
-                    "height": round(((y2 - y1) / orig_h) * 100, 4),
-                }
+            if not bbox_pct and bbox and len(bbox) == 4:
+                if (not orig_w or not orig_h) and file_path:
+                    try:
+                        from PIL import Image
+                        with Image.open(file_path) as im:
+                            orig_w, orig_h = im.size
+                    except Exception:
+                        pass
+                if orig_w and orig_h:
+                    x1, y1, x2, y2 = bbox
+                    bbox_pct = {
+                        "left": round((x1 / orig_w) * 100, 4),
+                        "top": round((y1 / orig_h) * 100, 4),
+                        "width": round(((x2 - x1) / orig_w) * 100, 4),
+                        "height": round(((y2 - y1) / orig_h) * 100, 4),
+                    }
 
             faces.append({
                 "face_id": str(r.id),
@@ -535,6 +549,8 @@ class ClusteringService:
                 "orig_width": orig_w,
                 "orig_height": orig_h,
                 "det_score": p.get("det_score", 1.0),
+                "cluster_id": p.get("cluster_id") or cluster_id,
+                "label": f_label,
             })
 
         return {

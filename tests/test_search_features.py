@@ -254,6 +254,50 @@ def test_facets_summary_endpoint():
         assert facets["years"]["min"] <= 1910
 
 
+def test_get_image_details_robustness():
+    """Prüft, dass get_image_details nicht mit UnboundLocalError abstürzt, wenn SQLite-Metadaten vorhanden sind, und Gesichter korrekt liefert."""
+    from app.api.search import get_image_details
+    from PIL import Image
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir_path = Path(tmp_dir)
+        from app.core.config import settings
+        orig_allowed = list(settings.ALLOWED_IMAGE_DIRS)
+        settings.ALLOWED_IMAGE_DIRS.append(str(tmp_dir_path.resolve()))
+        try:
+            img_file = tmp_dir_path / "test_import.jpg"
+            Image.new("RGB", (800, 600), color="blue").save(img_file)
+
+            # SQLite-Metadaten hinterlegen
+            from app.services.metadata_db import metadata_db
+            metadata_db.upsert_metadata(str(img_file.resolve()), title="Test Historie", creator="Archiv")
+
+            # Mock Qdrant
+            mock_qdrant = MagicMock()
+            mock_face = MagicMock()
+            mock_face.id = "face-uuid-1234"
+            mock_face.payload = {
+                "bbox": [100, 100, 200, 250],
+                "bbox_percent": {"left": 12.5, "top": 16.6667, "width": 12.5, "height": 25.0},
+                "cluster_id": "cluster_99",
+                "det_score": 0.98,
+            }
+            # Scroll gibt 0/1 Bild und 1 Gesicht zurück
+            mock_qdrant.client.scroll.side_effect = [
+                ([], None),             # archive_images
+                ([mock_face], None),     # archive_faces
+            ]
+
+            res = get_image_details(path=str(img_file), qdrant=mock_qdrant)
+            assert res["file_name"] == "test_import.jpg"
+            assert res["metadata"]["title"] == "Test Historie"
+            assert len(res["faces"]) == 1
+            assert res["faces"][0]["face_id"] == "face-uuid-1234"
+            assert res["faces"][0]["bbox_percent"]["left"] == 12.5
+        finally:
+            settings.ALLOWED_IMAGE_DIRS = orig_allowed
+
+
 if __name__ == "__main__":
     test_search_pagination_and_person_separation()
     test_batch_browsing_empty_query()
@@ -261,4 +305,5 @@ if __name__ == "__main__":
     test_metadata_db_batch_filtering()
     test_timeline_and_facet_filtering()
     test_facets_summary_endpoint()
+    test_get_image_details_robustness()
     print("All search tests passed successfully!")
