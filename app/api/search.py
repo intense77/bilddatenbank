@@ -992,12 +992,21 @@ def get_cluster_preview(
     if not image_bytes:
         raise HTTPException(status_code=404, detail=f"Kein Vorschaubild für Cluster '{cluster_id}' gefunden.")
     
-    media_type = "image/webp" if image_bytes.startswith(b"RIFF") else "image/jpeg"
+    if image_bytes.startswith(b"<svg") or b"<svg" in image_bytes[:30]:
+        media_type = "image/svg+xml"
+        cache_header = "no-cache, no-store, must-revalidate"
+    elif image_bytes.startswith(b"RIFF"):
+        media_type = "image/webp"
+        cache_header = "public, max-age=86400"
+    else:
+        media_type = "image/jpeg"
+        cache_header = "public, max-age=86400"
+
     return Response(
         content=image_bytes,
         media_type=media_type,
         headers={
-            "Cache-Control": "public, max-age=86400, immutable",
+            "Cache-Control": cache_header,
         },
     )
 
@@ -1059,6 +1068,12 @@ def label_cluster(
             name=final_label.strip(),
             preview_image=f"/faces/clusters/{cluster_id}/preview",
         )
+        metadata_db.add_audit_log(
+            action="RENAME_CLUSTER",
+            target_type="CLUSTER",
+            target_id=cluster_id,
+            details={"new_label": final_label.strip(), "updated_faces": updated_count},
+        )
     except Exception as e:
         logger.warning("Konnte Cluster nicht in SQLite speichern: %s", e)
 
@@ -1091,7 +1106,14 @@ def label_single_face(
             detail="Biometrische Gesichtserkennung ist in der Systemkonfiguration deaktiviert."
         )
     try:
-        return clustering_service.label_face(face_id=face_id, label=request.label)
+        res = clustering_service.label_face(face_id=face_id, label=request.label)
+        metadata_db.add_audit_log(
+            action="LABEL_FACE",
+            target_type="FACE",
+            target_id=face_id,
+            details={"label": request.label.strip()},
+        )
+        return res
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -1192,6 +1214,17 @@ def merge_clusters(
     if result.get("status") == "not_found" or result.get("merged_count", 0) == 0:
         raise HTTPException(status_code=404, detail=f"Keine Gesichter im Quell-Cluster '{request.source_cluster_id}' gefunden.")
 
+    metadata_db.add_audit_log(
+        action="MERGE_CLUSTERS",
+        target_type="CLUSTER",
+        target_id=request.source_cluster_id,
+        details={
+            "target_cluster_id": request.target_cluster_id,
+            "target_label": request.target_label,
+            "merged_count": result.get("merged_count", 0),
+        },
+    )
+
     return result
 
 
@@ -1213,6 +1246,13 @@ def remove_face_from_cluster(
     success = clustering_service.remove_face_from_cluster(face_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Gesichtspunkt '{face_id}' nicht gefunden.")
+
+    metadata_db.add_audit_log(
+        action="REMOVE_FROM_CLUSTER",
+        target_type="FACE",
+        target_id=face_id,
+        details={"reason": "Nicht diese Person"},
+    )
 
     return {
         "status": "success",
@@ -1516,6 +1556,17 @@ def update_image_metadata(
         creator=data.creator,
         description=data.description,
         persons=data.persons,
+    )
+    metadata_db.add_audit_log(
+        action="UPDATE_METADATA",
+        target_type="IMAGE",
+        target_id=abs_path_str,
+        details={
+            "title": data.title,
+            "signature": data.signature,
+            "creator": data.creator,
+            "date": data.date,
+        },
     )
 
     # 2. In Qdrant synchronisieren (Volltext- / Semantiksuche)
@@ -1895,11 +1946,42 @@ def delete_image_record(
 
     qdrant.delete_images(target_ids)
     qdrant.delete_faces_by_parent_images(target_ids, file_paths=target_paths)
+
+    # SQLite-Metadaten bereinigen & Audit-Log schreiben
+    for p in target_paths:
+        metadata_db.delete_metadata(p)
+        metadata_db.add_audit_log(
+            action="DELETE_RECORD",
+            target_type="IMAGE",
+            target_id=p,
+            details={"path": p, "law": "KDG § 19 / DSGVO Art. 17"},
+        )
+    for tid in target_ids:
+        metadata_db.add_audit_log(
+            action="DELETE_RECORD",
+            target_type="IMAGE_ID",
+            target_id=tid,
+            details={"image_id": tid, "law": "KDG § 19 / DSGVO Art. 17"},
+        )
+
     return {
         "status": "success",
         "deleted_image_ids": target_ids,
         "deleted_paths": target_paths,
     }
+
+
+@router.get("/system/audit-log")
+def get_audit_log(
+    limit: int = Query(default=100, ge=1, le=1000, description="Maximale Anzahl der Einträge"),
+    target_type: Optional[str] = Query(None, description="Optionaler Filter nach Zieltyp (IMAGE, CLUSTER, FACE)"),
+    target_id: Optional[str] = Query(None, description="Optionaler Filter nach Ziel-ID"),
+):
+    """
+    Liefert das archivische KDG/DSGVO-Audit-Log für Kuration,
+    Namensänderungen und Löschungen (§§ 18, 19 KDG).
+    """
+    return metadata_db.get_audit_logs(limit=limit, target_type=target_type, target_id=target_id)
 
 
 class PdfExportItem(BaseModel):

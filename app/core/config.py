@@ -55,8 +55,16 @@ class Settings(BaseSettings):
 
     # Datenverzeichnis für historische Bilder
     ARCHIVE_DATA_DIR: str = "./data"
-    ALLOWED_IMAGE_DIRS: list[str] = ["./data", "."]
+    ALLOWED_IMAGE_DIRS: list[str] = ["./data"]
     THUMBNAIL_CACHE_DIR: str = "./.cache/thumbnails"
+    MAX_THUMBNAIL_CACHE_MB: int = Field(
+        default=5000,
+        description="Maximale Größe des Thumbnail-Caches in Megabyte (Standard: 5.000 MB = 5 GB). Bei Überschreitung greift automatische LRU-Bereinigung."
+    )
+
+    # Server-Binding & Netzwerksicherheit (127.0.0.1 schützt vor unberechtigtem LAN-Zugriff)
+    SERVER_HOST: str = Field(default="127.0.0.1", description="Netzwerk-Binding (127.0.0.1 für lokale Datensicherheit, 0.0.0.0 für LAN)")
+    SERVER_PORT: int = Field(default=8000, description="Server-Port")
 
     # Sicherheit & CORS
     CORS_ORIGINS: list[str] = ["http://localhost:8000", "http://127.0.0.1:8000"]

@@ -204,6 +204,9 @@ Nach dem Start erreichen Sie die Oberfläche unter **[http://localhost:8000/](ht
    * Auf jeder Bildkarte in der Cluster-Detailansicht befindet sich der Button **„Entfernen“** (*„Nicht diese Person“*).
    * Entfernt ein versehentlich zugeordnetes Porträt aus dem Cluster und aktualisiert das Elternbild, ohne die übrigen Gesichter zu verändern.
 9. **Cluster neu berechnen:** Ein Klick auf *„Cluster neu berechnen“* führt das DBSCAN-Clustering über alle archivierten Gesichter erneut aus.
+10. **Resiliente Netzlaufwerk-Einbindung (NAS / SMB / GVFS):**
+    * Befinden sich Originalscans auf einem externen Netzlaufwerk (NAS) und dieses ist vorübergehend nicht eingehängt, zeigt das System stilvolle Ersatz-Silhouetten.
+    * Sobald das NAS im Dateimanager eingehängt wird, erkennt das System die Freigabe vollautomatisch und liefert sofort die echten Gesichts-Crops und Archivbilder aus – selbst wenn sich der dynamische GNOME-GVFS-Mountpoint (z. B. durch IP- oder mDNS-Wechsel) geändert hat. Eine erneute Indexierung ist nicht erforderlich.
 
 ### Tab 3: Bestände & Upload
 Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:

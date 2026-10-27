@@ -907,6 +907,56 @@
 </ul>
 </li>
 </ul>
+<hr />
+<h2 id="11-datenschutz-sicherheit-kdg-audit-roadmap">11. Datenschutz, Sicherheit &amp; KDG-Audit (Roadmap)</h2>
+<ul>
+<li><strong>Ziel:</strong> Maximale Datensicherheit, Sandboxing und Revisionssicherheit im kirchlichen Archivbetrieb.</li>
+<li><strong>Umgesetzte Maßnahmen (Phase 1, 2, 3 &amp; 4):</strong></li>
+<li>[x] <strong>Localhost-Binding als Standard (<code>SERVER_HOST=127.0.0.1</code>):</strong> Verhindert das ungesicherte Lauschen auf allen Netzwerkschnittstellen (<code>0.0.0.0</code>) und schützt vor unberechtigten Zugriffen aus dem LAN/WLAN.</li>
+<li>[x] <strong>Pfad-Whitelist bereinigt:</strong> Entfernung des Projektstamms (<code>.</code>) aus <code>ALLOWED_IMAGE_DIRS</code> (Standard nur noch <code>./data</code>).</li>
+<li>[x] <strong>Sandboxing im Ordner-Browser (<code>browse_folders</code>):</strong> Beschränkung der Navigation auf Home, autorisierte Archiv- und Medienmounts (<code>/media</code>, <code>/mnt</code>, GVFS). Entfernung des Wurzelverzeichnisses (<code>/</code>) aus den Schnellzugriffen.</li>
+<li>[x] <strong>Revisionssicheres KDG-Audit-Log (<code>audit_log</code> in SQLite):</strong> Protokollierung aller Betroffenenrechte- und Kurationsereignisse (Bildlöschungen nach § 19 KDG, Cluster-Merges, Umbenennungen, Personen-Ausschluss, Metadaten-Updates) inklusive neuem Prüf-Endpunkt <code>GET /system/audit-log</code>.</li>
+<li>[x] <strong>LRU-Cache-Management für WebP-Thumbnails (<code>MAX_THUMBNAIL_CACHE_MB</code>):</strong> Automatische Bereinigung ältester Thumbnails bei Erreichen des Speicherlimits (Standard: 5.000 MB = 5 GB), echtes LRU-Tracking via Touch bei Cache-Hits und neue Monitoring-Endpunkte <code>GET /api/system/thumbnail-cache/stats</code> und <code>POST /api/system/thumbnail-cache/prune</code>.</li>
+<li>[x] <strong>Memory-Guard für Großscans (<code>check_image_memory_guard</code>):</strong> Schutz vor unkontrollierten RAM-Spikes und OOM-Abbrüchen beim Öffnen von Multi-Megapixel-Scans angepasst an das aktive Hardware-Profil (LOW, MEDIUM, HIGH).</li>
+<li>[x] <strong>Client-seitige Render-Optimierung (<code>content-visibility: auto</code>):</strong> Reduziert den Browser-RAM- und GPU-Verbrauch bei großen Suchtreffern drastisch durch Überspringen von Paint- und Layoutkosten außerhalb des Viewports.</li>
+<li>[x] <strong>UX-Konsistenz &amp; Dialog-System (<code>showConfirmModal</code>):</strong> Alle 4 nativen <code>window.confirm()</code>-Dialoge (Gesicht aus Cluster entfernen, Leuchttisch leeren, Ordner-Reindexierung erzwingen) wurden durch ein elegantes, modales Bestätigungsfenster im einheitlichen Slate/Amber-Design ersetzt (inkl. ESC- und Tastaturbedienung).</li>
+<li>[x] <strong>Schutz vor versehentlichem Datenverlust (Undo-Toast):</strong> Destruktive Aktionen (z. B. Leeren des Leuchttischs) bieten über einen dezenten, zeitgesteuerten Undo-Toast die Möglichkeit zur sofortigen Ein-Klick-Wiederherstellung.</li>
+<li>[x] <strong>Ungespeicherte Änderungen &amp; Dirty-Checking:</strong> Eingaben in Metadaten-Formularen und Rückseiten-Notizen (Verso) werden überwacht (<code>isMetadataDirty</code>). Das Schließen des Modals, das Blättern mit Pfeiltasten oder der Abbruch der Bearbeitung warnen vor Datenverlust; <code>beforeunload</code> schützt vor versehentlichem Neuladen des Tabs.</li>
+<li>[x] <strong>Deep Linking &amp; URL-Zustandssynchronisation:</strong> Aktiver Tab (<code>tab</code>), Suchanfragen (<code>q</code>), Konfidenz-Schwellenwert (<code>threshold</code>), Ergebnis-Limit (<code>limit</code>), Import-Batches (<code>batch</code>), Epochen (<code>epoch</code>), Zeiträume (<code>from</code>/<code>to</code>), Urheber (<code>creator</code>), Signaturen (<code>signature</code>) und Varianten-Stapelung (<code>stack</code>) synchronisieren sich bidirektional mit der Browser-URL (<code>history.replaceState</code> &amp; <code>popstate</code>). Recherchen sind damit bookmark- und teilbar.</li>
+<li>[x] <strong>Modulare ES6 Frontend-Architektur (<code>static/js/</code>):</strong> Strukturierung in dedizierte, wartbare Submodule (<code>api.js</code>, <code>dialogs.js</code>, <code>utils.js</code>, <code>thesaurus.js</code>, <code>lightbox.js</code>, <code>network.js</code>, <code>main.js</code>) mit vollständiger <code>window</code>-Bridge für unterbrechungsfreie Abwärtskompatibilität aller bestehenden HTML-Attribute.</li>
+<li>[x] <strong>Barrierefreiheit (a11y) &amp; DOM-Bereinigung:</strong> Beseitigung redundanter Modal-IDs im DOM; Ausstattung aller Modals mit semantischen WAI-ARIA-Attributen (<code>role="dialog"</code>, <code>aria-modal="true"</code>, <code>aria-labelledby</code>) nach BITV 2.0 / WCAG 2.1 AA.</li>
+</ul>
+<h2 id="-">---</h2>
+<h2 id="31-dynamische-netzlaufwerk-auflosung-gvfssmb-resilienz-bei-personen-portrats">31. Dynamische Netzlaufwerk-Auflösung (GVFS/SMB) &amp; Resilienz bei Personen-Porträts</h2>
+<ul>
+<li><strong>Ziel:</strong> Lückenlose Erreichbarkeit aller archivierten Bilder und Gesichts-Porträts auf wechselnd eingehängten Netzlaufwerken (NAS / SMB / GVFS) sowie robuste Detail-Abfragen.</li>
+<li><strong>Umgesetzte Maßnahmen (Oktober 2026):</strong></li>
+<li>[x] <strong>1. Dynamische GVFS-Pfad-Kompensation (<code>resolve_archive_path</code> in <code>app/core/security.py</code>):</strong><ul>
+<li>Automatische Erkennung des relativen Freigabe-Pfads (<code>/SORTIEREN/...</code>, <code>/Lightroom/...</code> etc.) und transparente Weiterleitung auf den aktiven GVFS-Mount unter <code>/run/user/&lt;uid&gt;/gvfs/</code>.</li>
+<li>Gleicht veränderte mDNS-Hostnamen oder IP-Adressen (z. B. <code>nas-6e-91-61.local</code> vs. <code>nas-6e-91-50</code>) bei erneutem Einhängen im Linux-Dateimanager vollautomatisch aus, ohne dass Pfade in der Datenbank neu indiziert werden müssen.</li>
+</ul>
+</li>
+<li>[x] <strong>2. Automatische Sandboxing-Freigabe für Netzlaufwerke (<code>get_allowed_base_dirs</code> in <code>app/core/security.py</code>):</strong><ul>
+<li>Dynamisch unter <code>/run/user/&lt;uid&gt;/gvfs/</code>, <code>/media</code> oder <code>/mnt</code> eingehängte Freigaben werden automatisch in die Liste der erlaubten Basisverzeichnisse aufgenommen.</li>
+</ul>
+</li>
+<li>[x] <strong>3. Korrektur des Cluster-Detail-Endpunkts (<code>get_cluster_details</code> in <code>app/services/clustering_service.py</code>):</strong><ul>
+<li>Behebung eines <code>UnboundLocalError</code> für <code>label</code>, sodass Abfragen auf <code>/faces/clusters/{cluster_id}</code> zuverlässig mit HTTP 200 und allen Gesichts-Bounding-Boxes antworten.</li>
+</ul>
+</li>
+<li>[x] <strong>4. Intelligentes Caching von Porträt-Vorschauen (<code>get_cluster_preview</code> in <code>app/api/search.py</code>):</strong><ul>
+<li>Fallback-SVGs werden mit <code>Cache-Control: no-cache, no-store, must-revalidate</code> ausgeliefert, sodass beim Einhängen des NAS sofort das echte Porträt nachgeladen wird. Echte Porträts nutzen <code>max-age=86400</code>.</li>
+</ul>
+</li>
+<li>[x] <strong>5. Bereinigtes, hochauflösendes Ersatz-Avatar-Design:</strong><ul>
+<li>Zentriertes, stilvolles Silhouette-Icon im Archiv-Farbschema (Slate &amp; Amber) ohne störende Text-Überlagerungen.</li>
+</ul>
+</li>
+<li>[x] <strong>6. Automatisierte Test-Absicherung:</strong><ul>
+<li>Erweiterung von <code>tests/test_security_audit.py</code> um <code>test_dynamic_gvfs_path_resolution</code>. Alle 41 Tests der Testsuite bestehen (100% grün).</li>
+</ul>
+</li>
+</ul>
     </article>
     <footer>
       <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>

@@ -106,7 +106,46 @@ def browse_folders(path: Optional[str] = None):
     if not target_path.is_dir():
         target_path = target_path.parent
 
-    # Quick links
+    # Sandboxing: Zulässige Navigationswurzeln ermitteln
+    allowed_roots: list[Path] = [
+        Path.home().resolve(),
+        Path(settings.ARCHIVE_DATA_DIR).resolve(),
+    ]
+    for d in get_allowed_base_dirs():
+        if d not in allowed_roots:
+            allowed_roots.append(d)
+
+    for ext_root in [Path(f"/run/user/{os.getuid()}/gvfs"), Path("/media"), Path("/mnt")]:
+        try:
+            if ext_root.exists():
+                r = ext_root.resolve()
+                if r not in allowed_roots:
+                    allowed_roots.append(r)
+        except Exception:
+            pass
+
+    # Prüfe Sandboxing-Grenzen
+    is_path_allowed = False
+    for root in allowed_roots:
+        try:
+            if target_path == root or target_path.is_relative_to(root):
+                is_path_allowed = True
+                break
+        except AttributeError:
+            try:
+                target_path.relative_to(root)
+                is_path_allowed = True
+                break
+            except ValueError:
+                continue
+
+    if not is_path_allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="Zugriff verweigert: Der gewählte Pfad liegt außerhalb der autorisierten Benutzer- und Archivbereiche.",
+        )
+
+    # Quick links (nur autorisierte Archiv- & Medienbereiche, kein System-Root '/')
     quick_links = []
     
     # 1. GVFS (NAS / SMB-Freigaben)
@@ -131,9 +170,6 @@ def browse_folders(path: Optional[str] = None):
                 quick_links.append({"label": f"Laufwerke ({media_candidate})", "path": str(mp), "icon": "disc"})
         except Exception:
             pass
-
-    # 5. Root
-    quick_links.append({"label": "Wurzelverzeichnis (/)", "path": "/", "icon": "hard-drive"})
 
     # Unterverzeichnisse und Bilder zählen
     subdirs = []
@@ -163,7 +199,16 @@ def browse_folders(path: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Lesen des Ordners: {e}")
 
-    parent_path = str(target_path.parent) if target_path.parent != target_path else None
+    parent_allowed = False
+    if target_path.parent != target_path:
+        for root in allowed_roots:
+            try:
+                if target_path.parent == root or target_path.parent.is_relative_to(root):
+                    parent_allowed = True
+                    break
+            except (AttributeError, ValueError):
+                continue
+    parent_path = str(target_path.parent) if parent_allowed else None
 
     # Breadcrumbs
     parts = []

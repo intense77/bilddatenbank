@@ -528,11 +528,41 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   - [ ] **GND- / Normdatei-Strategie (Offline-First):**
     * Um die 100%ige Offline-Fähigkeit und Air-Gap-Sicherheit des Archivs zu wahren, keine externen Live-API-Calls ins Internet: Stattdessen optionale Bereitstellung lokaler, vorkompilierter GND-Personen-Dumps (z. B. Theologen, Bischöfe, regionale Persönlichkeiten) als lokale SQLite-Tabelle.
 
+---
 
+## 11. Datenschutz, Sicherheit & KDG-Audit (Roadmap)
+* **Ziel:** Maximale Datensicherheit, Sandboxing und Revisionssicherheit im kirchlichen Archivbetrieb.
+* **Umgesetzte Maßnahmen (Phase 1, 2, 3 & 4):**
+  - [x] **Localhost-Binding als Standard (`SERVER_HOST=127.0.0.1`):** Verhindert das ungesicherte Lauschen auf allen Netzwerkschnittstellen (`0.0.0.0`) und schützt vor unberechtigten Zugriffen aus dem LAN/WLAN.
+  - [x] **Pfad-Whitelist bereinigt:** Entfernung des Projektstamms (`.`) aus `ALLOWED_IMAGE_DIRS` (Standard nur noch `./data`).
+  - [x] **Sandboxing im Ordner-Browser (`browse_folders`):** Beschränkung der Navigation auf Home, autorisierte Archiv- und Medienmounts (`/media`, `/mnt`, GVFS). Entfernung des Wurzelverzeichnisses (`/`) aus den Schnellzugriffen.
+  - [x] **Revisionssicheres KDG-Audit-Log (`audit_log` in SQLite):** Protokollierung aller Betroffenenrechte- und Kurationsereignisse (Bildlöschungen nach § 19 KDG, Cluster-Merges, Umbenennungen, Personen-Ausschluss, Metadaten-Updates) inklusive neuem Prüf-Endpunkt `GET /system/audit-log`.
+  - [x] **LRU-Cache-Management für WebP-Thumbnails (`MAX_THUMBNAIL_CACHE_MB`):** Automatische Bereinigung ältester Thumbnails bei Erreichen des Speicherlimits (Standard: 5.000 MB = 5 GB), echtes LRU-Tracking via Touch bei Cache-Hits und neue Monitoring-Endpunkte `GET /api/system/thumbnail-cache/stats` und `POST /api/system/thumbnail-cache/prune`.
+  - [x] **Memory-Guard für Großscans (`check_image_memory_guard`):** Schutz vor unkontrollierten RAM-Spikes und OOM-Abbrüchen beim Öffnen von Multi-Megapixel-Scans angepasst an das aktive Hardware-Profil (LOW, MEDIUM, HIGH).
+  - [x] **Client-seitige Render-Optimierung (`content-visibility: auto`):** Reduziert den Browser-RAM- und GPU-Verbrauch bei großen Suchtreffern drastisch durch Überspringen von Paint- und Layoutkosten außerhalb des Viewports.
+  - [x] **UX-Konsistenz & Dialog-System (`showConfirmModal`):** Alle 4 nativen `window.confirm()`-Dialoge (Gesicht aus Cluster entfernen, Leuchttisch leeren, Ordner-Reindexierung erzwingen) wurden durch ein elegantes, modales Bestätigungsfenster im einheitlichen Slate/Amber-Design ersetzt (inkl. ESC- und Tastaturbedienung).
+  - [x] **Schutz vor versehentlichem Datenverlust (Undo-Toast):** Destruktive Aktionen (z. B. Leeren des Leuchttischs) bieten über einen dezenten, zeitgesteuerten Undo-Toast die Möglichkeit zur sofortigen Ein-Klick-Wiederherstellung.
+  - [x] **Ungespeicherte Änderungen & Dirty-Checking:** Eingaben in Metadaten-Formularen und Rückseiten-Notizen (Verso) werden überwacht (`isMetadataDirty`). Das Schließen des Modals, das Blättern mit Pfeiltasten oder der Abbruch der Bearbeitung warnen vor Datenverlust; `beforeunload` schützt vor versehentlichem Neuladen des Tabs.
+  - [x] **Deep Linking & URL-Zustandssynchronisation:** Aktiver Tab (`tab`), Suchanfragen (`q`), Konfidenz-Schwellenwert (`threshold`), Ergebnis-Limit (`limit`), Import-Batches (`batch`), Epochen (`epoch`), Zeiträume (`from`/`to`), Urheber (`creator`), Signaturen (`signature`) und Varianten-Stapelung (`stack`) synchronisieren sich bidirektional mit der Browser-URL (`history.replaceState` & `popstate`). Recherchen sind damit bookmark- und teilbar.
+  - [x] **Modulare ES6 Frontend-Architektur (`static/js/`):** Strukturierung in dedizierte, wartbare Submodule (`api.js`, `dialogs.js`, `utils.js`, `thesaurus.js`, `lightbox.js`, `network.js`, `main.js`) mit vollständiger `window`-Bridge für unterbrechungsfreie Abwärtskompatibilität aller bestehenden HTML-Attribute.
+  - [x] **Barrierefreiheit (a11y) & DOM-Bereinigung:** Beseitigung redundanter Modal-IDs im DOM; Ausstattung aller Modals mit semantischen WAI-ARIA-Attributen (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`) nach BITV 2.0 / WCAG 2.1 AA.
 
+---
+---
 
-
-
-
-
-
+## 31. Dynamische Netzlaufwerk-Auflösung (GVFS/SMB) & Resilienz bei Personen-Porträts
+* **Ziel:** Lückenlose Erreichbarkeit aller archivierten Bilder und Gesichts-Porträts auf wechselnd eingehängten Netzlaufwerken (NAS / SMB / GVFS) sowie robuste Detail-Abfragen.
+* **Umgesetzte Maßnahmen (Oktober 2026):**
+  - [x] **1. Dynamische GVFS-Pfad-Kompensation (`resolve_archive_path` in `app/core/security.py`):**
+    * Automatische Erkennung des relativen Freigabe-Pfads (`/SORTIEREN/...`, `/Lightroom/...` etc.) und transparente Weiterleitung auf den aktiven GVFS-Mount unter `/run/user/<uid>/gvfs/`.
+    * Gleicht veränderte mDNS-Hostnamen oder IP-Adressen (z. B. `nas-6e-91-61.local` vs. `nas-6e-91-50`) bei erneutem Einhängen im Linux-Dateimanager vollautomatisch aus, ohne dass Pfade in der Datenbank neu indiziert werden müssen.
+  - [x] **2. Automatische Sandboxing-Freigabe für Netzlaufwerke (`get_allowed_base_dirs` in `app/core/security.py`):**
+    * Dynamisch unter `/run/user/<uid>/gvfs/`, `/media` oder `/mnt` eingehängte Freigaben werden automatisch in die Liste der erlaubten Basisverzeichnisse aufgenommen.
+  - [x] **3. Korrektur des Cluster-Detail-Endpunkts (`get_cluster_details` in `app/services/clustering_service.py`):**
+    * Behebung eines `UnboundLocalError` für `label`, sodass Abfragen auf `/faces/clusters/{cluster_id}` zuverlässig mit HTTP 200 und allen Gesichts-Bounding-Boxes antworten.
+  - [x] **4. Intelligentes Caching von Porträt-Vorschauen (`get_cluster_preview` in `app/api/search.py`):**
+    * Fallback-SVGs werden mit `Cache-Control: no-cache, no-store, must-revalidate` ausgeliefert, sodass beim Einhängen des NAS sofort das echte Porträt nachgeladen wird. Echte Porträts nutzen `max-age=86400`.
+  - [x] **5. Bereinigtes, hochauflösendes Ersatz-Avatar-Design:**
+    * Zentriertes, stilvolles Silhouette-Icon im Archiv-Farbschema (Slate & Amber) ohne störende Text-Überlagerungen.
+  - [x] **6. Automatisierte Test-Absicherung:**
+    * Erweiterung von `tests/test_security_audit.py` um `test_dynamic_gvfs_path_resolution`. Alle 41 Tests der Testsuite bestehen (100% grün).

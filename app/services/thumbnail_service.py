@@ -18,12 +18,127 @@ class ThumbnailService:
     Vermeidet das wiederholte Dekodieren großer historischer Master-Scans (TIFF/RAW/High-Res JPEG).
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Optional[Path] = None, max_cache_mb: Optional[int] = None):
         self.cache_dir = cache_dir or Path(settings.THUMBNAIL_CACHE_DIR)
+        self.max_cache_mb = max_cache_mb if max_cache_mb is not None else getattr(settings, "MAX_THUMBNAIL_CACHE_MB", 5000)
+        self._write_count = 0
         try:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             logger.warning("Konnte Thumbnail-Cache-Verzeichnis nicht anlegen: %s", e)
+
+    def _touch_file(self, file_path: Path) -> None:
+        """Aktualisiert mtime für echtes LRU-Tracking bei Cache-Hits."""
+        try:
+            os.utime(file_path, None)
+        except Exception:
+            pass
+
+    def _record_write_and_maybe_prune(self) -> None:
+        """Inkrementiert den Schreibzähler und stößt alle 100 Schreibvorgänge die LRU-Prüfung an."""
+        self._write_count += 1
+        if self._write_count % 100 == 0:
+            try:
+                self.prune_lru()
+            except Exception as e:
+                logger.debug("Automatische LRU-Bereinigung fehlgeschlagen: %s", e)
+
+    def get_cache_stats(self) -> dict:
+        """Liefert Metriken zum aktuellen Füllstand des Thumbnail-Caches."""
+        total_files = 0
+        total_bytes = 0
+        try:
+            for item in self.cache_dir.iterdir():
+                if item.is_file() and (item.suffix.lower() in (".webp", ".jpg")):
+                    total_files += 1
+                    total_bytes += item.stat().st_size
+        except Exception as e:
+            logger.debug("Fehler beim Ermitteln der Cache-Statistik: %s", e)
+
+        total_mb = round(total_bytes / (1024 * 1024), 2)
+        max_mb = self.max_cache_mb
+        usage_pct = round((total_mb / max_mb) * 100, 1) if max_mb > 0 else 0.0
+
+        return {
+            "cache_dir": str(self.cache_dir.resolve()),
+            "total_files": total_files,
+            "total_bytes": total_bytes,
+            "total_mb": total_mb,
+            "max_cache_mb": max_mb,
+            "usage_percent": usage_pct,
+            "limit_exceeded": total_mb > max_mb,
+        }
+
+    def prune_lru(self, target_mb: Optional[int] = None, force: bool = False) -> dict:
+        """
+        Bereinigt älteste Cache-Dateien (LRU: Least Recently Used).
+        Greift automatisch, wenn der Cache max_cache_mb überschreitet,
+        und bereinigt auf 80 % des Limits (bzw. auf target_mb).
+        """
+        stats = self.get_cache_stats()
+        current_mb = stats["total_mb"]
+        max_mb = self.max_cache_mb
+
+        if not force and current_mb <= max_mb:
+            return {
+                "status": "ok",
+                "pruned_count": 0,
+                "freed_mb": 0.0,
+                "current_mb": current_mb,
+                "max_cache_mb": max_mb,
+            }
+
+        effective_target_mb = target_mb if target_mb is not None else max_mb * 0.8
+        target_bytes = int(effective_target_mb * 1024 * 1024)
+
+        file_entries = []
+        try:
+            for item in self.cache_dir.iterdir():
+                if item.is_file() and (item.suffix.lower() in (".webp", ".jpg")):
+                    try:
+                        st = item.stat()
+                        file_entries.append((item, st.st_mtime, st.st_size))
+                    except (OSError, FileNotFoundError):
+                        continue
+        except Exception as e:
+            logger.error("Fehler beim Scannen des Thumbnail-Caches für LRU: %s", e)
+            return {"status": "error", "message": str(e)}
+
+        # Älteste zuerst
+        file_entries.sort(key=lambda x: x[1])
+
+        current_bytes = stats["total_bytes"]
+        pruned_count = 0
+        freed_bytes = 0
+
+        for f_path, _, f_size in file_entries:
+            if current_bytes <= target_bytes:
+                break
+            try:
+                f_path.unlink(missing_ok=True)
+                current_bytes -= f_size
+                freed_bytes += f_size
+                pruned_count += 1
+            except Exception:
+                pass
+
+        freed_mb = round(freed_bytes / (1024 * 1024), 2)
+        remaining_mb = round(current_bytes / (1024 * 1024), 2)
+        logger.info(
+            "LRU-Cache-Bereinigung durchgeführt: %d Dateien gelöscht, %.2f MB freigegeben. Verbleibend: %.2f MB",
+            pruned_count,
+            freed_mb,
+            remaining_mb,
+        )
+
+        return {
+            "status": "pruned",
+            "pruned_count": pruned_count,
+            "freed_mb": freed_mb,
+            "remaining_files": len(file_entries) - pruned_count,
+            "remaining_mb": remaining_mb,
+            "max_cache_mb": max_mb,
+        }
 
     def _get_cache_key(
         self,
@@ -67,6 +182,9 @@ class ThumbnailService:
         rotation: Optional[int] = None,
     ) -> bytes:
         """Liefert komprimierte WebP-Bytes für ein Thumbnail aus dem Cache oder erzeugt sie."""
+        from app.core.security import resolve_archive_path
+        file_path = resolve_archive_path(file_path)
+
         # Falls rotation nicht explizit übergeben wurde: Aus SQLite edit_settings nachschlagen
         if rotation is None:
             try:
@@ -85,11 +203,13 @@ class ThumbnailService:
 
         if webp_file.is_file():
             try:
+                self._touch_file(webp_file)
                 return webp_file.read_bytes()
             except Exception:
                 pass
         elif legacy_jpg_file.is_file():
             try:
+                self._touch_file(legacy_jpg_file)
                 return legacy_jpg_file.read_bytes()
             except Exception:
                 pass
@@ -115,6 +235,7 @@ class ThumbnailService:
         # In Cache ablegen
         try:
             webp_file.write_bytes(data)
+            self._record_write_and_maybe_prune()
         except Exception as e:
             logger.warning("Thumbnail konnte nicht gecacht werden: %s", e)
 
@@ -132,6 +253,9 @@ class ThumbnailService:
         Schneidet ein Gesicht aus dem Master-Bild aus, skaliert es und speichert es im Cache.
         Gibt WebP-Bytes zurück.
         """
+        from app.core.security import resolve_archive_path
+        file_path = resolve_archive_path(file_path)
+
         if not file_path.is_file() or len(bbox) != 4:
             return None
 
@@ -141,11 +265,13 @@ class ThumbnailService:
 
         if webp_file.is_file():
             try:
+                self._touch_file(webp_file)
                 return webp_file.read_bytes()
             except Exception:
                 pass
         elif legacy_jpg_file.is_file():
             try:
+                self._touch_file(legacy_jpg_file)
                 return legacy_jpg_file.read_bytes()
             except Exception:
                 pass
@@ -179,6 +305,7 @@ class ThumbnailService:
 
             try:
                 webp_file.write_bytes(data)
+                self._record_write_and_maybe_prune()
             except Exception as e:
                 logger.warning("Face-Crop konnte nicht gecacht werden: %s", e)
 
@@ -213,6 +340,7 @@ class ThumbnailService:
                     try:
                         thumb_copy.save(buf, format="WEBP", quality=80, method=4)
                         webp_file.write_bytes(buf.getvalue())
+                        self._record_write_and_maybe_prune()
                     finally:
                         buf.close()
                 finally:
@@ -249,6 +377,7 @@ class ThumbnailService:
                         try:
                             face_crop.save(cbuf, format="WEBP", quality=85, method=4)
                             crop_file.write_bytes(cbuf.getvalue())
+                            self._record_write_and_maybe_prune()
                         finally:
                             cbuf.close()
                     finally:

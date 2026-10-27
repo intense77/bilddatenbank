@@ -11,7 +11,11 @@ from PIL import Image, ImageOps
 from qdrant_client.http import models as rest_models
 
 from app.core.config import settings
-from app.core.system_profile import current_hardware_profile, safe_normalize_image_to_rgb
+from app.core.system_profile import (
+    current_hardware_profile,
+    safe_normalize_image_to_rgb,
+    check_image_memory_guard,
+)
 from app.services.qdrant_service import QdrantService
 from app.services.clip_service import ClipService
 from app.services.face_service import FaceService
@@ -108,6 +112,12 @@ class IndexingService:
 
         file_size = os.path.getsize(abs_path)
         with Image.open(abs_path) as raw_img:
+            raw_w, raw_h = raw_img.size
+            if not check_image_memory_guard(raw_w, raw_h):
+                raise ValueError(
+                    f"Bild '{file_path.name}' überschreitet die hardwarebasierte Speicherobergrenze "
+                    f"({raw_w}x{raw_h} = {raw_w * raw_h // 1_000_000} MP) für Profil '{current_hardware_profile.tier}'."
+                )
             meta = metadata_service.extract_metadata(file_path, img=raw_img)
             raw_transposed = ImageOps.exif_transpose(raw_img)
             pil_img = safe_normalize_image_to_rgb(raw_transposed)

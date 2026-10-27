@@ -413,7 +413,10 @@ Bei Archiven mit mehr als 5.000 Gesichtern wird das automatische Clustering nach
 8. <strong>Falsch zugeordnete Gesichter ausschließen (Split / „Nicht diese Person“):</strong><br />
    * Auf jeder Bildkarte in der Cluster-Detailansicht befindet sich der Button <strong>„Entfernen“</strong> (<em>„Nicht diese Person“</em>).<br />
    * Entfernt ein versehentlich zugeordnetes Porträt aus dem Cluster und aktualisiert das Elternbild, ohne die übrigen Gesichter zu verändern.<br />
-9. <strong>Cluster neu berechnen:</strong> Ein Klick auf <em>„Cluster neu berechnen“</em> führt das DBSCAN-Clustering über alle archivierten Gesichter erneut aus.</p>
+9. <strong>Cluster neu berechnen:</strong> Ein Klick auf <em>„Cluster neu berechnen“</em> führt das DBSCAN-Clustering über alle archivierten Gesichter erneut aus.<br />
+10. <strong>Resiliente Netzlaufwerk-Einbindung (NAS / SMB / GVFS):</strong><br />
+    * Befinden sich Originalscans auf einem externen Netzlaufwerk (NAS) und dieses ist vorübergehend nicht eingehängt, zeigt das System stilvolle Ersatz-Silhouetten.<br />
+    * Sobald das NAS im Dateimanager eingehängt wird, erkennt das System die Freigabe vollautomatisch und liefert sofort die echten Gesichts-Crops und Archivbilder aus – selbst wenn sich der dynamische GNOME-GVFS-Mountpoint (z. B. durch IP- oder mDNS-Wechsel) geändert hat. Eine erneute Indexierung ist nicht erforderlich.</p>
 <h3 id="tab-3-bestande-upload">Tab 3: Bestände &amp; Upload</h3>
 <p>Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:<br />
 1. <strong>Bestehende Ordner ohne Verschieben einbinden:</strong><br />

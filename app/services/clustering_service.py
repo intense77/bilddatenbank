@@ -506,19 +506,22 @@ class ClusteringService:
             return None
 
         faces = []
-        if not label:
-            try:
-                from app.services.metadata_db import metadata_db
-                c_info = metadata_db.get_cluster(cluster_id)
-                if c_info and c_info.get("name"):
-                    label = c_info.get("name")
-            except Exception:
-                pass
+        label: Optional[str] = None
+        try:
+            from app.services.metadata_db import metadata_db
+            c_info = metadata_db.get_cluster(cluster_id)
+            if c_info and c_info.get("name"):
+                label = c_info.get("name")
+        except Exception:
+            pass
+
+        from app.core.security import resolve_archive_path
 
         for r in records:
             p = r.payload or {}
             f_label = p.get("label") or label
-            file_path = p.get("file_path") or p.get("image_path")
+            raw_path = p.get("file_path") or p.get("image_path")
+            file_path = str(resolve_archive_path(raw_path)) if raw_path else None
             bbox = p.get("bbox")
 
             orig_w = p.get("orig_width")
@@ -543,7 +546,7 @@ class ClusteringService:
 
             faces.append({
                 "face_id": str(r.id),
-                "file_path": file_path,
+                "file_path": file_path or raw_path,
                 "bbox": bbox,
                 "bbox_percent": bbox_pct,
                 "orig_width": orig_w,
@@ -561,9 +564,25 @@ class ClusteringService:
             "faces": faces,
         }
 
+    def generate_fallback_avatar_svg(self, label: Optional[str] = None, cluster_id: str = "") -> bytes:
+        """Erzeugt ein responsives, stilvolles SVG-Ersatzporträt (Slate & Amber) bei Offline-Dateien."""
+        svg = """<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="80" fill="url(#bgGrad)"/>
+  <circle cx="80" cy="80" r="76" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-opacity="0.45"/>
+  <path d="M80 72c12.15 0 22-9.85 22-22s-9.85-22-22-22-22 9.85-22 22 9.85 22 22 22zm0 11c-16.5 0-50 8.3-50 25v13h100v-13c0-16.7-33.5-25-50-25z" fill="#f59e0b" fill-opacity="0.85"/>
+</svg>"""
+        return svg.encode("utf-8")
+
     def get_cluster_preview_bytes(self, cluster_id: str) -> Optional[bytes]:
-        """Liefert die JPEG-Bytes des Vorschaubildes eines Clusters über den schnellen Thumbnail-Cache."""
+        """Liefert die WebP/JPEG-Bytes des Vorschaubildes eines Clusters oder ein elegantes Fallback-SVG."""
         from app.services.thumbnail_service import thumbnail_service
+        from app.core.security import resolve_archive_path
         records, _ = self.qdrant.client.scroll(
             collection_name=settings.COLLECTION_FACES,
             scroll_filter=rest_models.Filter(
@@ -574,24 +593,32 @@ class ClusteringService:
                     )
                 ]
             ),
-            limit=1,
+            limit=8,
             with_payload=True,
             with_vectors=False,
         )
         if not records:
-            return None
+            return self.generate_fallback_avatar_svg(None, cluster_id)
 
-        p = records[0].payload or {}
-        file_path = p.get("file_path") or p.get("image_path")
-        bbox = p.get("bbox")
-        if not file_path or not bbox:
-            return None
+        cluster_label = None
+        for r in records:
+            p = r.payload or {}
+            if not cluster_label and p.get("label"):
+                cluster_label = p.get("label")
 
-        path = Path(file_path)
-        if not path.is_file():
-            return None
+            file_path = p.get("file_path") or p.get("image_path")
+            bbox = p.get("bbox")
+            if not file_path or not bbox:
+                continue
 
-        return thumbnail_service.get_or_create_face_crop(path, bbox=bbox, target_size=160)
+            path = resolve_archive_path(file_path)
+            if path.is_file():
+                crop_bytes = thumbnail_service.get_or_create_face_crop(path, bbox=bbox, target_size=160)
+                if crop_bytes:
+                    return crop_bytes
+
+        # Falls keine der Bilddateien lokal erreichbar ist (z. B. unmounted NAS)
+        return self.generate_fallback_avatar_svg(cluster_label, cluster_id)
 
 
     def label_cluster(self, cluster_id: str, label: str) -> int:

@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from app.api.deps import get_qdrant_service, clear_face_service_cache
@@ -96,3 +97,24 @@ def prune_database(
     source_dir = Path(settings.ARCHIVE_DATA_DIR).resolve()
     stats = qdrant.prune_orphaned_records(source_dir=source_dir, dry_run=dry_run)
     return stats
+
+
+@router.get("/thumbnail-cache/stats")
+def get_thumbnail_cache_stats():
+    """Liefert Metriken zur Speichernutzung des lokalen WebP-Thumbnail-Caches."""
+    from app.services.thumbnail_service import thumbnail_service
+    return thumbnail_service.get_cache_stats()
+
+
+@router.post("/thumbnail-cache/prune")
+def prune_thumbnail_cache(
+    target_mb: Optional[int] = Query(None, description="Zielgröße in MB (Standard: 80% des Limits)"),
+    force: bool = Query(False, description="Erzwingt Bereinigung auch unterhalb des Limits"),
+):
+    """
+    Bereinigt älteste WebP-Thumbnails und Gesichts-Crops (LRU: Least Recently Used),
+    um Festplattenplatz freizugeben.
+    """
+    from app.services.thumbnail_service import thumbnail_service
+    return thumbnail_service.prune_lru(target_mb=target_mb, force=force)
+

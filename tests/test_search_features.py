@@ -298,6 +298,40 @@ def test_get_image_details_robustness():
             settings.ALLOWED_IMAGE_DIRS = orig_allowed
 
 
+def test_cluster_preview_offline_fallback():
+    """Prüft, dass get_cluster_preview_bytes bei Offline-/fehlenden Dateien ein SVG liefert."""
+    from app.services.clustering_service import ClusteringService
+    from app.api.search import get_cluster_preview
+
+    mock_qdrant = MagicMock()
+    # Mock records where files do not exist
+    record1 = MagicMock()
+    record1.payload = {
+        "file_path": "/nonexistent/path/photo1.jpg",
+        "bbox": [10, 10, 50, 50],
+        "label": "Bischof Müller",
+    }
+    mock_qdrant.client.scroll.return_value = ([record1], None)
+
+    cs = ClusteringService(qdrant_service=mock_qdrant)
+    preview_bytes = cs.get_cluster_preview_bytes("cluster_999")
+    assert preview_bytes is not None
+    assert preview_bytes.startswith(b"<svg")
+    assert b"#f59e0b" in preview_bytes
+
+    # Test HTTP endpoint
+    from app.core.config import settings
+    orig_face_rec = settings.ENABLE_FACE_RECOGNITION
+    settings.ENABLE_FACE_RECOGNITION = True
+    try:
+        response = get_cluster_preview(cluster_id="cluster_999", clustering_service=cs)
+        assert response.status_code == 200
+        assert response.media_type == "image/svg+xml"
+        assert response.body.startswith(b"<svg")
+    finally:
+        settings.ENABLE_FACE_RECOGNITION = orig_face_rec
+
+
 if __name__ == "__main__":
     test_search_pagination_and_person_separation()
     test_batch_browsing_empty_query()
@@ -306,4 +340,5 @@ if __name__ == "__main__":
     test_timeline_and_facet_filtering()
     test_facets_summary_endpoint()
     test_get_image_details_robustness()
+    test_cluster_preview_offline_fallback()
     print("All search tests passed successfully!")

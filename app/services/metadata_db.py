@@ -125,6 +125,21 @@ class MetadataDatabase:
                     );
                 """)
 
+                # KDG / DSGVO Audit-Log für Kuration, Berichtigung (§ 18 KDG) und Löschung (§ 19 KDG)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS audit_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        action TEXT NOT NULL,
+                        target_type TEXT NOT NULL,
+                        target_id TEXT NOT NULL,
+                        details TEXT,
+                        operator TEXT DEFAULT 'local_archivist'
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target_type, target_id);")
+
                 conn.commit()
             logger.info("SQLite-Archivdatenbank erfolgreich initialisiert (WAL-Modus aktiv): %s", self.db_path)
         except Exception as e:
@@ -294,6 +309,99 @@ class MetadataDatabase:
         except Exception as e:
             logger.error("Fehler beim Speichern der Metadaten in SQLite: %s", e)
             raise e
+
+    def delete_metadata(self, file_path: str) -> bool:
+        """Löscht einen Metadaten-Datensatz anhand des Dateipfads aus SQLite."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    "DELETE FROM metadata WHERE file_path = ?",
+                    (str(file_path),)
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error("Fehler beim Löschen der Metadaten für %s: %s", file_path, e)
+            return False
+
+    # ------------------ KDG/DSGVO Audit-Log Operationen ------------------
+
+    def add_audit_log(
+        self,
+        action: str,
+        target_type: str,
+        target_id: str,
+        details: Optional[Union[Dict[str, Any], str]] = None,
+        operator: str = "local_archivist",
+    ) -> int:
+        """
+        Protokolliert archivische und datenschutzrelevante Vorgänge
+        (z. B. Löschungen, Umbenennungen, Cluster-Merges) revisionssicher nach § 18/19 KDG.
+        """
+        import json
+        details_str = None
+        if details is not None:
+            if isinstance(details, (dict, list)):
+                details_str = json.dumps(details, ensure_ascii=False)
+            else:
+                details_str = str(details)
+
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO audit_log (action, target_type, target_id, details, operator)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (action, target_type, str(target_id), details_str, operator),
+                )
+                conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error("Fehler beim Schreiben des Audit-Logs: %s", e)
+            return -1
+
+    def get_audit_logs(
+        self,
+        limit: int = 100,
+        target_type: Optional[str] = None,
+        target_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Liest die jüngsten Einträge aus dem KDG-Audit-Log."""
+        import json
+        try:
+            with self._get_connection() as conn:
+                query = "SELECT * FROM audit_log"
+                params: List[Any] = []
+                conditions = []
+                if target_type:
+                    conditions.append("target_type = ?")
+                    params.append(target_type)
+                if target_id:
+                    conditions.append("target_id = ?")
+                    params.append(str(target_id))
+
+                if conditions:
+                    query += " WHERE " + " AND ".join(conditions)
+
+                query += " ORDER BY id DESC LIMIT ?"
+                params.append(limit)
+
+                cursor = conn.execute(query, tuple(params))
+                rows = cursor.fetchall()
+                result = []
+                for r in rows:
+                    item = dict(r)
+                    if item.get("details"):
+                        try:
+                            item["details"] = json.loads(item["details"])
+                        except Exception:
+                            pass
+                    result.append(item)
+                return result
+        except Exception as e:
+            logger.error("Fehler beim Lesen des Audit-Logs: %s", e)
+            return []
 
     # ------------------ Cluster-Operationen ------------------
 

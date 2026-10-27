@@ -141,6 +141,26 @@ def apply_system_profile(profile: Optional[HardwareProfile] = None) -> HardwareP
     return active
 
 
+def check_image_memory_guard(width: int, height: int, profile: Optional[HardwareProfile] = None) -> bool:
+    """
+    Prüft vor der vollständigen Dekodierung eines Scans, ob die Abmessungen innerhalb
+    der zulässigen Hardware-Grenzen liegen, um Memory-Spikes und OOM-Abbrüche zu verhindern.
+    """
+    active = profile or current_hardware_profile
+    total_pixels = width * height
+    if total_pixels > active.max_image_pixels:
+        logger.warning(
+            "Memory-Guard ausgelöst: Bild mit %d Megapixeln (%dx%d) überschreitet das Systemlimit von %d MP (Hardware-Tier: %s).",
+            total_pixels // 1_000_000,
+            width,
+            height,
+            active.max_image_pixels // 1_000_000,
+            active.tier,
+        )
+        return False
+    return True
+
+
 def safe_normalize_image_to_rgb(img: Image.Image) -> Image.Image:
     """
     Normalisiert beliebige historische Bildformate (CMYK, 16-Bit Grayscale, Palette, LAB)

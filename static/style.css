@@ -160,3 +160,12 @@
   font-size: 11px !important;
   z-index: 35 !important;
 }
+
+/* Ressourceneffizienz: Offscreen-Karten überspringen Layout- & Paint-Kosten */
+#results-grid > div,
+.search-result-card,
+.cluster-card,
+.duplicate-cluster-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 260px 340px;
+}

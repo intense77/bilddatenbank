@@ -15,7 +15,8 @@ ALLOWED_IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".tif", ".tiff", 
 def get_allowed_base_dirs() -> list[Path]:
     """
     Gibt eine Liste aller erlaubten Basisverzeichnisse für Bilddateien zurück.
-    Beinhaltet ARCHIVE_DATA_DIR und optionale Verzeichnisse aus ALLOWED_IMAGE_DIRS.
+    Beinhaltet ARCHIVE_DATA_DIR, Verzeichnisse aus ALLOWED_IMAGE_DIRS sowie
+    aktiv eingehängte Benutzer- und Systemlaufwerke (GVFS, /media, /mnt).
     """
     allowed_dirs = []
     
@@ -32,6 +33,19 @@ def get_allowed_base_dirs() -> list[Path]:
         except Exception:
             continue
 
+    # Dynamisch eingehängte Netzlaufwerke und Wechselmedien automatisch zulassen
+    try:
+        uid = os.getuid()
+        for mount_root in [Path(f"/run/user/{uid}/gvfs"), Path("/media"), Path("/mnt")]:
+            if mount_root.is_dir():
+                for sub in mount_root.iterdir():
+                    if sub.is_dir():
+                        r = sub.resolve()
+                        if r not in allowed_dirs:
+                            allowed_dirs.append(r)
+    except Exception:
+        pass
+
     return allowed_dirs
 
 
@@ -43,6 +57,8 @@ def resolve_archive_path(path_input: Union[str, Path]) -> Path:
     - Löst die Tilde `~` zum Home-Verzeichnis des Nutzers auf
     - Wandelt relative Pfade in absolute Pfade relativ zu ARCHIVE_DATA_DIR um
     - Löst Symlinks und '..' kanonisch auf (.resolve())
+    - Dynamische GVFS-Auflösung: Falls ein Netzlaufwerk mit leicht abweichendem
+      Servernamen oder IP neu gemountet wurde, wird die Zieldatei im aktiven Mount gefunden.
     """
     if isinstance(path_input, str):
         cleaned = path_input.strip().strip("'\"")
@@ -56,6 +72,29 @@ def resolve_archive_path(path_input: Union[str, Path]) -> Path:
         p = (Path(settings.ARCHIVE_DATA_DIR) / p).resolve()
     else:
         p = p.resolve()
+
+    # Dynamische GVFS-Mount-Kompensation, falls die Datei am gespeicherten Pfad nicht existiert
+    if not p.exists():
+        p_str = str(p)
+        if "/gvfs/" in p_str:
+            try:
+                uid = os.getuid()
+                gvfs_root = Path(f"/run/user/{uid}/gvfs")
+                if gvfs_root.is_dir():
+                    parts = p.parts
+                    if "gvfs" in parts:
+                        gvfs_idx = parts.index("gvfs")
+                        # parts[gvfs_idx + 1] ist der Mount-Ordner (z.B. smb-share:server=...)
+                        # alles danach ist der relative Pfad im Share
+                        if len(parts) > gvfs_idx + 2:
+                            subpath = Path(*parts[gvfs_idx + 2:])
+                            for mount in gvfs_root.iterdir():
+                                if mount.is_dir():
+                                    candidate = (mount / subpath).resolve()
+                                    if candidate.exists():
+                                        return candidate
+            except Exception:
+                pass
 
     return p
 

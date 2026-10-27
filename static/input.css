@@ -415,5 +415,14 @@ body {
   min-height: 380px !important;
 }
 
+/* Ressourceneffizienz: Offscreen-Karten überspringen Layout- & Paint-Kosten */
+#results-grid > div,
+.search-result-card,
+.cluster-card,
+.duplicate-cluster-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 260px 340px;
+}
+
 
 

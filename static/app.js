@@ -12,13 +12,18 @@ let modalOpenSeq = 0;
 let isDeepZoomActive = false;
 let isModalCardFlipped = false;
 let currentTwoSidedInfo = null;
+let currentActiveTab = 'search';
+let isMetadataDirty = false;
+let confirmModalResolver = null;
+let undoToastTimeout = null;
+let currentUndoAction = null;
+
 let systemConfig = {
   faceRecognitionEnabled: false,
   status: 'unknown',
   device: 'cpu'
 };
 
-// Initialisierung bei DOM-Ready
 // Initialisierung bei DOM-Ready
 document.addEventListener('DOMContentLoaded', () => {
   checkSystemHealth();
@@ -30,12 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initSplitSliderDrag();
   loadImportBatches();
   initFacets();
-  // Vorbelegung Suche falls gewünscht
-  const urlParams = new URLSearchParams(window.location.search);
-  const q = urlParams.get('q');
-  if (q) {
-    setQueryAndSearch(q);
-  }
+  initConfirmAndUndoModals();
+  setupMetadataDirtyListeners();
+  restoreStateFromUrl();
 
   // Hintergrund-Import sofort reaktivieren, wenn Tab wieder in den Vordergrund tritt
   document.addEventListener('visibilitychange', () => {
@@ -43,10 +45,22 @@ document.addEventListener('DOMContentLoaded', () => {
       checkIndexingProgress();
     }
   });
+
+  window.addEventListener('popstate', () => {
+    restoreStateFromUrl();
+  });
+
+  window.addEventListener('beforeunload', (e) => {
+    if (isMetadataDirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 });
 
 // --- Tab Navigation ---
 function switchTab(tab) {
+  currentActiveTab = tab;
   const searchSec = document.getElementById('tab-search');
   const facesSec = document.getElementById('tab-faces');
   const networkSec = document.getElementById('tab-network');
@@ -104,6 +118,7 @@ function switchTab(tab) {
     checkIndexingProgress();
     loadImportBatches();
   }
+  syncSearchStateToUrl();
 }
 
 // --- Health Check & System Settings ---
@@ -533,6 +548,7 @@ async function executeSearch(query, limit = 24) {
   currentSearchOffset = 0;
   currentSearchFilter = 'all';
   currentSearchResults = [];
+  syncSearchStateToUrl();
 
   grid.innerHTML = '';
   empty.classList.add('hidden');
@@ -1595,7 +1611,7 @@ function applyClusterFilters(resetLimit = true) {
 
     const displayName = c.label || `Person ${String(c.cluster_id).replace('cluster_', '#')}`;
     const avatarSrc = c.preview_image || (`/faces/clusters/${encodeURIComponent(c.cluster_id)}/preview`);
-    const defaultPlaceholder = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="%231e293b"><circle cx="50" cy="50" r="40" fill="%23334155"/></svg>';
+    const defaultPlaceholder = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="%231e293b"/><stop offset="100%" stop-color="%230f172a"/></linearGradient></defs><rect width="100" height="100" rx="50" fill="url(%23g)"/><circle cx="50" cy="50" r="47" fill="none" stroke="%23f59e0b" stroke-width="2" stroke-opacity="0.4"/><path d="M50 46c7.7 0 14-6.3 14-14s-6.3-14-14-14-14 6.3-14 14 6.3 14 14 14zm0 7c-10.5 0-31.5 5.3-31.5 15.8V76h63v-7.2C81.5 58.3 60.5 53 50 53z" fill="%23f59e0b" fill-opacity="0.8"/></svg>';
 
     card.innerHTML = `
       <!-- Quick Rename Button -->
@@ -2161,7 +2177,14 @@ async function handleClusterLabelSubmit(e) {
 }
 
 async function handleRemoveFaceFromCluster(faceId, btnElement) {
-  if (!confirm('Möchten Sie dieses Gesicht wirklich aus dem Personen-Cluster entfernen ("Nicht diese Person")?')) {
+  const ok = await showConfirmModal(
+    'Gesicht aus Cluster entfernen',
+    'Möchten Sie dieses Gesicht wirklich aus dem Personen-Cluster entfernen ("Nicht diese Person")?',
+    'Entfernen',
+    'Abbrechen',
+    true
+  );
+  if (!ok) {
     return;
   }
 
@@ -2375,8 +2398,20 @@ function updateModalNavigationButtons() {
   }
 }
 
-function navigateModalImage(direction) {
+async function navigateModalImage(direction, force = false) {
   if (cropperInstance) return;
+
+  if (!force && isMetadataDirty) {
+    const discard = await showConfirmModal(
+      'Ungespeicherte Änderungen',
+      'Sie haben ungespeicherte Änderungen an den Metadaten. Möchten Sie zum nächsten Bild wechseln und die Änderungen verwerfen?',
+      'Änderungen verwerfen',
+      'Weiter bearbeiten',
+      true
+    );
+    if (!discard) return;
+    isMetadataDirty = false;
+  }
 
   // 1. Navigation innerhalb eines Personen-Clusters (falls aus Cluster geöffnet)
   if (currentModalTargetFaceContext && activeCluster && activeCluster.faces && activeCluster.faces.length > 1) {
@@ -2433,6 +2468,7 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   toggleModalCardFlip(false);
   currentTwoSidedInfo = null;
   resetModalZoom();
+  isMetadataDirty = false;
   updateModalNavigationButtons();
 
   // Garantiere strikte Höhenkontrolle gegen Footer-Explosionen bei vielen Gesichtern
@@ -2903,7 +2939,19 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   }
 }
 
-function closeImageModal() {
+async function closeImageModal(force = false) {
+  if (!force && isMetadataDirty) {
+    const discard = await showConfirmModal(
+      'Ungespeicherte Änderungen',
+      'Sie haben ungespeicherte Metadaten-Änderungen. Möchten Sie das Bildfenster wirklich schließen und die Änderungen verwerfen?',
+      'Änderungen verwerfen',
+      'Weiter bearbeiten',
+      true
+    );
+    if (!discard) return;
+    isMetadataDirty = false;
+  }
+
   const modal = document.getElementById('image-modal');
   modal.classList.add('hidden');
   toggleModalFullscreen(false);
@@ -2922,7 +2970,7 @@ function closeImageModal() {
   resetAllImageAdjustments(true);
   resetImageEditHistory();
   toggleWideEditMode(false);
-  toggleMetadataEditMode(false);
+  toggleMetadataEditMode(false, true);
   switchModalSidebarTab('meta');
   toggleModalCardFlip(false);
   currentTwoSidedInfo = null;
@@ -2934,9 +2982,9 @@ function closeImageModal() {
 }
 
 // Schließe Modal bei Klick auf den Hintergrund
-document.getElementById('image-modal')?.addEventListener('click', (e) => {
+document.getElementById('image-modal')?.addEventListener('click', async (e) => {
   if (e.target.id === 'image-modal') {
-    closeImageModal();
+    await closeImageModal();
   }
 });
 
@@ -3065,6 +3113,7 @@ async function saveModalVersoNotes() {
     if (currentTwoSidedInfo) {
       currentTwoSidedInfo.verso_notes = notes;
     }
+    isMetadataDirty = false;
     showToast('Rückseiten-Notiz gespeichert & für Suche indexiert!', false);
   } catch (err) {
     console.error('Fehler beim Speichern der Rückseiten-Notiz:', err);
@@ -3718,6 +3767,289 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+// --- Bestätigungs-Modal (Ersetzt window.confirm) ---
+
+function showConfirmModal(
+  title = 'Bestätigung erforderlich',
+  message = 'Möchten Sie diese Aktion wirklich durchführen?',
+  confirmText = 'Bestätigen',
+  cancelText = 'Abbrechen',
+  isDanger = false
+) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirm-modal');
+    if (!modal) {
+      resolve(window.confirm(`${title}\n\n${message}`));
+      return;
+    }
+
+    confirmModalResolver = resolve;
+
+    const titleEl = document.getElementById('confirm-modal-title');
+    const msgEl = document.getElementById('confirm-modal-message');
+    const actBtn = document.getElementById('confirm-modal-action');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    const iconContainer = document.getElementById('confirm-modal-icon-container');
+
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+    if (cancelBtn) cancelBtn.textContent = cancelText;
+
+    if (actBtn) {
+      actBtn.textContent = confirmText;
+      if (isDanger) {
+        actBtn.className = 'px-4 py-1.5 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 transition shadow-sm cursor-pointer';
+      } else {
+        actBtn.className = 'px-4 py-1.5 rounded-xl text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 transition shadow-sm cursor-pointer';
+      }
+    }
+
+    if (iconContainer) {
+      if (isDanger) {
+        iconContainer.className = 'w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center shrink-0';
+      } else {
+        iconContainer.className = 'w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0';
+      }
+    }
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    actBtn?.focus();
+  });
+}
+
+function resolveConfirmModal(result) {
+  const modal = document.getElementById('confirm-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+  if (confirmModalResolver) {
+    const res = confirmModalResolver;
+    confirmModalResolver = null;
+    res(result);
+  }
+}
+
+// --- Undo-Toast (Schutz vor versehentlichem Datenverlust) ---
+
+function showUndoToast(message, undoCallback, durationMs = 8000) {
+  const toast = document.getElementById('undo-toast');
+  const msgEl = document.getElementById('undo-toast-message');
+  const btn = document.getElementById('undo-toast-btn');
+  if (!toast || !msgEl) return;
+
+  if (undoToastTimeout) {
+    clearTimeout(undoToastTimeout);
+    undoToastTimeout = null;
+  }
+
+  currentUndoAction = undoCallback;
+  msgEl.textContent = message;
+
+  if (undoCallback) {
+    btn?.classList.remove('hidden');
+  } else {
+    btn?.classList.add('hidden');
+  }
+
+  toast.classList.remove('hidden');
+  toast.classList.add('flex');
+
+  undoToastTimeout = setTimeout(() => {
+    dismissUndoToast();
+  }, durationMs);
+}
+
+function dismissUndoToast() {
+  const toast = document.getElementById('undo-toast');
+  if (toast) {
+    toast.classList.add('hidden');
+    toast.classList.remove('flex');
+  }
+  if (undoToastTimeout) {
+    clearTimeout(undoToastTimeout);
+    undoToastTimeout = null;
+  }
+  currentUndoAction = null;
+}
+
+function initConfirmAndUndoModals() {
+  const confirmAction = document.getElementById('confirm-modal-action');
+  const confirmCancel = document.getElementById('confirm-modal-cancel');
+  const confirmModal = document.getElementById('confirm-modal');
+
+  if (confirmAction) {
+    confirmAction.addEventListener('click', () => resolveConfirmModal(true));
+  }
+  if (confirmCancel) {
+    confirmCancel.addEventListener('click', () => resolveConfirmModal(false));
+  }
+  if (confirmModal) {
+    confirmModal.addEventListener('click', (e) => {
+      if (e.target.id === 'confirm-modal') {
+        resolveConfirmModal(false);
+      }
+    });
+  }
+
+  const undoBtn = document.getElementById('undo-toast-btn');
+  const undoClose = document.getElementById('undo-toast-close');
+  if (undoBtn) {
+    undoBtn.addEventListener('click', () => {
+      if (currentUndoAction) {
+        const action = currentUndoAction;
+        dismissUndoToast();
+        action();
+      }
+    });
+  }
+  if (undoClose) {
+    undoClose.addEventListener('click', () => dismissUndoToast());
+  }
+}
+
+// --- Metadaten Dirty-Checking ---
+
+function setupMetadataDirtyListeners() {
+  const form = document.getElementById('modal-metadata-edit-form');
+  if (form) {
+    form.addEventListener('input', () => {
+      isMetadataDirty = true;
+    });
+    form.addEventListener('change', () => {
+      isMetadataDirty = true;
+    });
+  }
+  const versoNotes = document.getElementById('modal-verso-notes-input');
+  if (versoNotes) {
+    versoNotes.addEventListener('input', () => {
+      const orig = currentTwoSidedInfo?.verso_notes || '';
+      if (versoNotes.value !== orig) {
+        isMetadataDirty = true;
+      }
+    });
+  }
+}
+
+// --- URL State Deep Linking & Synchronisation ---
+
+function syncSearchStateToUrl() {
+  const params = new URLSearchParams();
+
+  if (currentActiveTab && currentActiveTab !== 'search') {
+    params.set('tab', currentActiveTab);
+  }
+
+  const q = document.getElementById('search-input')?.value.trim();
+  if (q) params.set('q', q);
+
+  const threshold = document.getElementById('search-threshold')?.value;
+  if (threshold && parseFloat(threshold) > 0) params.set('threshold', threshold);
+
+  const limit = document.getElementById('search-limit')?.value;
+  if (limit && parseInt(limit) !== 24) params.set('limit', limit);
+
+  const batch = document.getElementById('search-batch-filter')?.value;
+  if (batch) params.set('batch', batch);
+
+  const yearFrom = document.getElementById('facet-year-from')?.value.trim();
+  if (yearFrom) params.set('from', yearFrom);
+
+  const yearTo = document.getElementById('facet-year-to')?.value.trim();
+  if (yearTo) params.set('to', yearTo);
+
+  if (currentActiveEpoch) params.set('epoch', currentActiveEpoch);
+
+  const creator = document.getElementById('facet-creator-input')?.value.trim();
+  if (creator) params.set('creator', creator);
+
+  const sig = document.getElementById('facet-signature-input')?.value.trim();
+  if (sig) params.set('signature', sig);
+
+  const stackToggle = document.getElementById('search-stack-variants');
+  if (stackToggle && !stackToggle.checked) params.set('stack', 'false');
+
+  const newSearch = params.toString();
+  const newUrl = newSearch ? `${window.location.pathname}?${newSearch}` : window.location.pathname;
+  if (window.location.search !== (newSearch ? `?${newSearch}` : '')) {
+    window.history.replaceState({ path: newUrl }, '', newUrl);
+  }
+}
+
+function restoreStateFromUrl() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const tab = urlParams.get('tab');
+  if (tab && ['search', 'faces', 'network', 'duplicates', 'lightbox', 'import'].includes(tab)) {
+    switchTab(tab);
+  }
+
+  const q = urlParams.get('q');
+  const threshold = urlParams.get('threshold');
+  const limit = urlParams.get('limit');
+  const batch = urlParams.get('batch');
+  const from = urlParams.get('from');
+  const to = urlParams.get('to');
+  const epoch = urlParams.get('epoch');
+  const creator = urlParams.get('creator');
+  const signature = urlParams.get('signature');
+  const stack = urlParams.get('stack');
+
+  let hasSearchTrigger = false;
+
+  if (q) {
+    const input = document.getElementById('search-input');
+    if (input) input.value = q;
+    hasSearchTrigger = true;
+  }
+  if (threshold) {
+    const sel = document.getElementById('search-threshold');
+    if (sel) sel.value = threshold;
+  }
+  if (limit) {
+    const sel = document.getElementById('search-limit');
+    if (sel) sel.value = limit;
+  }
+  if (batch) {
+    const sel = document.getElementById('search-batch-filter');
+    if (sel) sel.value = batch;
+    hasSearchTrigger = true;
+  }
+  if (stack === 'false') {
+    const chk = document.getElementById('search-stack-variants');
+    if (chk) chk.checked = false;
+  }
+  if (from || to || epoch || creator || signature) {
+    const panel = document.getElementById('search-facets-panel');
+    if (panel) panel.classList.remove('hidden');
+    if (from) {
+      const el = document.getElementById('facet-year-from');
+      if (el) el.value = from;
+    }
+    if (to) {
+      const el = document.getElementById('facet-year-to');
+      if (el) el.value = to;
+    }
+    if (epoch) {
+      selectEpoch(epoch);
+    }
+    if (creator) {
+      const el = document.getElementById('facet-creator-input');
+      if (el) el.value = creator;
+    }
+    if (signature) {
+      const el = document.getElementById('facet-signature-input');
+      if (el) el.value = signature;
+    }
+    handleFacetChanged();
+    hasSearchTrigger = true;
+  }
+
+  if (hasSearchTrigger && (!tab || tab === 'search')) {
+    executeSearch(q || '', limit || 24);
+  }
+}
+
 // --- 4. Archiv-Bestände einbinden & Upload-Logik ---
 
 function setupDropzone() {
@@ -4195,8 +4527,12 @@ async function startFolderIndexing(forceExplicit = false) {
 
   // Sanity check: Wenn Ordner bereits zu 100% indexiert ist und skipExisting aktiv ist
   if (!forceExplicit && skipExisting && lastFolderScanResult && lastFolderScanResult.folder_path === folderPath && lastFolderScanResult.is_fully_indexed) {
-    const confirmReindex = confirm(
-      `Alle ${lastFolderScanResult.image_count} Bilder in diesem Ordner befinden sich bereits in der Datenbank.\n\nMöchten Sie eine vollständige Neuindexierung (z. B. für geänderte Metadaten oder Gesichter) trotzdem erzwingen?`
+    const confirmReindex = await showConfirmModal(
+      'Ordner bereits vollständig indexiert',
+      `Alle ${lastFolderScanResult.image_count} Bilder in diesem Ordner befinden sich bereits in der Datenbank.\n\nMöchten Sie eine vollständige Neuindexierung (z. B. für geänderte Metadaten oder Gesichter) trotzdem erzwingen?`,
+      'Neuindexierung erzwingen',
+      'Abbrechen',
+      false
     );
     if (!confirmReindex) {
       showToast('Import übersprungen: Ordner ist bereits vollständig vorhanden.', false);
@@ -4553,6 +4889,12 @@ document.addEventListener('keydown', (e) => {
 
   // ESC-Taste Behandlung
   if (e.key === 'Escape') {
+    // 0a. Bestätigungs-Modal schließen
+    const cfModal = document.getElementById('confirm-modal');
+    if (cfModal && !cfModal.classList.contains('hidden')) {
+      resolveConfirmModal(false);
+      return;
+    }
     // 0. Kirchlicher Thesaurus Modal schließen
     const thModal = document.getElementById('thesaurus-modal');
     if (thModal && !thModal.classList.contains('hidden')) {
@@ -5130,13 +5472,27 @@ function copyLightboxPaths() {
   });
 }
 
-function clearLightboxConfirm() {
+async function clearLightboxConfirm() {
   if (lightboxItems.length === 0) return;
-  if (confirm(`Möchten Sie wirklich alle ${lightboxItems.length} Bilder vom Leuchttisch entfernen?`)) {
+  const count = lightboxItems.length;
+  const ok = await showConfirmModal(
+    'Leuchttisch leeren',
+    `Möchten Sie wirklich alle ${count} Bilder vom Leuchttisch entfernen?`,
+    'Leeren',
+    'Abbrechen',
+    true
+  );
+  if (ok) {
+    const prevItems = [...lightboxItems];
     lightboxItems = [];
     saveLightboxState();
     renderLightboxView();
-    showToast('Leuchttisch geleert.', false);
+    showUndoToast(`${count} Bild(er) vom Leuchttisch entfernt.`, () => {
+      lightboxItems = prevItems;
+      saveLightboxState();
+      renderLightboxView();
+      showToast('Leuchttisch wiederhergestellt.', false);
+    });
   }
 }
 
@@ -6642,7 +6998,14 @@ async function removeTargetFaceFromClusterInModal() {
 
   const pName = currentModalTargetFaceContext.personName || 'diese Person';
 
-  if (!confirm(`Möchten Sie dieses Gesicht wirklich aus dem Personen-Cluster „${pName}“ entfernen ("Nicht diese Person")?`)) {
+  const ok = await showConfirmModal(
+    'Gesicht aus Cluster entfernen',
+    `Möchten Sie dieses Gesicht wirklich aus dem Personen-Cluster „${pName}“ entfernen ("Nicht diese Person")?`,
+    'Entfernen',
+    'Abbrechen',
+    true
+  );
+  if (!ok) {
     return;
   }
 
@@ -7142,7 +7505,7 @@ function renderLiveHistogram() {
 
 // ================= SQLITE METADATEN-BEARBEITUNG =================
 
-function toggleMetadataEditMode(forceState = null) {
+async function toggleMetadataEditMode(forceState = null, force = false) {
   const content = document.getElementById('modal-metadata-content');
   const form = document.getElementById('modal-metadata-edit-form');
   const btnText = document.getElementById('modal-edit-meta-btn-text');
@@ -7151,6 +7514,17 @@ function toggleMetadataEditMode(forceState = null) {
   const isEditing = forceState !== null ? !forceState : !form.classList.contains('hidden');
 
   if (isEditing) {
+    if (!force && isMetadataDirty) {
+      const discard = await showConfirmModal(
+        'Ungespeicherte Änderungen',
+        'Möchten Sie den Bearbeitungsmodus beenden und Ihre ungespeicherten Änderungen verwerfen?',
+        'Änderungen verwerfen',
+        'Weiter bearbeiten',
+        true
+      );
+      if (!discard) return;
+      isMetadataDirty = false;
+    }
     // Wechsel zu Lesemodus
     form.classList.add('hidden');
     content.classList.remove('hidden');
@@ -7233,7 +7607,8 @@ async function saveMetadataEdit(event) {
 
     // Re-render Lesemodus
     renderModalMetadataReadView();
-    toggleMetadataEditMode(false);
+    isMetadataDirty = false;
+    toggleMetadataEditMode(false, true);
     updateKnownPersonsDatalist();
 
     showToast('Metadaten erfolgreich in SQLite & XMP gesichert!', false);
