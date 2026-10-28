@@ -62,9 +62,11 @@ class MetadataDatabase:
                     "verso_notes TEXT",
                     "import_id TEXT",
                     "persons TEXT",
+                    "keywords TEXT",
                     "sha256 TEXT",
                     "last_fixity_check TIMESTAMP",
                     "fixity_status TEXT",
+                    "ocr_text TEXT",
                 ]:
                     try:
                         conn.execute(f"ALTER TABLE metadata ADD COLUMN {col};")
@@ -111,6 +113,7 @@ class MetadataDatabase:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_import_id ON metadata(import_id);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_sha256 ON metadata(sha256);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_fixity_status ON metadata(fixity_status);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_metadata_ocr_text ON metadata(ocr_text);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_clusters_face_count ON clusters(face_count DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_import_batches_started ON import_batches(started_at DESC);")
@@ -138,9 +141,55 @@ class MetadataDatabase:
                     );
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp DESC);")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target_type, target_id);")
+                # Benutzerverwaltung und Sessions für KDG-konforme Rollen (RBAC)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        role TEXT NOT NULL DEFAULT 'viewer',
+                        display_name TEXT,
+                        is_active INTEGER DEFAULT 1,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_login TIMESTAMP
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
+
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS sessions (
+                        token TEXT PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        expires_at TIMESTAMP NOT NULL,
+                        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);")
+
+                # Kirchliche GND- und Iconclass-Normdatenbank (Offline-First Ontologie)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS gnd_authorities (
+                        id TEXT PRIMARY KEY,
+                        canonical TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        synonyms TEXT,
+                        iconclass TEXT,
+                        gnd TEXT,
+                        description TEXT,
+                        clip_prompts TEXT,
+                        type TEXT DEFAULT 'subject',
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_gnd_canonical ON gnd_authorities(canonical);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_gnd_category ON gnd_authorities(category);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_gnd_gnd ON gnd_authorities(gnd);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_gnd_iconclass ON gnd_authorities(iconclass);")
 
                 conn.commit()
+            self._seed_default_users()
+            self._seed_gnd_authorities()
             logger.info("SQLite-Archivdatenbank erfolgreich initialisiert (WAL-Modus aktiv): %s", self.db_path)
         except Exception as e:
             logger.error("Fehler beim Initialisieren der SQLite-Datenbank: %s", e)
@@ -201,6 +250,14 @@ class MetadataDatabase:
                             res["persons"] = json.loads(res["persons"])
                         except Exception:
                             res["persons"] = [p.strip() for p in res["persons"].split(",") if p.strip()]
+                    if res.get("keywords") and isinstance(res["keywords"], str):
+                        import json
+                        try:
+                            res["keywords"] = json.loads(res["keywords"])
+                        except Exception:
+                            res["keywords"] = [k.strip() for k in res["keywords"].split(",") if k.strip()]
+                    elif not res.get("keywords"):
+                        res["keywords"] = []
                     return res
         except Exception as e:
             logger.error("Fehler beim Abrufen der Metadaten aus SQLite für %s: %s", file_path, e)
@@ -246,6 +303,7 @@ class MetadataDatabase:
         creator: Optional[str] = None,
         description: Optional[str] = None,
         persons: Optional[Union[List[str], str]] = None,
+        keywords: Optional[Union[List[str], str]] = None,
         sha256: Optional[str] = None,
         import_id: Optional[str] = None,
         last_fixity_check: Optional[str] = None,
@@ -264,14 +322,21 @@ class MetadataDatabase:
             else:
                 persons_str = str(persons)
 
+        keywords_str = None
+        if keywords is not None:
+            if isinstance(keywords, list):
+                keywords_str = json.dumps([k.strip() for k in keywords if k and k.strip()], ensure_ascii=False)
+            else:
+                keywords_str = str(keywords)
+
         try:
             with self._get_connection() as conn:
                 conn.execute("""
                     INSERT INTO metadata (
                         file_path, file_name, signature, title, date, creator, description,
-                        persons, sha256, import_id, last_fixity_check, fixity_status, updated_at
+                        persons, keywords, sha256, import_id, last_fixity_check, fixity_status, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(file_path) DO UPDATE SET
                         file_name = excluded.file_name,
                         signature = COALESCE(excluded.signature, metadata.signature),
@@ -280,6 +345,7 @@ class MetadataDatabase:
                         creator = COALESCE(excluded.creator, metadata.creator),
                         description = COALESCE(excluded.description, metadata.description),
                         persons = COALESCE(excluded.persons, metadata.persons),
+                        keywords = COALESCE(excluded.keywords, metadata.keywords),
                         sha256 = COALESCE(excluded.sha256, metadata.sha256),
                         import_id = COALESCE(excluded.import_id, metadata.import_id),
                         last_fixity_check = COALESCE(excluded.last_fixity_check, metadata.last_fixity_check),
@@ -287,7 +353,7 @@ class MetadataDatabase:
                         updated_at = excluded.updated_at
                 """, (
                     clean_path, clean_name, signature, title, date, creator, description,
-                    persons_str, sha256, import_id, last_fixity_check, fixity_status, now
+                    persons_str, keywords_str, sha256, import_id, last_fixity_check, fixity_status, now
                 ))
                 conn.commit()
 
@@ -300,6 +366,7 @@ class MetadataDatabase:
                 "creator": creator,
                 "description": description,
                 "persons": persons,
+                "keywords": keywords,
                 "sha256": sha256,
                 "import_id": import_id,
                 "last_fixity_check": last_fixity_check,
@@ -631,13 +698,48 @@ class MetadataDatabase:
             logger.debug("Fehler beim Lesen der Verso-Notizen: %s", e)
             return None
 
+    def save_ocr_text(self, file_path: str, ocr_text: str) -> bool:
+        """Speichert den per OCR/HTR extrahierten Text für ein Bild oder dessen Rückseite."""
+        try:
+            with self._get_connection() as conn:
+                existing = conn.execute("SELECT file_path FROM metadata WHERE file_path = ?;", (file_path,)).fetchone()
+                if existing:
+                    conn.execute(
+                        "UPDATE metadata SET ocr_text = ?, updated_at = CURRENT_TIMESTAMP WHERE file_path = ?;",
+                        (ocr_text, file_path),
+                    )
+                else:
+                    file_name = Path(file_path).name
+                    conn.execute(
+                        """INSERT INTO metadata (file_path, file_name, ocr_text, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP);""",
+                        (file_path, file_name, ocr_text),
+                    )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error("Fehler beim Speichern von ocr_text für %s: %s", file_path, e)
+            return False
+
+    def get_ocr_text(self, file_path: str) -> Optional[str]:
+        """Liest den gespeicherten OCR-Text für eine Datei aus SQLite."""
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute("SELECT ocr_text FROM metadata WHERE file_path = ?;", (file_path,)).fetchone()
+                if row and row["ocr_text"]:
+                    return row["ocr_text"]
+                return None
+        except Exception as e:
+            logger.debug("Fehler beim Abruf von ocr_text für %s: %s", file_path, e)
+            return None
+
     def search_metadata(
         self,
         query: str,
         limit: int = 50,
         import_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Sucht nach Bildmetadaten in title, signature, description, creator, file_name und verso_notes (optional gefiltert nach import_id)."""
+        """Sucht nach Bildmetadaten in title, signature, description, creator, file_name, verso_notes und ocr_text (optional gefiltert nach import_id)."""
         clean_q = query.strip()
         if not clean_q:
             return []
@@ -645,9 +747,9 @@ class MetadataDatabase:
         try:
             with self._get_connection() as conn:
                 where_clauses = [
-                    "(title LIKE ? OR signature LIKE ? OR description LIKE ? OR creator LIKE ? OR file_name LIKE ? OR verso_notes LIKE ?)"
+                    "(title LIKE ? OR signature LIKE ? OR description LIKE ? OR creator LIKE ? OR file_name LIKE ? OR verso_notes LIKE ? OR ocr_text LIKE ?)"
                 ]
-                params: List[Any] = [pattern, pattern, pattern, pattern, pattern, pattern]
+                params: List[Any] = [pattern, pattern, pattern, pattern, pattern, pattern, pattern]
                 if import_id:
                     if import_id == "batch_initial_legacy":
                         where_clauses.append("(import_id = 'batch_initial_legacy' OR import_id IS NULL OR import_id = '')")
@@ -1046,6 +1148,13 @@ class MetadataDatabase:
                     "error": "Master-Datei existiert nicht auf dem Dateisystem",
                 })
                 self.update_fixity(file_path_str, fixity_status="MISSING", last_fixity_check=now_iso)
+                self.add_audit_log(
+                    action="FIXITY_MISSING_ALERT",
+                    target_type="IMAGE",
+                    target_id=file_path_str,
+                    details={"error": "Master-Datei existiert nicht auf dem Dateisystem", "expected_sha": stored_sha},
+                    operator="fixity_daemon",
+                )
                 if progress_callback:
                     progress_callback(idx + 1, total, file_path_str, "MISSING")
                 continue
@@ -1062,6 +1171,13 @@ class MetadataDatabase:
                     "error": "I/O-Lesefehler beim Berechnen der Prüfsumme (möglicher E/A-Hardwarefehler)",
                 })
                 self.update_fixity(file_path_str, fixity_status="READ_ERROR", last_fixity_check=now_iso)
+                self.add_audit_log(
+                    action="FIXITY_READ_ERROR_ALERT",
+                    target_type="IMAGE",
+                    target_id=file_path_str,
+                    details={"error": "I/O-Lesefehler", "expected_sha": stored_sha},
+                    operator="fixity_daemon",
+                )
                 if progress_callback:
                     progress_callback(idx + 1, total, file_path_str, "READ_ERROR")
                 continue
@@ -1085,6 +1201,17 @@ class MetadataDatabase:
             else:
                 # Alarm: Bit-Rot oder Manipulation festgestellt!
                 self.update_fixity(file_path_str, fixity_status="CORRUPTED", last_fixity_check=now_iso)
+                self.add_audit_log(
+                    action="FIXITY_BITROT_ALERT",
+                    target_type="IMAGE",
+                    target_id=file_path_str,
+                    details={
+                        "error": "Prüfsummen-Mismatch (Bit-Rot oder Dateimanipulation erkannt)",
+                        "expected_sha": stored_sha,
+                        "actual_sha": current_sha,
+                    },
+                    operator="fixity_daemon",
+                )
                 results["corrupted"] += 1
                 results["corrupted_items"].append({
                     "file_path": file_path_str,
@@ -1099,6 +1226,406 @@ class MetadataDatabase:
                 progress_callback(idx + 1, total, file_path_str, status)
 
         return results
+
+    def get_fixity_summary(self) -> Dict[str, Any]:
+        """Gibt eine aggregierte Übersicht über den Fixity- und Integritätsstatus aller Bestände zurück."""
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute("""
+                    SELECT
+                        COUNT(*) as total,
+                        SUM(CASE WHEN fixity_status = 'OK' THEN 1 ELSE 0 END) as intact,
+                        SUM(CASE WHEN fixity_status = 'CORRUPTED' OR fixity_status = 'READ_ERROR' THEN 1 ELSE 0 END) as corrupted,
+                        SUM(CASE WHEN fixity_status = 'MISSING' THEN 1 ELSE 0 END) as missing,
+                        SUM(CASE WHEN fixity_status = 'UNVERIFIED' OR fixity_status IS NULL THEN 1 ELSE 0 END) as unverified,
+                        MAX(last_fixity_check) as last_check
+                    FROM metadata;
+                """).fetchone()
+                if row:
+                    res = dict(row)
+                    res["corrupted"] = res.get("corrupted") or 0
+                    res["intact"] = res.get("intact") or 0
+                    res["missing"] = res.get("missing") or 0
+                    res["unverified"] = res.get("unverified") or 0
+                    res["total"] = res.get("total") or 0
+                    res["alert_active"] = (res["corrupted"] > 0 or res["missing"] > 0)
+                    return res
+        except Exception as e:
+            logger.error("Fehler beim Abrufen der Fixity-Zusammenfassung: %s", e)
+        return {
+            "total": 0, "intact": 0, "corrupted": 0, "missing": 0,
+            "unverified": 0, "last_check": None, "alert_active": False,
+        }
+
+    def get_corrupted_metadata(self) -> List[Dict[str, Any]]:
+        """Liefert alle Digitalisate mit Status CORRUPTED, READ_ERROR oder MISSING für Revisionszwecke."""
+        try:
+            with self._get_connection() as conn:
+                rows = conn.execute("""
+                    SELECT file_path, file_name, signature, title, sha256, fixity_status, last_fixity_check
+                    FROM metadata
+                    WHERE fixity_status IN ('CORRUPTED', 'MISSING', 'READ_ERROR')
+                    ORDER BY last_fixity_check DESC;
+                """).fetchall()
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("Fehler beim Laden beschädigter Fixity-Datensätze: %s", e)
+            return []
+
+    # ========================================================
+    # KDG-konforme Benutzerverwaltung & Session-Management (RBAC)
+    # ========================================================
+
+    def _seed_default_users(self) -> None:
+        """Legt Standardbenutzer (Admin, Archivar, Lesesaal) an, falls noch keine existieren."""
+        try:
+            with self._get_connection() as conn:
+                count = conn.execute("SELECT COUNT(*) FROM users;").fetchone()[0]
+                if count == 0:
+                    from app.core.config import settings
+                    from app.core.auth import hash_password
+
+                    defaults = [
+                        (settings.AUTH_DEFAULT_ADMIN_USER, hash_password(settings.AUTH_DEFAULT_ADMIN_PASSWORD), "admin", "Archiv-Administrator"),
+                        (settings.AUTH_DEFAULT_CURATOR_USER, hash_password(settings.AUTH_DEFAULT_CURATOR_PASSWORD), "curator", "Archivar / Wissenschaftl. Mitarbeiter"),
+                        (settings.AUTH_DEFAULT_VIEWER_USER, hash_password(settings.AUTH_DEFAULT_VIEWER_PASSWORD), "viewer", "Lesesaal-Arbeitsplatz"),
+                    ]
+                    for username, p_hash, role, display in defaults:
+                        conn.execute(
+                            """
+                            INSERT OR IGNORE INTO users (username, password_hash, role, display_name)
+                            VALUES (?, ?, ?, ?);
+                            """,
+                            (username, p_hash, role, display),
+                        )
+                    conn.commit()
+                    logger.info("Standard-Benutzer (admin, archivar, lesesaal) erfolgreich initialisiert.")
+        except Exception as e:
+            logger.debug("Initialisierung der Standardbenutzer übersprungen/fehlgeschlagen: %s", e)
+
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        """Sucht einen Benutzer anhand des Benutzernamens."""
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute("SELECT * FROM users WHERE username = ?;", (username.strip(),)).fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error("Fehler beim Abruf von Benutzer '%s': %s", username, e)
+            return None
+
+    def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Sucht einen Benutzer anhand der numerischen ID."""
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute("SELECT * FROM users WHERE id = ?;", (user_id,)).fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error("Fehler beim Abruf von Benutzer ID %d: %s", user_id, e)
+            return None
+
+    def list_users(self) -> List[Dict[str, Any]]:
+        """Liefert alle registrierten Benutzer (ohne Passwort-Hash)."""
+        try:
+            with self._get_connection() as conn:
+                rows = conn.execute(
+                    "SELECT id, username, role, display_name, is_active, created_at, last_login FROM users ORDER BY id ASC;"
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("Fehler beim Auflisten der Benutzer: %s", e)
+            return []
+
+    def create_user(self, username: str, password_hash: str, role: str = "curator", display_name: Optional[str] = None) -> int:
+        """Erstellt einen neuen Benutzer in der Datenbank."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO users (username, password_hash, role, display_name)
+                VALUES (?, ?, ?, ?);
+                """,
+                (username.strip(), password_hash, role, display_name or username.strip()),
+            )
+            conn.commit()
+            return cursor.lastrowid
+
+    def update_user(
+        self,
+        user_id: int,
+        password_hash: Optional[str] = None,
+        role: Optional[str] = None,
+        display_name: Optional[str] = None,
+        is_active: Optional[bool] = None,
+    ) -> bool:
+        """Aktualisiert Benutzerdaten."""
+        updates = []
+        params = []
+        if password_hash is not None:
+            updates.append("password_hash = ?")
+            params.append(password_hash)
+        if role is not None:
+            updates.append("role = ?")
+            params.append(role)
+        if display_name is not None:
+            updates.append("display_name = ?")
+            params.append(display_name)
+        if is_active is not None:
+            updates.append("is_active = ?")
+            params.append(1 if is_active else 0)
+
+        if not updates:
+            return False
+
+        params.append(user_id)
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                f"UPDATE users SET {', '.join(updates)} WHERE id = ?;",
+                params,
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_user(self, username: str) -> bool:
+        """Löscht einen Benutzer anhand des Benutzernamens."""
+        with self._get_connection() as conn:
+            cursor = conn.execute("DELETE FROM users WHERE username = ?;", (username.strip(),))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def update_user_last_login(self, user_id: int) -> None:
+        """Setzt den Zeitstempel des letzten erfolgreichen Logins."""
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?;",
+                    (user_id,),
+                )
+                conn.commit()
+        except Exception as e:
+            logger.debug("Fehler beim Aktualisieren von last_login für User %d: %s", user_id, e)
+
+    def create_session(self, token: str, user_id: int, expires_at: datetime) -> None:
+        """Speichert eine neue Anmeldesitzung in SQLite."""
+        expires_str = expires_at.isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO sessions (token, user_id, expires_at)
+                VALUES (?, ?, ?);
+                """,
+                (token, user_id, expires_str),
+            )
+            conn.commit()
+
+    def get_session(self, token: str) -> Optional[Dict[str, Any]]:
+        """Gibt eine aktive, nicht abgelaufene Sitzung zurück."""
+        try:
+            now_iso = datetime.now().isoformat()
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    "SELECT * FROM sessions WHERE token = ? AND expires_at > ?;",
+                    (token, now_iso),
+                ).fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.debug("Fehler beim Abruf von Session: %s", e)
+            return None
+
+    def delete_session(self, token: str) -> bool:
+        """Löscht ein Session-Token (Logout)."""
+        with self._get_connection() as conn:
+            cursor = conn.execute("DELETE FROM sessions WHERE token = ?;", (token,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_user_sessions(self, user_id: int) -> None:
+        """Invalidiert alle aktiven Sitzungen eines Benutzers."""
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM sessions WHERE user_id = ?;", (user_id,))
+            conn.commit()
+
+    def cleanup_expired_sessions(self) -> int:
+        """Entfernt abgelaufene Sitzungen zur Speicherbereinigung."""
+        try:
+            now_iso = datetime.now().isoformat()
+            with self._get_connection() as conn:
+                cursor = conn.execute("DELETE FROM sessions WHERE expires_at <= ?;", (now_iso,))
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            logger.debug("Fehler bei cleanup_expired_sessions: %s", e)
+            return 0
+
+    # =========================================================================
+    # Gemeinsame Normdatei (GND) & Iconclass-Fachontologie (Offline-First)
+    # =========================================================================
+
+    def _seed_gnd_authorities(self) -> None:
+        """Initialisiert die lokale GND- und Iconclass-Normdatenbank aus dem Basisthesaurus."""
+        try:
+            with self._get_connection() as conn:
+                count = conn.execute("SELECT COUNT(*) AS cnt FROM gnd_authorities;").fetchone()["cnt"]
+                if count > 0:
+                    return
+
+                from app.core.thesaurus_data import CHURCH_THESAURUS
+                import json
+
+                for item in CHURCH_THESAURUS:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO gnd_authorities (
+                            id, canonical, category, synonyms, iconclass, gnd, description, clip_prompts, type
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        """,
+                        (
+                            item["id"],
+                            item["canonical"],
+                            item["category"],
+                            json.dumps(item.get("synonyms", []), ensure_ascii=False),
+                            item.get("iconclass"),
+                            item.get("gnd"),
+                            item.get("description", ""),
+                            json.dumps(item.get("clip_prompts", []), ensure_ascii=False),
+                            item.get("type", "subject"),
+                        ),
+                    )
+                conn.commit()
+                logger.info("GND- und Iconclass-Normdatenbank erfolgreich mit %d Begriffen initialisiert.", len(CHURCH_THESAURUS))
+        except Exception as e:
+            logger.error("Fehler beim Seeding der GND-Normdatenbank: %s", e)
+
+    def search_gnd_authorities(
+        self,
+        query: str,
+        limit: int = 20,
+        category: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Sucht in der lokalen GND-Normdatenbank nach Begriffen, Synonymen, GND-ID oder Iconclass."""
+        import json
+        q = f"%{query.strip()}%"
+        try:
+            with self._get_connection() as conn:
+                if category:
+                    rows = conn.execute(
+                        """
+                        SELECT * FROM gnd_authorities
+                        WHERE category = ? AND (
+                            canonical LIKE ? OR synonyms LIKE ? OR description LIKE ? OR gnd LIKE ? OR iconclass LIKE ?
+                        )
+                        ORDER BY (CASE WHEN canonical LIKE ? THEN 1 ELSE 2 END), canonical ASC
+                        LIMIT ?;
+                        """,
+                        (category, q, q, q, q, q, q, limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """
+                        SELECT * FROM gnd_authorities
+                        WHERE canonical LIKE ? OR synonyms LIKE ? OR description LIKE ? OR gnd LIKE ? OR iconclass LIKE ?
+                        ORDER BY (CASE WHEN canonical LIKE ? THEN 1 ELSE 2 END), canonical ASC
+                        LIMIT ?;
+                        """,
+                        (q, q, q, q, q, q, limit),
+                    ).fetchall()
+
+                result = []
+                for r in rows:
+                    item = dict(r)
+                    item["synonyms"] = json.loads(item["synonyms"]) if item.get("synonyms") else []
+                    item["clip_prompts"] = json.loads(item["clip_prompts"]) if item.get("clip_prompts") else []
+                    result.append(item)
+                return result
+        except Exception as e:
+            logger.error("Fehler bei search_gnd_authorities: %s", e)
+            return []
+
+    def get_gnd_authority(self, identifier: str) -> Optional[Dict[str, Any]]:
+        """Ermittelt einen GND-Normdatensatz anhand seiner ID, kanonischen Bezeichnung oder GND-Nummer."""
+        import json
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    """
+                    SELECT * FROM gnd_authorities
+                    WHERE id = ? OR canonical = ? OR gnd = ? OR iconclass = ?
+                    LIMIT 1;
+                    """,
+                    (identifier, identifier, identifier, identifier),
+                ).fetchone()
+                if row:
+                    item = dict(row)
+                    item["synonyms"] = json.loads(item["synonyms"]) if item.get("synonyms") else []
+                    item["clip_prompts"] = json.loads(item["clip_prompts"]) if item.get("clip_prompts") else []
+                    return item
+                return None
+        except Exception as e:
+            logger.error("Fehler bei get_gnd_authority: %s", e)
+            return None
+
+    def get_all_gnd_authorities(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Gibt alle GND-Normdatensätze zurück, optional nach Kategorie gefiltert."""
+        import json
+        try:
+            with self._get_connection() as conn:
+                if category:
+                    rows = conn.execute(
+                        "SELECT * FROM gnd_authorities WHERE category = ? ORDER BY canonical ASC;",
+                        (category,),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM gnd_authorities ORDER BY category ASC, canonical ASC;"
+                    ).fetchall()
+
+                result = []
+                for r in rows:
+                    item = dict(r)
+                    item["synonyms"] = json.loads(item["synonyms"]) if item.get("synonyms") else []
+                    item["clip_prompts"] = json.loads(item["clip_prompts"]) if item.get("clip_prompts") else []
+                    result.append(item)
+                return result
+        except Exception as e:
+            logger.error("Fehler bei get_all_gnd_authorities: %s", e)
+            return []
+
+    def upsert_gnd_authority(self, item: Dict[str, Any]) -> bool:
+        """Fügt einen neuen GND-Normdatensatz hinzu oder aktualisiert einen bestehenden."""
+        import json
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO gnd_authorities (
+                        id, canonical, category, synonyms, iconclass, gnd, description, clip_prompts, type, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                        canonical = excluded.canonical,
+                        category = excluded.category,
+                        synonyms = excluded.synonyms,
+                        iconclass = excluded.iconclass,
+                        gnd = excluded.gnd,
+                        description = excluded.description,
+                        clip_prompts = excluded.clip_prompts,
+                        type = excluded.type,
+                        updated_at = CURRENT_TIMESTAMP;
+                    """,
+                    (
+                        item["id"],
+                        item["canonical"],
+                        item["category"],
+                        json.dumps(item.get("synonyms", []), ensure_ascii=False),
+                        item.get("iconclass"),
+                        item.get("gnd"),
+                        item.get("description", ""),
+                        json.dumps(item.get("clip_prompts", []), ensure_ascii=False),
+                        item.get("type", "subject"),
+                    ),
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error("Fehler beim Speichern von gnd_authority: %s", e)
+            return False
 
 
 metadata_db = MetadataDatabase()

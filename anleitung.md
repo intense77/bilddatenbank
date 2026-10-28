@@ -168,6 +168,19 @@ Legen Sie im gleichen Verzeichnis wie das Bild eine Begleitdatei ab:
 
 Nach dem Start erreichen Sie die Oberfläche unter **[http://localhost:8000/](http://localhost:8000/)**.
 
+### Benutzer-Anmeldung & Rollenmodell (RBAC)
+Rechts oben in der Menüleiste befindet sich die Benutzeranmeldung (**„Anmelden“**):
+* **Rolle „Lesesaal“ (`viewer`):**
+  * Gedacht für Gastforscher, Wissenschaftler und Recherche im Lesesaal.
+  * Kann alle Bilder suchen, filtern, vergrößern (Deep Zoom), Leuchttische anlegen und Kontaktabzüge/PDFs exportieren.
+  * **Datenschutz (§ 11 KDG):** Kein Zugriff auf unbestätigte Gesichtscluster oder biometrische Rohdaten. Schreibfunktionen (Metadaten-Speicherung, OCR-Korrektur) sind gesperrt.
+* **Rolle „Kurator / Archivar“ (`curator`):**
+  * Fachkräfte des Archivs: Erfassen und Korrigieren von Metadaten, 1-Klick-Handschriften-KI (OCR/HTR), Freigabe von Personen-Clustern, Anreicherung mit GND/Iconclass-Normdaten.
+* **Rolle „Administrator“ (`admin`):**
+  * Vollzugriff: Bestände neu einbinden, Massen-Imports starten, Fixity-Unversehrtheitsprüfungen durchführen, System-Pruning und Benutzerkonten verwalten.
+
+---
+
 ### Tab 1: Freitext-Suche & Historische Zeitleiste
 1. **Suchleiste:** Geben Sie ein Motiv, ein Thema, eine Epoche oder einen Personennamen ein (z. B. *„gotischer Altar“*, *„Marktplatz 1910“*, *„Soldaten im Feld“* oder *„Bischof Ulrich“*).
 2. **Historische Zeitleiste & Facettierung (Button *„⏱️ Zeitleiste & Filter“*):**
@@ -251,6 +264,21 @@ Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:
 * **Bildausschnitt-Suche (Crop-to-Search):**
   * Klicken Sie auf **„Ausschnitt suchen“** und ziehen Sie mit der Maus einen Rahmen um ein Motivdetail (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät oder Inschrift).
   * Das Backend schneidet das Detail zu, berechnet das Embedding und findet alle Scans mit diesem oder ähnlichen Motiven.
+* **Handschriften-KI & Texterkennung (OCR / HTR):**
+  * Im Tab **„Texterkennung (OCR/HTR)“** in der rechten Seitenleiste können handschriftliche Vermerke, Stempel und Drucktexte mit einem Klick entziffert werden.
+  * **Profil-Auswahl:**
+    * *✨ Auto-Erkennung*: Erkennt automatisch gemischte Druck- und Handschriften.
+    * *✍️ Handschrift / Notizen (HTR Sauvola)*: Spezialisierte lokale Sauvola-Binarisierung zur Isolierung feiner Tinten- und Bleistiftstriche auf vergilbtem Papier (unterdrückt Durchscheinen von Rückseiten).
+    * *🔤 Druck / Typoskripte*: Klassisches OCR-Profil für Typoskripte, Karteikarten und moderne Bücher.
+    * *📜 Frakturschrift (Altdeutsch)*: Verwendet historische Sprachmodelle (`frk`, `deu_latf`) für alte Druckschriften.
+    * *⛪ Kirchliches Latein & Liturgica*: Spezialprofil für kirchliches Latein (`lat`) mit kuratierten Fachwörterbüchern (z. B. *Tabernaculum, Ciborium, Consecratio, Casula*).
+    * *🔍 Stempel & Randvermerke*: Sparse-Text-Modus für Datumsstempel und Signaturen am Bildrand.
+  * **Text korrigieren & speichern:** Der erkannte Text kann direkt im Textfeld redigiert und mit dem Button **„Text speichern“** dauerhaft in SQLite und Qdrant hinterlegt werden. Bei der nächsten Suche ist das Bild sofort über diese Worte auffindbar.
+* **Normdaten-Anreicherung (GND & Iconclass) & Trägererkennung:**
+  * **Thesaurus-Vorschläge:** Über die integrierte Offline-Normdatenbank schlägt das System passende GND-Begriffe (Personen, Sakralbauten, liturgische Gefäße, Paramente) und Iconclass-Notationen vor.
+  * **Physikalische Trägeranalyse:** Erkennt automatisch historische Foto-Verfahren (Albuminabzüge im Sepiaton, Silbergelatine-SW-Abzüge, Cyanotypien / Eisenblaudrucke) und schätzt historische Formate (z. B. Carte de Visite).
+* **Langzeit-Bestandserhaltung & PREMIS 3.0 Export:**
+  * Über das Aktionsmenü kann ein standardkonformer **PREMIS 3.0 XML-Datensatz** nach ISO 14721 heruntergeladen werden. Er belegt die kryptografische Unversehrtheit (SHA-256) und den Lebenszyklus des Digitalisats für übergeordnete Archive.
 * **Adobe XMP Sidecars:**
   * Über das Dropdown-Menü **„XMP“** lassen sich Dublin-Core-konforme `.xmp`-Metadaten-Dateien herunterladen oder direkt neben dem Original-Masterbild auf der Festplatte sichern.
 * **Navigation & Schließen:**

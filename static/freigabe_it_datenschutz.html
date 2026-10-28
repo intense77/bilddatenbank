@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Freigabedokument für IT & Datenschutz — Bildarchiv</title>
+  <style>
+    :root {
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      color: #1e293b;
+      background: #f8fafc;
+      line-height: 1.65;
+      padding: 2.5rem 1rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 3rem 3.5rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+      border: 1px solid #e2e8f0;
+    }
+    .doc-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding-bottom: 1.25rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 0.82rem;
+    }
+    .doc-nav a {
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      background: #f1f5f9;
+      color: #475569;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .doc-nav a:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    .doc-nav a.active {
+      background: #f59e0b;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 1rem;
+      margin-bottom: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+    .print-btn {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.85rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #334155;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .print-btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+    h1 { font-size: 2rem; font-weight: 700; color: #0f172a; margin-bottom: 1rem; letter-spacing: -0.02em; line-height: 1.25; }
+    h2 { font-size: 1.35rem; font-weight: 600; color: #1e293b; margin-top: 2rem; margin-bottom: 0.85rem; padding-bottom: 0.4rem; border-bottom: 1px solid #f1f5f9; }
+    h3 { font-size: 1.12rem; font-weight: 600; color: #334155; margin-top: 1.5rem; margin-bottom: 0.6rem; }
+    p { margin-bottom: 1rem; }
+    ul, ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.35rem; }
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 0.15em 0.35em;
+      border-radius: 4px;
+    }
+    pre {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 1.2rem 1.4rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      margin-bottom: 1.25rem;
+    }
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.65rem 0.9rem;
+      border: 1px solid #e2e8f0;
+      text-align: left;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #334155;
+    }
+    tr:nth-child(even) { background: #fafafa; }
+    blockquote {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+      padding: 0.85rem 1.15rem;
+      margin: 1.25rem 0;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.92rem;
+      color: #78350f;
+    }
+    hr {
+      border: 0;
+      height: 1px;
+      background: #e2e8f0;
+      margin: 2rem 0;
+    }
+    a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #e2e8f0;
+      font-size: 0.82rem;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    @media print {
+      body { background: #ffffff; padding: 0; }
+      .container { border: none; box-shadow: none; padding: 0; max-width: 100%; }
+      .doc-nav, .doc-header button, footer { display: none; }
+      pre, code { background: #f8fafc !important; color: #000000 !important; border: 1px solid #cbd5e1; }
+    }
+    @media (max-width: 640px) {
+      .container { padding: 1.5rem; }
+      h1 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="doc-nav">
+      <a href="README.html">Übersicht</a>
+      <a href="freigabe_it_datenschutz.html" class="active">IT- & DS-Freigabe</a>
+      <a href="anleitung.html">Anleitung</a>
+      <a href="datenschutz.html">Datenschutz & KDG</a>
+      <a href="lizenzen.html">Lizenzen</a>
+      <a href="todo.html">Roadmap</a>
+      <a href="/">← Zurück zur Bildersuche</a>
+    </nav>
+    <div class="doc-header">
+      <span class="badge">Compliance • IT-Sicherheit & KDG/DSGVO Freigabe</span>
+      <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
+    </div>
+    <article>
+<h1 id="freigabedokument-fur-it-sicherheit-datenschutz">Freigabedokument für IT-Sicherheit &amp; Datenschutz</h1>
+<p><strong>Dokument-ID:</strong> FREIGABE-IT-DS-2026-01<br />
+<strong>Projekt:</strong> Lokales Bildarchiv-Suchsystem &amp; KI-Assistenz für historische Sammlungen<br />
+<strong>Version:</strong> 2.0 (Stand: Oktober 2026)<br />
+<strong>Zielgruppe:</strong> IT-Leitung, Informationssicherheitsbeauftragte (ISB / CISO), Datenschutzbeauftragte (DSB / DDSB nach KDG)<br />
+<strong>Status:</strong> Zur Prüfung &amp; formalen Freigabe  </p>
+<hr />
+<h2 id="inhaltsubersicht">📋 Inhaltsübersicht</h2>
+<ol>
+<li><a href="#teil-a-kurzbeschreibung-des-projekts-management-summary">Teil A: Kurzbeschreibung des Projekts (Management Summary)</a></li>
+<li><a href="#teil-b-systemarchitektur-netzwerk--datenflüsse">Teil B: Systemarchitektur, Netzwerk &amp; Datenflüsse</a></li>
+<li><a href="#teil-c-it-sicherheitskonzept--härtung">Teil C: IT-Sicherheitskonzept &amp; Härtung</a></li>
+<li><a href="#teil-d-datenschutzrechtliche-bewertung-kdg--dsgvo">Teil D: Datenschutzrechtliche Bewertung (KDG &amp; DSGVO)</a></li>
+<li><a href="#teil-e-technische-und-organisatorische-maßnahmen-tom">Teil E: Technische und organisatorische Maßnahmen (TOM)</a></li>
+<li><a href="#teil-f-prüfprotokoll--freigabeerklärung">Teil F: Prüfprotokoll &amp; Freigabeerklärung</a></li>
+</ol>
+<hr />
+<h2 id="teil-a-kurzbeschreibung-des-projekts-management-summary">Teil A: Kurzbeschreibung des Projekts (Management Summary)</h2>
+<h3 id="a1-ausgangslage-problemstellung">A.1 Ausgangslage &amp; Problemstellung</h3>
+<p>Historische Bild- und Fotoarchive kirchlicher Einrichtungen, Museen und Stiftungen (GLAM-Bereich) umfassen oft Zehntausende bis Millionen von Digitalisaten (Glasplattennegative, Silbergelatine-Abzüge, Carte de Visite, Reprografien, Urkunden). Eine rein manuelle Erschließung (Verschlagwortung) jedes einzelnen Bildes übersteigt die personellen Ressourcen um ein Vielfaches. Fehlen Schlagworte, bleiben historische Zeugnisse, Kunstgüter und Personen unauffindbar.</p>
+<p>Kommerzielle Cloud-Lösungen (wie Google Vision, AWS Rekognition, Azure AI oder OpenAI) scheiden für kirchliche und denkmalgeschützte Bestände aus: Sie erfordern die Übertragung sensibler Digitalisate und biometrischer Merkmale auf US-Cloud-Server, verursachen unkalkulierbare laufende Kosten (Abonnements/API-Token) und verletzen das <strong>Gesetz über den Kirchlichen Datenschutz (KDG)</strong> sowie das Verbot von Drittlandübermittlungen (§§ 37–41 KDG).</p>
+<h3 id="a2-zielsetzung-losung">A.2 Zielsetzung &amp; Lösung</h3>
+<p>Das <strong>Lokale Bildarchiv-Suchsystem</strong> löst dieses Problem durch eine <strong>100 % lokale, eigenbetriebene Softwareplattform (On-Premises / Air-Gapped)</strong>. Es kombiniert moderne Vektor-KI, Texterkennung (OCR/HTR), Normdaten-Thesauri und Integritätswächter in einem datensparsamen Gesamtsystem:</p>
+<ol>
+<li><strong>Multimodale Semantische Suche (OpenCLIP):</strong><br />
+   Recherche in freier Alltagssprache (<em>„gotischer Flügelaltar mit Marienkrönung“</em>, <em>„Chorgestühl Schnitzerei“</em>, <em>„Fronleichnamsprozession 1930“</em>), ohne dass zuvor manuelle Schlagwörter vergeben werden mussten.</li>
+<li><strong>Archivische Volltextsuche &amp; Zweiblatt-Logik (Recto/Verso):</strong><br />
+   Automatische Verknüpfung von Vorder- und Rückseiten historischer Fotografien. Handschriftliche Notizen (Kurrent, Sütterlin), Stempel und Inventarnummern auf der Rückseite werden per integrierter Offline-OCR/HTR (Tesseract 5, Sauvola-Binarisierung, Fraktur- und Latein-Modelle) entziffert und volltextlich mit dem Bildmotiv synchronisiert.</li>
+<li><strong>Optionale Personen- &amp; Gesichtskuratierung (ArcFace &amp; DBSCAN):</strong><br />
+   Automatische Erkennung und Gruppierung von Porträts zur Wiedererkennung historischer Persönlichkeiten (z. B. Bischöfe, Domkapitulare, Ordensgründer, Baumeister). Die Biometriefunktion ist <strong>standardmäßig deaktiviert</strong> und durch strenge Berechtigungsstufen geschützt.</li>
+<li><strong>Standardisierte Portalschnittstellen (EAD3, LIDO 1.1, IIIF 3.0):</strong><br />
+   Verlustfreier XML-Export für nationale Kulturportale (Archivportal-D, Deutsche Digitale Bibliothek, Europeana) und lokaler IIIF-3.0-Kacheldienst für hochauflösenden Deep Zoom ohne Fremdserver.</li>
+<li><strong>Bestandserhaltung &amp; Bitrot-Monitoring (OAIS / PREMIS 3.0):</strong><br />
+   Kontinuierlicher Hintergrundwächter zur Erkennung schleichender Datenkorruption (Bitrot) auf Archivspeichern mittels kryptografischer SHA-256 Prüfsummen und revisionssicherem Audit-Trail.</li>
+</ol>
+<hr />
+<h2 id="teil-b-systemarchitektur-netzwerk-datenflusse">Teil B: Systemarchitektur, Netzwerk &amp; Datenflüsse</h2>
+<h3 id="b1-netzwerk-topologie-air-gap-garantie">B.1 Netzwerk-Topologie &amp; Air-Gap-Garantie</h3>
+<p>Das System ist architektonisch so konzipiert, dass es in einem <strong>vollständig isolierten Netzwerksegment (Air-Gapped LAN / VLAN)</strong> betrieben werden kann und muss.</p>
+<pre><code>+-----------------------------------------------------------------------------------------+
+|                                    ISOLIERTES ARCHIVNETZ (LAN / VLAN)                  |
+|                                                                                         |
+|   +--------------------------+                      +-------------------------------+   |
+|   |   Archivare / Kuratoren  |                      |   Lesesaal-Gäste / Recherche  |   |
+|   |  (Desktop-Browser / LAN) |                      |    (Kioskrechner / Lesesaal)  |   |
+|   +-------------+------------+                      +---------------+---------------+   |
+|                 | (HTTP / Port 8000)                                | (HTTP / Port 8000)|
+|                 +-----------------------+   +-----------------------+                   |
+|                                         |   |                                           |
+|                                         v   v                                           |
+|                    +---------------------------------------------+                      |
+|                    |             FASTAPI APPLIKATION             |                      |
+|                    |     (Python 3.11, Port 8000, On-Premises)   |                      |
+|                    |  - RBAC Authentifizierung (Session-Cookie)  |                      |
+|                    |  - Pfadsicherheit &amp; Sandboxing              |                      |
+|                    |  - OpenCLIP / InsightFace / Tesseract 5     |                      |
+|                    +----------------------+----------------------+                      |
+|                                           |                                             |
+|                     +---------------------+---------------------+                       |
+|                     |                                           |                       |
+|                     v (Port 6333 intern)                        v (Lokaler SQLite WAL)  |
+|      +------------------------------+             +-------------------------------+     |
+|      |      QDRANT VEKTOR-DB        |             |      SQLITE METADATENBANK     |     |
+|      |    (Docker-Container lokal)  |             |  (data/archive_metadata.db)   |     |
+|      |   - Vektoren (512-dim Float) |             |  - Metadaten &amp; Zweiblatt-Paare|     |
+|      |   - Strenges 16-GB-Hardlimit |             |  - Revisionssichere Audit-Logs|     |
+|      +------------------------------+             +-------------------------------+     |
+|                                                                                         |
+|   +---------------------------------------------------------------------------------+   |
+|   |   DATEISYSTEM DES ARCHIVSERVERS (Read-Only für Master-Digitalisate)            |   |
+|   |   - /archiv_master/ (Unveränderliche Original-TIFFs/JPEGs – Nie modifiziert!)   |   |
+|   |   - .cache/ (Temporäre Thumbnails, IIIF-Kacheln, Hash-Namen)                    |   |
+|   +---------------------------------------------------------------------------------+   |
++-----------------------------------------------------------------------------------------+
+                                      |
+                     [ KEINE AUSGEHENDEN INTERNET-VERBINDUNGEN ]
+                     [ KEINE CLOUD-APIs | KEINE TELEMETRIE / CDNs ]
+</code></pre>
+<h3 id="b2-port-kommunikationsubersicht">B.2 Port- &amp; Kommunikationsübersicht</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Komponente</th>
+<th style="text-align: left;">Port</th>
+<th style="text-align: left;">Protokoll</th>
+<th style="text-align: left;">Bindung</th>
+<th style="text-align: left;">Erreichbarkeit</th>
+<th style="text-align: left;">Zweck</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>FastAPI Webserver</strong></td>
+<td style="text-align: left;"><code>8000</code></td>
+<td style="text-align: left;">HTTP / TCP</td>
+<td style="text-align: left;"><code>0.0.0.0</code> oder <code>127.0.0.1</code></td>
+<td style="text-align: left;">Internes Archivnetz</td>
+<td style="text-align: left;">Benutzeroberfläche, REST-API, IIIF-Dienst</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Qdrant Vektor-DB</strong></td>
+<td style="text-align: left;"><code>6333</code></td>
+<td style="text-align: left;">HTTP / TCP</td>
+<td style="text-align: left;"><code>127.0.0.1</code> (Localhost)</td>
+<td style="text-align: left;">Nur Server-intern</td>
+<td style="text-align: left;">Speicherung von Ähnlichkeitsvektoren</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Externe Ports</strong></td>
+<td style="text-align: left;"><em>Keine</em></td>
+<td style="text-align: left;">–</td>
+<td style="text-align: left;">–</td>
+<td style="text-align: left;"><strong>Gesperrt</strong></td>
+<td style="text-align: left;">Das System öffnet keine ausgehenden Verbindungen</td>
+</tr>
+</tbody>
+</table>
+<h3 id="b3-offline-assets-cdn-freiheit">B.3 Offline-Assets &amp; CDN-Freiheit</h3>
+<p>Alle im Web-Frontend genutzten Bibliotheken (Tailwind-Styles, OpenSeadragon für IIIF, Icons) sind lokal als statische Dateien unter <code>static/</code> hinterlegt. Das System sendet zur Laufzeit <strong>null Requests</strong> an externe Server (weder Google Fonts, Cloudflare noch npm-CDNs).</p>
+<hr />
+<h2 id="teil-c-it-sicherheitskonzept-hartung">Teil C: IT-Sicherheitskonzept &amp; Härtung</h2>
+<h3 id="c1-authentifizierung-sitzungsverwaltung-session-security">C.1 Authentifizierung &amp; Sitzungsverwaltung (Session Security)</h3>
+<ul>
+<li><strong>Kryptografische Passwortspeicherung:</strong> Passwörter werden mittels <strong>PBKDF2-HMAC-SHA256</strong> mit 600.000 Iterationen und individuellem Salt gehasht (<code>app/core/auth.py</code>). Es werden keine Klartext-Passwörter in Datenbanken oder Konfigurationen persistiert.</li>
+<li><strong>Sichere Session-Cookies:</strong> Nach dem Login wird ein kryptografisches Session-Token in einem <code>HttpOnly</code>-Cookie gesetzt (<code>archive_session</code>). JavaScript im Browser hat keinen Zugriff auf das Token (Schutz vor Cross-Site Scripting / XSS). Bei HTTPS-Betrieb wird das Flag <code>Secure=True</code> automatisch forciert; <code>SameSite=Lax</code> verhindert Cross-Site Request Forgery (CSRF).</li>
+<li><strong>Rollenbasiertes Zugriffskontrollmodell (RBAC):</strong><br />
+  Strikte Trennung von 3 Benutzerrollen:<br />
+  1. <code>viewer</code> (Lesesaal-Gast / Wissenschaftler): Nur Lese- und Suchrechte. Kein Zugriff auf administrative Funktionen, kein Speichern von Metadaten, <strong>keine Einsicht in biometrische Rohdaten/Cluster</strong>.<br />
+  2. <code>curator</code> (Archivar / Fachabteilung): Erfassung und Korrektur von Metadaten, 1-Klick-OCR, manuelle Personenzuweisung, Thesaurus-Bearbeitung.<br />
+  3. <code>admin</code> (IT-Administration / Archivleitung): Benutzerverwaltung, Batch-Imports, System-Pruning, Hard-Resets, Fixity-Prüfungen.</li>
+</ul>
+<h3 id="c2-schutz-vor-path-traversal-dateisystem-sandbox">C.2 Schutz vor Path Traversal &amp; Dateisystem-Sandbox</h3>
+<p>Um zu verhindern, dass Angreifer über manipulierte API-Anfragen Systemdateien des Servers (wie <code>/etc/passwd</code> oder private Schlüssel) auslesen können, durchlaufen sämtliche Pfadangaben die Funktion <code>validate_safe_image_path</code> (<code>app/core/security.py</code>):<br />
+* Auflösung aller Symlinks und relativen Pfade (<code>Path.resolve()</code>).<br />
+* Strikter Abgleich gegen eine Whitelist erlaubter Archivverzeichnisse (<code>ALLOWED_IMAGE_DIRS</code>).<br />
+* Versuche, aus dem Verzeichnisbaum auszubrechen (<code>../</code>), werden mit HTTP 403 Forbidden abgewiesen und im Log als Sicherheitswarnung protokolliert.</p>
+<h3 id="c3-schreibschutz-fur-historische-masterdateien-bitstream-preservation">C.3 Schreibschutz für historische Masterdateien (Bitstream Preservation)</h3>
+<p>Das System arbeitet nach dem archivischen Grundsatz der <strong>unveränderlichen Primärdaten</strong>:<br />
+* Die Master-Scans werden vom System <strong>ausschließlich lesend</strong> geöffnet.<br />
+* Sämtliche Bildverarbeitungen (Kontrastanpassungen, 90°-Drehungen, Bildausschnitte) erfolgen <strong>non-destruktiv</strong>: Es werden flüchtige Cache-Dateien erzeugt (<code>.cache/thumbnails/</code>) oder Transformationsparameter in der SQLite-Datenbank hinterlegt.<br />
+* Die Originaldateien auf dem Archivspeicher bleiben bit-genau im Originalzustand erhalten.</p>
+<h3 id="c4-dos-schutz-decompression-bomb-pravention">C.4 DoS-Schutz &amp; Decompression-Bomb-Prävention</h3>
+<p>Historische Scans im TIFF- oder Großformat weisen oft unkomprimierte Dimensionen von mehreren hundert Megapixeln auf.<br />
+* Das System setzt hardware-adaptive Obergrenzen (<code>Image.MAX_IMAGE_PIXELS</code> bis maximal 500 MP), um bösartige oder beschädigte Bilddateien („Decompression Bombs“) sicher abzufangen.<br />
+* Batch-Indexierungen laufen in einem entkoppelten Hintergrund-Subprozess mit periodischem Garbage Collection Flush (<code>gc.collect()</code>), sodass der RAM-Bedarf der Hauptanwendung dauerhaft stabil bei ~180 MB bleibt.<br />
+* Der Docker-Container von Qdrant ist durch <code>mem_limit: 16g</code> und Swap-Limits vor Speichererschöpfung geschützt.</p>
+<hr />
+<h2 id="teil-d-datenschutzrechtliche-bewertung-kdg-dsgvo">Teil D: Datenschutzrechtliche Bewertung (KDG &amp; DSGVO)</h2>
+<h3 id="d1-anwendbarkeit-des-kirchlichen-datenschutzrechts-kdg">D.1 Anwendbarkeit des Kirchlichen Datenschutzrechts (KDG)</h3>
+<p>Für kirchliche Einrichtungen (Diözesen, Pfarreien, Klöster, Caritas) gilt primär das <strong>Gesetz über den Kirchlichen Datenschutz (KDG)</strong> als anerkanntes partikulares Datenschutzrecht gemäß Art. 91 DSGVO. Die folgenden Ausführungen gelten analog auch für staatliche Archive unter der DSGVO.</p>
+<h3 id="d2-verarbeitung-biometrischer-daten-11-kdg-art-9-dsgvo">D.2 Verarbeitung biometrischer Daten (§ 11 KDG / Art. 9 DSGVO)</h3>
+<p>Gesichts-Embeddings (512-dimensionale Zahlenvektoren) ermöglichen unter bestimmten Voraussetzungen die Wiedererkennung von Personen und stellen somit biometrische Daten dar.</p>
+<p><strong>Rechtliche Absicherung &amp; Archivprivileg:</strong><br />
+1. <strong>Kirchliches Archivprivileg (§ 29 KDG / Art. 89 DSGVO):</strong><br />
+   Gemäß § 29 Abs. 1 KDG ist die Verarbeitung besonderer Kategorien personenbezogener Daten (einschließlich biometrischer Daten) <strong>auch ohne Einwilligung der betroffenen Personen zulässig</strong>, wenn dies für den kirchlichen Archivauftrag, für wissenschaftliche oder historische Forschungszwecke erforderlich ist.<br />
+2. <strong>Verstorbene Personen:</strong><br />
+   Das KDG und die DSGVO gelten ausdrücklich nur für lebende Personen (Erwägungsgrund 27 DSGVO). Bei historischen Beständen (bis ca. Mitte des 20. Jahrhunderts) sind die abgebildeten Personen verstorben. Hier greifen ausschließlich die Schutzfristen der jeweiligen Diözesanarchivordnung (KAO / Kirchliche Archivordnung).<br />
+3. <strong>Schutz lebender Personen durch selektive Aktivierung (Privacy by Design):</strong><br />
+   * Das System startet standardmäßig mit <code>ENABLE_FACE_RECOGNITION=false</code>.<br />
+   * Bei der Indexierung jüngerer Bestände (z. B. Pfarrfeste, Schulklassen ab 1980) kann die Gesichtserkennung gezielt via <code>--skip-faces</code> ausgeschlossen werden.<br />
+   * Gesichter werden niemals automatisch öffentlich benannt; Klarnamen bedürfen der manuellen Kuratierung durch Fachpersonal.<br />
+   * <strong>Lesesaal-Isolation:</strong> Benutzer mit der Rolle <code>viewer</code> (externe Forscher im Lesesaal) haben keinen Zugriff auf unbestätigte Gesichtscluster oder biometrische Koordinaten (§ 11 KDG).</p>
+<h3 id="d3-wahrung-der-betroffenenrechte-1725-kdg-art-1521-dsgvo">D.3 Wahrung der Betroffenenrechte (§§ 17–25 KDG / Art. 15–21 DSGVO)</h3>
+<p>Sollten auf Fotografien lebende Personen identifizierbar sein, stellt das System alle gesetzlich vorgeschriebenen Werkzeuge bereit:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Betroffenenrecht</th>
+<th style="text-align: left;">Gesetzliche Norm</th>
+<th style="text-align: left;">Technische Umsetzung im Bildarchiv-System</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Auskunftsrecht</strong></td>
+<td style="text-align: left;">§ 17 KDG / Art. 15 DSGVO</td>
+<td style="text-align: left;">Direkte Volltext- und Filtersuche nach dem Namen; Ausgabe aller verknüpften Bildstellen und Metadaten.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Recht auf Berichtigung</strong></td>
+<td style="text-align: left;">§ 18 KDG / Art. 16 DSGVO</td>
+<td style="text-align: left;">Manuelle Cluster-Korrektur (<em>„Nicht diese Person“</em>), Umbenennung oder Cluster-Merge über das Web-Frontend.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Recht auf Löschung</strong></td>
+<td style="text-align: left;">§ 19 KDG / Art. 17 DSGVO</td>
+<td style="text-align: left;"><strong>Punktgenaues Löschen:</strong> API-Endpunkt <code>DELETE /images/record?path=...</code> entfernt Bild- und Gesichtsvektoren sofort und unwiderruflich aus Qdrant.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Automatisches Bereinigen</strong></td>
+<td style="text-align: left;">§ 19 KDG (Pruning)</td>
+<td style="text-align: left;">Wird ein Bild aus dem Quellverzeichnis gelöscht, entfernt <code>indexer.py --prune</code> oder <code>POST /api/system/prune</code> alle verwaisten Datenbankeinträge.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Einschränkung / Sperrung</strong></td>
+<td style="text-align: left;">§ 20 KDG / Art. 18 DSGVO</td>
+<td style="text-align: left;">Ausschluss bestimmter Faszikel oder Ordner von der Suchindexierung.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="teil-e-technische-und-organisatorische-manahmen-tom">Teil E: Technische und organisatorische Maßnahmen (TOM)</h2>
+<p>Gemäß § 27 KDG und Art. 32 DSGVO wurden folgende Sicherheitsmaßnahmen verbindlich implementiert:</p>
+<h3 id="e1-vertraulichkeit-art-32-abs-1-lit-b-dsgvo-27-kdg">E.1 Vertraulichkeit (Art. 32 Abs. 1 lit. b DSGVO / § 27 KDG)</h3>
+<ul>
+<li><strong>Zutrittskontrolle:</strong> Der Server steht in den physisch gesicherten Serverräumen der kirchlichen Einrichtung / des Rechenzentrums.</li>
+<li><strong>Zugangskontrolle:</strong> Zugriff auf das Web-Frontend nur über das interne Archivnetzwerk; Pflicht-Authentifizierung über PBKDF2-verschlüsselte Benutzerkonten.</li>
+<li><strong>Zugriffskontrolle (RBAC):</strong> Berechtigungsstufen (Lesesaal vs. Kurator vs. Administrator). Lesezugriff schützt biometrische Rohdaten vor unberechtigter Einsicht.</li>
+<li><strong>Pseudonymisierung:</strong> In der Vektordatenbank werden keine Klartext-Namen erzwungen; Vektoren sind mathematische Repräsentationen ohne direkte Rückübersetzbarkeit in Bilddaten.</li>
+</ul>
+<h3 id="e2-integritat-art-32-abs-1-lit-b-dsgvo-27-kdg">E.2 Integrität (Art. 32 Abs. 1 lit. b DSGVO / § 27 KDG)</h3>
+<ul>
+<li><strong>Weitergabekontrolle:</strong> Keine Datenübertragung ins Internet, keine Cloud-Anbindung, strikte Sandbox-Pfadvalidierung.</li>
+<li><strong>Eingabekontrolle:</strong> Audit-Logging in SQLite (<code>audit_logs</code>) für sicherheitsrelevante Aktionen (Löschungen, Benutzeränderungen, Fixity-Vorfälle).</li>
+<li><strong>Fixity &amp; Bitrot-Prävention:</strong> Automatisierter Hintergrund-Daemon (<code>FixityService</code>) zur Überprüfung der SHA-256 Hashes historischer Masterdateien nach ISO 14721 (OAIS). Revisionssicherer PREMIS-3.0-Export.</li>
+</ul>
+<h3 id="e3-verfugbarkeit-belastbarkeit-art-32-abs-1-lit-b-dsgvo-27-kdg">E.3 Verfügbarkeit &amp; Belastbarkeit (Art. 32 Abs. 1 lit. b DSGVO / § 27 KDG)</h3>
+<ul>
+<li><strong>Verfügbarkeitskontrolle:</strong> Lokale Docker-Container und SQLite-WAL-Dateien können über die reguläre Archiv-Backup-Strategie (File-Backup / Snapshot) gesichert werden.</li>
+<li><strong>Ressourcenbegrenzung:</strong> Qdrant-RAM-Hardlimit verhindert ein Blockieren des Host-Betriebssystems.</li>
+<li><strong>Rasche Wiederherstellbarkeit:</strong> Idempotente Indexierung: Die Vektordatenbank kann aus den Originaldateien jederzeit per CLI vollständig neu aufgebaut werden.</li>
+</ul>
+<hr />
+<h2 id="teil-f-prufprotokoll-freigabeerklarung">Teil F: Prüfprotokoll &amp; Freigabeerklärung</h2>
+<h3 id="f1-prufmatrix-fur-die-fachabteilungen">F.1 Prüfmatrix für die Fachabteilungen</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Prüfbereich</th>
+<th style="text-align: left;">Geprüftes Kriterium</th>
+<th style="text-align: center;">Status</th>
+<th style="text-align: left;">Bemerkung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Netzwerk &amp; Cloud</strong></td>
+<td style="text-align: left;">Keine ausgehenden Verbindungen ins Internet?</td>
+<td style="text-align: center;"><code>[ X ] Erfüllt</code></td>
+<td style="text-align: left;">100 % lokal, alle Assets (CSS/JS) gebündelt, keine Telemetrie.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Schutz der Bestände</strong></td>
+<td style="text-align: left;">Master-Dateien vor Überschreiben/Löschen geschützt?</td>
+<td style="text-align: center;"><code>[ X ] Erfüllt</code></td>
+<td style="text-align: left;">Rein lesender Zugriff auf Bildmaster; non-destruktiver Cache.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>IT-Sicherheit</strong></td>
+<td style="text-align: left;">Schutz vor Path Traversal (<code>../</code>) und Injection?</td>
+<td style="text-align: center;"><code>[ X ] Erfüllt</code></td>
+<td style="text-align: left;">Getestet in Testsuite (<code>test_security_audit.py</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Authentifizierung</strong></td>
+<td style="text-align: left;">Sichere Passwörter &amp; Session-Handling?</td>
+<td style="text-align: center;"><code>[ X ] Erfüllt</code></td>
+<td style="text-align: left;">PBKDF2-SHA256 (600k Runden), HttpOnly-Cookies, RBAC.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Datenschutz (KDG)</strong></td>
+<td style="text-align: left;">Rechtsgrundlage für Archiv-Erschließung vorhanden?</td>
+<td style="text-align: center;"><code>[ X ] Erfüllt</code></td>
+<td style="text-align: left;">§ 29 KDG (Archivprivileg) &amp; KAO Schutzfristen.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Biometrie-Schutz</strong></td>
+<td style="text-align: left;">Standardmäßig deaktiviert / Lesesaal geschützt?</td>
+<td style="text-align: center;"><code>[ X ] Erfüllt</code></td>
+<td style="text-align: left;"><code>ENABLE_FACE_RECOGNITION=false</code> default; Lesesaal isoliert.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Betroffenenrechte</strong></td>
+<td style="text-align: left;">Lösch- und Korrekturfunktionen vorhanden?</td>
+<td style="text-align: center;"><code>[ X ] Erfüllt</code></td>
+<td style="text-align: left;"><code>DELETE /images/record</code> und Pruning-CLI vollständig implementiert.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Bestandserhaltung</strong></td>
+<td style="text-align: left;">Integritätsprüfung nach OAIS vorhanden?</td>
+<td style="text-align: center;"><code>[ X ] Erfüllt</code></td>
+<td style="text-align: left;">Fixity-Daemon (SHA-256) &amp; PREMIS 3.0 Export.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="f2-formale-freigabeerklarung">F.2 Formale Freigabeerklärung</h3>
+<p>Mit den nachfolgenden Unterschriften wird der Betrieb des <strong>Lokalen Bildarchiv-Suchsystems</strong> im internen Netzwerk der Einrichtung unter Beachtung der dokumentierten technischen und organisatorischen Maßnahmen freigegeben:</p>
+<p><br></p>
+<p><strong>1. Freigabe durch die IT-Leitung / Informationssicherheit (ISB / CISO):</strong></p>
+<p>Hiermit wird bestätigt, dass das System den internen IT-Sicherheitsanforderungen entspricht. Der lokale Betrieb ohne Cloud-Verbindungen sowie das Berechtigungs- und Absicherungskonzept wurden geprüft.</p>
+<p>Name (Druckbuchstaben): <strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong>___  </p>
+<p>Datum: <strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>  Unterschrift: </em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong>______  </p>
+<p><br></p>
+<p><strong>2. Freigabe durch die/den Datenschutzbeauftragte(n) (DSB / DDSB):</strong></p>
+<p>Hiermit wird bestätigt, dass der Einsatz des Systems zur Erschließung historischer Bestände mit den Vorgaben des Kirchlichen Datenschutzgesetzes (KDG) bzw. der DSGVO im Einklang steht. Die Vorgaben zum Schutz biometrischer Daten (§ 11, § 29 KDG) werden eingehalten.</p>
+<p>Name (Druckbuchstaben): <strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong>___  </p>
+<p>Datum: <strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>  Unterschrift: </em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong>______  </p>
+<p><br></p>
+<p><strong>3. Freigabe durch die Archiv- / Museumsleitung (Fachbereich):</strong></p>
+<p>Hiermit wird der Produktivbetrieb zur wissenschaftlichen und denkmalpflegerischen Bestandserfassung freigegeben.</p>
+<p>Name (Druckbuchstaben): <strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong>___  </p>
+<p>Datum: <strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>  Unterschrift: </em></strong><strong><em>_</em></strong><strong><em>_</em></strong><strong><em>_</em></strong>______  </p>
+    </article>
+    <footer>
+      <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>
+      <span>100 % Lokale KI &bull; Datensparsamkeit nach DSGVO</span>
+    </footer>
+  </div>
+</body>
+</html>

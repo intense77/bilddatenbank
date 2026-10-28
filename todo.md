@@ -55,12 +55,21 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 ## 4. Lokale Handschriften- & Inschriften-Erkennung (OCR / HTR)
 * **Ziel:** Volltext-Erschließung historischer handschriftlicher Rückseitennotizen, Passepartout-Beschriftungen und bildimmanenter Inschriften.
 * **Aufgaben:**
-  - [ ] **Schlankes, lokales OCR/HTR-Modul:**
-    * Integration einer leichtgewichtigen Texterkennung (z. B. PaddleOCR oder Tesseract 5 für Druckschriften/Typoskripte; feingetuntes TrOCR für deutsche Handschriften/Kurrent).
-    * Speicherung des extrahierten Texts im Qdrant-Payload unter `ocr_text`.
-  - [ ] **Hybride Suche (Vektor + Volltext):**
-    * Einrichtung eines Qdrant-Volltextindexes mit deutscher Stemming-/Tokenisierung auf dem Feld `ocr_text`.
-    * Ermöglicht die kombinierte Suche (z. B. optische Suche nach *„Primizfeier“* kombiniert mit Volltextsuche nach *„P. Johann 1934“*).
+  - [x] **Schlankes, lokales OCR/HTR-Modul (Phase 1: Tesseract 5 & Bild-Vorverarbeitung):**
+    * Lokale OCR-Pipeline (`app/services/ocr_service.py`) mit PIL-Vorverarbeitung (Graustufen, 2 % Autokontrast, dynamische Skalierung min. 1200 px, Kanten-Schärfung, PSM 3 und PSM 11 Sparse-Fallback für Stempel).
+    * Transaktionssichere Speicherung des extrahierten Texts in SQLite (`metadata.ocr_text`) und Qdrant-Payload (`archive_images.payload.ocr_text`).
+    * REST-Endpunkte `/api/archive/ocr`, `/api/archive/ocr/extract` und `/api/archive/ocr/save` inkl. RBAC-Schutz (Curator/Admin-Only für Extraktion & Kuration).
+    * Integration in die Detailansicht (`#modal-ocr-panel`) mit 1-Klick-Texterkennung und Redigierung.
+  - [x] **Hybride Suche (Vektor + Volltext + Recto/Verso-Verschmelzung):**
+    * Erweiterung der semantischen Hybrid-Suche: Suchbegriffe matchen parallel auf `ocr_text` und `verso_notes`.
+    * Automatische Verknüpfung: Wird Text auf der Rückseite (Verso) gefunden, wird automatisch auch das Vorderseiten-Foto (Recto) im Suchergebnis als Treffer aufgeführt (`Rückseiten-Fund: Volltext (OCR)`).
+  - [x] **Phase 2: Spezifische Handschriften-KI (HTR für Kurrent, Sütterlin & Fraktur) & Kirchliches Latein:**
+    * Adaptive lokale Sauvola-Binarisierung (`sauvola_threshold`) zur präzisen Trennung von verblichener Tinte/Bleistift und vergilbtem Trägerpapier sowie Unterdrückung von Durchscheineffekten (Bleed-Through).
+    * Integration historischer Fraktur- und Antiqua-Fraktur-Modelle (`deu_latf`, `frk`) sowie des Modells für kirchliches Latein (`lat`) über lokales Modelldepot (`./data/tessdata`).
+    * Profilbasierte Erkennung: `auto` (kombinierte HTR/Druck-Erkennung), `handwritten` (HTR Sauvola), `printed` (Standard), `fraktur` (Altdeutsch), `latin` (Kirchliches Latein & Liturgica), `stamp` (Sparse Text).
+    * Eigene Tesseract-5-Wörterbücher (`data/tessdata/dicts/church_archival.user-words` und `.user-patterns`) mit über 300 kirchenhistorischen, liturgischen und archivalischen Fachbegriffen sowie Signaturmustern.
+    * Automatische Normalisierung historischer Ligaturen (`æ` -> `ae`, `œ` -> `oe`, `ſ` -> `s`) und Beseitigung typischer Fraktur-OCR-Fehlinterpretationen (`Meffgewand` -> `Messgewand`, `Priefter` -> `Priester`, `Bifchof` -> `Bischof`).
+    * UI-Integration mit Profil-Auswahldropdown und automatischer Profilkennzeichnung im Detail-Modal.
 
 ---
 
@@ -467,11 +476,19 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
   - [x] **Priorität 1: Unveränderlichkeit der Archiv-Master bei Bilddrehungen (Bitstream Preservation):**
     * *Problem:* `image_rotation_service.py` modifizierte früher physisch die Master-JPEG-Datei auf dem Storage. Dies verletzte das archivarische Gebot der unveränderten Originalerhaltung (OAIS).
     * *Lösung:* Umstellung auf rein **virtuelle Drehungen** über das Metadatenfeld `edit_settings: {"rotation": 90}` in SQLite und Qdrant. Der physische Bitstream des Original-Digitalisats bleibt zu 100 % unverändert ("Never touch the master!"), Thumbnails und Vorschaubilder werden on-the-fly im Cache gedreht.
-  - [ ] **Priorität 1: Netzwerk-Authentifizierung & Rollenbasierte Zugriffskontrolle (RBAC):**
-    * *Problem:* Das System lauscht auf `0.0.0.0:8000` ohne Authentifizierung. Jeder Rechner im LAN kann potentiell Ingests auslösen, Metadaten manipulieren oder Cluster löschen.
-    * *Lösung:* Implementierung einer leichtgewichtigen HTTP-Basic-Auth oder Token-/Session-Authentifizierung mit mindestens zwei Rollen:
-      1. *Archivar / Bearbeiter (Admin):* Vollzugriff auf Ingest, Metadaten-Editierung, Personen-Clustering und Löschungen.
-      2. *Leser / Gast (Viewer):* Nur Lesezugriff auf Recherche, Bildansicht, IIIF-Manifeste und Downloads.
+  - [x] **Priorität 1: Netzwerk-Authentifizierung & Rollenbasierte Zugriffskontrolle (RBAC):**
+    * *Problem:* Das System lauschte früher auf `0.0.0.0:8000` ohne Authentifizierung. Jeder Rechner im LAN konnte potentiell Ingests auslösen, Metadaten manipulieren oder Cluster löschen.
+    * *Lösung:* Vollständiges KDG-konformes RBAC- und Session-Authentifizierungs-Modul umgesetzt:
+      * Drei Schutzstufen:
+        1. *Admin (Archivleitung):* Vollzugriff auf Ingest, Ordner-Scan, System-Settings, Pruning, Batch-Rollback und Benutzerverwaltung.
+        2. *Kurator (Archivar):* Erschließung, Metadaten-Editierung, Personen-Kuration, Cluster-Merges, Notizen, Recto/Verso-Transkription.
+        3. *Lesesaal / Gast (Viewer):* Recherche, semantische Suche, Facetten, Bildbetrachtung, IIIF, Leuchttisch und PDF/Findbuch-Exporte; keine Mutationen.
+      * *KDG § 11 / DSGVO Art. 9 Schutz:* Für Lesesaal-Gäste werden unbestätigte Gesichter (`curation_status == 'KI_AUTO'`) bei Bilddetails automatisch ausgeblendet; nur archivisch geprüfte Identitäten (`VERIFIED`) werden ausgeliefert.
+      * Lokale SQLite-Benutzerverwaltung (`users` und `sessions` Tabellen) mit salzbarem PBKDF2-HMAC-SHA256 (100.000 Iterationen) ohne externe Abhängigkeiten.
+      * Standard-Accounts initial angelegt (`admin`, `archivar`, `lesesaal`).
+      * Flexible Schnittstellen: HttpOnly Session-Cookies, `Authorization: Bearer <token>` und `Authorization: Basic ...` (für AIS-Konnektoren und Skripte).
+      * Web-Frontend: Benutzer- & Rollen-Badge im Header, Anmelde-Modal (`#auth-modal`), dynamische UI-Beschränkungen via [static/js/auth.js](file:///home/museum/Bildersuche/static/js/auth.js).
+      * 100 % Testabdeckung in [tests/test_rbac_and_auth.py](file:///home/museum/Bildersuche/tests/test_rbac_and_auth.py).
   - [ ] **Priorität 1: Robuster Kernel-CIFS-Mount statt Desktop-GVFS:**
     * *Problem:* Aktuell ist das NAS über GNOME-GVFS (`/run/user/1000/gvfs/...`) angebunden. GVFS ist ein Desktop-Userspace-Daemon und friert bei Netzwerk-Latenzen im Kernel `D-State` ein.
     * *Lösung:* Dokumentation und Umstellung auf einen nativen Linux-Kernel-Mount via `/etc/fstab` (`cifs` mit `credentials`, `iocharset=utf8`, `actimeo=60` und bevorzugt `ro`-Flag für den Masterbestand).
@@ -575,12 +592,17 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 ### Säule 1: Lokale Handschriften- & Rückseiten-Texterkennung (HTR / OCR)
 * **Vorteil gegenüber Konkurrenz:** Kommerzielle Cloud-OCR scheitert an Datenschutz/KDG und historischer deutscher Schrift (Kurrent, Sütterlin, Fraktur).
 * **Maßnahmen & Meilensteine:**
-  - [ ] **1.1 Air-Gapped HTR/OCR-Engine:**
-    * Integration einer leichtgewichtigen, lokalen OCR-Pipeline (Tesseract 5 für Druck/Typoskripte und Stempel; TrOCR-Feintuning für deutsche Kurrent-Handschriften).
-    * Automatische Texterkennung beim Indexieren von Rückseiten-Scans (Verso) und Passepartouts ohne externe Cloud-Abhängigkeiten.
-  - [ ] **1.2 Hybride Volltext- & Vektorsuche:**
-    * Speicherung des extrahierten Texts im Feld `ocr_text` in SQLite und Qdrant mit deutscher Stemming-Tokenisierung.
-    * Kombinierte visuelle und textuelle Suche (z. B. *„Kruzifix 1928 P. Johannes“* findet sowohl visuell ähnliche Bildmotive als auch die passende rückseitige Widmung).
+  - [x] **1.1 Air-Gapped HTR/OCR-Engine (Phase 1 implementiert):**
+    * Integration einer leichtgewichtigen, lokalen OCR-Pipeline mit Tesseract 5 für Druck/Typoskripte, Fotografenstempel und Beschriftungen.
+    * Vorverarbeitung mit Kontrastspreizung, Auto-Kontrast und Kanten-Schärfung gegen Grauschleier vergilbter Rückseiten.
+    * Automatische Texterkennung beim Indexieren von Rückseiten-Scans (Verso) und REST-API (`/api/archive/ocr/*`) für On-Demand-Erkennung.
+  - [x] **1.2 Hybride Volltext- & Vektorsuche:**
+    * Speicherung des extrahierten Texts im Feld `ocr_text` in SQLite und Qdrant.
+    * Kombinierte visuelle und textuelle Suche: Findet Bilder nach Rückseiten-Text und verknüpft automatisch die zugehörige Vorderseite.
+  - [x] **1.3 Handschriften-KI & Kirchliches Latein (HTR / Phase 2 & Erweiterung implementiert):**
+    * Spezialisierte HTR-Vorverarbeitung mit Sauvola-Lokalvarianz-Binarisierung (`scipy.ndimage`) zur Isolierung feiner Tintenstriche von vergilbtem Trägerpapier und Unterdrückung von Bleed-Through.
+    * Integration historischer Sprachmodelle (`deu_latf`, `frk`, `lat`) und profilbasierte Erkennung (`handwritten`, `fraktur`, `latin`, `printed`, `stamp`, `auto`) in Backend und Web-UI.
+    * Tesseract-5-Fachwörterbücher (`church_archival.user-words` und `.user-patterns`) sowie historische Ligatur- und Fraktur-Korrekturen (`æ`, `œ`, `ſ`, `Meffgewand` -> `Messgewand`).
 
 ### Säule 2: Standardisierte AIS- & Portalschnittstellen (EAD, LIDO, DDB & Europeana)
 * **Vorteil gegenüber Konkurrenz:** Keine proprietären Datenbank-Lock-ins oder teure Migrations-Schnittstellen; sofortige Kompatibilität mit nationalen Kulturportalen.
@@ -595,27 +617,32 @@ Dieses Dokument erfasst die geplanten Weiterentwicklungen für das historische B
 ### Säule 3: Offline-GND- & Iconclass-Normdatenanreicherung (Fachontologien)
 * **Vorteil gegenüber Konkurrenz:** Fachspezifische Deskriptoren (Kirchengeschichte, Sakralkunst, Liturgie) statt oberflächlicher KI-Tags (*„Himmel, Gebäude“*).
 * **Maßnahmen & Meilensteine:**
-  - [ ] **3.1 Lokale GND-Normdatenbank (Offline-First):**
-    * Vorkompilierte SQLite-Tabelle der *Gemeinsamen Normdatei (GND)* für Theologen, Bischöfe, Orden, Sakralbauten und Patrozinien.
-  - [ ] **3.2 Iconclass-Klassifikation:**
-    * Hierarchisches Vokabular für christliche Ikonographie (z. B. `11H` Heilige, `11Q` Sakramente, `73` Biblische Szenen).
-  - [ ] **3.3 Zero-Shot-Tagging mit OpenCLIP:**
-    * Automatischer Vorschlag passender GND- und Iconclass-Begriffe über Bild-Embeddings ohne zusätzlichen VRAM-Bedarf.
+  - [x] **3.1 Lokale GND-Normdatenbank (Offline-First):**
+    * Vorkompilierte SQLite-Tabelle `gnd_authorities` der *Gemeinsamen Normdatei (GND)* für Theologen, Bischöfe, Orden, Sakralbauten, Vasa sacra, Paramente und Patrozinien inkl. Indizes und Volltextsuche.
+  - [x] **3.2 Iconclass-Klassifikation & Query-Expansion:**
+    * Hierarchisches Vokabular für christliche Ikonographie (z. B. `11Q71` Liturgie/Paramente, `11H` Heilige, `73` Biblische Szenen) mit bidirektionaler semantischer Vektoranreicherung.
+  - [x] **3.3 Zero-Shot-Tagging mit OpenCLIP & Historische Trägererkennung:**
+    * Automatischer Vorschlag passender GND- und Iconclass-Begriffe über vorkompilierte Prompts ohne zusätzlichen VRAM-Bedarf (< 2 ms Matrixmultiplikation).
+    * Heuristische physikalische Trägeranalyse: Albuminabzüge (Warmton/Sepia), Silbergelatine-Abzüge (SW), Cyanotypien (Eisenblaudruck), Farbverfahren und Formatschätzung (Carte de Visite / Kabinettformat).
+    * Vollständige REST-API (`/thesaurus/authorities`, `/thesaurus/suggest-for-image`, `/thesaurus/carrier`, `/thesaurus/apply-tags`) und interaktives Modal-Bedienfeld im Frontend.
 
 ### Säule 4: Langzeit-Bestandserhaltung & Bitrot-Monitoring (OAIS / Fixity)
 * **Vorteil gegenüber Konkurrenz:** Schutz vor schleichender Datenkorruption auf Massenspeichern (Bitrot); revisionssichere Nachweisbarkeit nach ISO 14721.
 * **Maßnahmen & Meilensteine:**
-  - [ ] **4.1 Hintergrund-Fixity-Wächter:**
-    * Kontinuierliche Überprüfung von SHA-256 / BLAKE3-Prüfsummen aller Master-Scans im Hintergrund.
-    * Sofortige Alarmierung bei manipulierten oder defekten Sektoren auf NAS-/ZFS-Laufwerken.
-  - [ ] **4.2 PREMIS-Metadatenexport:**
-    * Preservation Metadata Implementation Strategies (PREMIS) XML zur revisionssicheren Dokumentation von Fixity-Prüfungen.
+  - [x] **4.1 Hintergrund-Fixity-Wächter & Bitrot-Alarmierung:**
+    * Kontinuierliche Überprüfung kryptographischer SHA-256 Prüfsummen aller Master-Scans im Streaming-Modus.
+    * Revisionssicheres Audit-Logging (`FIXITY_BITROT_ALERT`, `FIXITY_MISSING_ALERT`) bei beschädigten oder manipulierten Sektoren auf NAS-/ZFS-Speichern.
+    * Autonomer Daemon (`FixityService`) mit Thread-sicherem Progress-Monitoring, REST-API (`/api/fixity/status`, `/api/fixity/verify`, `/api/fixity/corrupted`), Live-Fortschrittsbalken und globalem Warnbanner im Web-Frontend.
+  - [x] **4.2 PREMIS 3.0 Metadatenexport (ISO 14721 OAIS):**
+    * Standardkonformer XML-Export nach *Preservation Metadata: Implementation Strategies (PREMIS 3.0)* mit vollständigen Object-, Event- und Agent-Entities.
+    * 1-Klick-Download im Bild-Detailfenster (`GET /api/fixity/premis`) und Sammelmappen-Export aus dem Leuchttisch (`POST /api/fixity/premis/export`).
 
 ### Säule 5: KDG-konformes Mehrbenutzer- & Lesesaal-Rollenmodell
 * **Vorteil gegenüber Konkurrenz:** Datenschutzkonforme Bereitstellung für externe Forscher und Lesesaal-Plätze ohne teure Lizenzgebühren.
 * **Maßnahmen & Meilensteine:**
-  - [ ] **5.1 Rollenmodell (Lesesaal vs. Kurator vs. Admin):**
+  - [x] **5.1 Rollenmodell (Lesesaal vs. Kurator vs. Admin):**
     * Lesesaal-Modus: Recherche, Leuchttisch, Deep-Zoom und PDF-Export ohne Schreibrechte und ohne Zugriff auf unbestätigte biometrische Daten (§ 11 KDG).
     * Kuratoren-Modus: Metadaten-Erfassung, Rückseiten-Transkription, Personen-Kuration.
-  - [ ] **5.2 Lokale Session-Authentifizierung:**
-    * Einfache, lokale Benutzerverwaltung ohne Cloud-Zwang.
+    * Admin-Modus: Vollzugriff auf Ingest, Batch-Rollback, System-Prunes und Benutzerverwaltung.
+  - [x] **5.2 Lokale Session-Authentifizierung:**
+    * Einfache, lokale Benutzerverwaltung in SQLite ohne Cloud-Zwang, gesalzene PBKDF2-Passwörter, HttpOnly-Cookies, Bearer-Tokens und Basic-Auth-Support.

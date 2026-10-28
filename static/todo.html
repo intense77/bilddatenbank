@@ -183,8 +183,9 @@
   <div class="container">
     <nav class="doc-nav">
       <a href="README.html">Übersicht</a>
+      <a href="freigabe_it_datenschutz.html">IT- & DS-Freigabe</a>
       <a href="anleitung.html">Anleitung</a>
-      <a href="datenschutz.html">Datenschutz & DSGVO</a>
+      <a href="datenschutz.html">Datenschutz & KDG</a>
       <a href="lizenzen.html">Lizenzen</a>
       <a href="todo.html" class="active">Roadmap</a>
       <a href="/">← Zurück zur Bildersuche</a>
@@ -267,14 +268,25 @@
 <ul>
 <li><strong>Ziel:</strong> Volltext-Erschließung historischer handschriftlicher Rückseitennotizen, Passepartout-Beschriftungen und bildimmanenter Inschriften.</li>
 <li><strong>Aufgaben:</strong></li>
-<li>[ ] <strong>Schlankes, lokales OCR/HTR-Modul:</strong><ul>
-<li>Integration einer leichtgewichtigen Texterkennung (z. B. PaddleOCR oder Tesseract 5 für Druckschriften/Typoskripte; feingetuntes TrOCR für deutsche Handschriften/Kurrent).</li>
-<li>Speicherung des extrahierten Texts im Qdrant-Payload unter <code>ocr_text</code>.</li>
+<li>[x] <strong>Schlankes, lokales OCR/HTR-Modul (Phase 1: Tesseract 5 &amp; Bild-Vorverarbeitung):</strong><ul>
+<li>Lokale OCR-Pipeline (<code>app/services/ocr_service.py</code>) mit PIL-Vorverarbeitung (Graustufen, 2 % Autokontrast, dynamische Skalierung min. 1200 px, Kanten-Schärfung, PSM 3 und PSM 11 Sparse-Fallback für Stempel).</li>
+<li>Transaktionssichere Speicherung des extrahierten Texts in SQLite (<code>metadata.ocr_text</code>) und Qdrant-Payload (<code>archive_images.payload.ocr_text</code>).</li>
+<li>REST-Endpunkte <code>/api/archive/ocr</code>, <code>/api/archive/ocr/extract</code> und <code>/api/archive/ocr/save</code> inkl. RBAC-Schutz (Curator/Admin-Only für Extraktion &amp; Kuration).</li>
+<li>Integration in die Detailansicht (<code>#modal-ocr-panel</code>) mit 1-Klick-Texterkennung und Redigierung.</li>
 </ul>
 </li>
-<li>[ ] <strong>Hybride Suche (Vektor + Volltext):</strong><ul>
-<li>Einrichtung eines Qdrant-Volltextindexes mit deutscher Stemming-/Tokenisierung auf dem Feld <code>ocr_text</code>.</li>
-<li>Ermöglicht die kombinierte Suche (z. B. optische Suche nach <em>„Primizfeier“</em> kombiniert mit Volltextsuche nach <em>„P. Johann 1934“</em>).</li>
+<li>[x] <strong>Hybride Suche (Vektor + Volltext + Recto/Verso-Verschmelzung):</strong><ul>
+<li>Erweiterung der semantischen Hybrid-Suche: Suchbegriffe matchen parallel auf <code>ocr_text</code> und <code>verso_notes</code>.</li>
+<li>Automatische Verknüpfung: Wird Text auf der Rückseite (Verso) gefunden, wird automatisch auch das Vorderseiten-Foto (Recto) im Suchergebnis als Treffer aufgeführt (<code>Rückseiten-Fund: Volltext (OCR)</code>).</li>
+</ul>
+</li>
+<li>[x] <strong>Phase 2: Spezifische Handschriften-KI (HTR für Kurrent, Sütterlin &amp; Fraktur) &amp; Kirchliches Latein:</strong><ul>
+<li>Adaptive lokale Sauvola-Binarisierung (<code>sauvola_threshold</code>) zur präzisen Trennung von verblichener Tinte/Bleistift und vergilbtem Trägerpapier sowie Unterdrückung von Durchscheineffekten (Bleed-Through).</li>
+<li>Integration historischer Fraktur- und Antiqua-Fraktur-Modelle (<code>deu_latf</code>, <code>frk</code>) sowie des Modells für kirchliches Latein (<code>lat</code>) über lokales Modelldepot (<code>./data/tessdata</code>).</li>
+<li>Profilbasierte Erkennung: <code>auto</code> (kombinierte HTR/Druck-Erkennung), <code>handwritten</code> (HTR Sauvola), <code>printed</code> (Standard), <code>fraktur</code> (Altdeutsch), <code>latin</code> (Kirchliches Latein &amp; Liturgica), <code>stamp</code> (Sparse Text).</li>
+<li>Eigene Tesseract-5-Wörterbücher (<code>data/tessdata/dicts/church_archival.user-words</code> und <code>.user-patterns</code>) mit über 300 kirchenhistorischen, liturgischen und archivalischen Fachbegriffen sowie Signaturmustern.</li>
+<li>Automatische Normalisierung historischer Ligaturen (<code>æ</code> -&gt; <code>ae</code>, <code>œ</code> -&gt; <code>oe</code>, <code>ſ</code> -&gt; <code>s</code>) und Beseitigung typischer Fraktur-OCR-Fehlinterpretationen (<code>Meffgewand</code> -&gt; <code>Messgewand</code>, <code>Priefter</code> -&gt; <code>Priester</code>, <code>Bifchof</code> -&gt; <code>Bischof</code>).</li>
+<li>UI-Integration mit Profil-Auswahldropdown und automatischer Profilkennzeichnung im Detail-Modal.</li>
 </ul>
 </li>
 </ul>
@@ -815,11 +827,21 @@
 <li><em>Lösung:</em> Umstellung auf rein <strong>virtuelle Drehungen</strong> über das Metadatenfeld <code>edit_settings: {"rotation": 90}</code> in SQLite und Qdrant. Der physische Bitstream des Original-Digitalisats bleibt zu 100 % unverändert ("Never touch the master!"), Thumbnails und Vorschaubilder werden on-the-fly im Cache gedreht.</li>
 </ul>
 </li>
-<li>[ ] <strong>Priorität 1: Netzwerk-Authentifizierung &amp; Rollenbasierte Zugriffskontrolle (RBAC):</strong><ul>
-<li><em>Problem:</em> Das System lauscht auf <code>0.0.0.0:8000</code> ohne Authentifizierung. Jeder Rechner im LAN kann potentiell Ingests auslösen, Metadaten manipulieren oder Cluster löschen.</li>
-<li><em>Lösung:</em> Implementierung einer leichtgewichtigen HTTP-Basic-Auth oder Token-/Session-Authentifizierung mit mindestens zwei Rollen:<br />
-  1. <em>Archivar / Bearbeiter (Admin):</em> Vollzugriff auf Ingest, Metadaten-Editierung, Personen-Clustering und Löschungen.<br />
-  2. <em>Leser / Gast (Viewer):</em> Nur Lesezugriff auf Recherche, Bildansicht, IIIF-Manifeste und Downloads.</li>
+<li>[x] <strong>Priorität 1: Netzwerk-Authentifizierung &amp; Rollenbasierte Zugriffskontrolle (RBAC):</strong><ul>
+<li><em>Problem:</em> Das System lauschte früher auf <code>0.0.0.0:8000</code> ohne Authentifizierung. Jeder Rechner im LAN konnte potentiell Ingests auslösen, Metadaten manipulieren oder Cluster löschen.</li>
+<li><em>Lösung:</em> Vollständiges KDG-konformes RBAC- und Session-Authentifizierungs-Modul umgesetzt:</li>
+<li>Drei Schutzstufen:<ol>
+<li><em>Admin (Archivleitung):</em> Vollzugriff auf Ingest, Ordner-Scan, System-Settings, Pruning, Batch-Rollback und Benutzerverwaltung.</li>
+<li><em>Kurator (Archivar):</em> Erschließung, Metadaten-Editierung, Personen-Kuration, Cluster-Merges, Notizen, Recto/Verso-Transkription.</li>
+<li><em>Lesesaal / Gast (Viewer):</em> Recherche, semantische Suche, Facetten, Bildbetrachtung, IIIF, Leuchttisch und PDF/Findbuch-Exporte; keine Mutationen.</li>
+</ol>
+</li>
+<li><em>KDG § 11 / DSGVO Art. 9 Schutz:</em> Für Lesesaal-Gäste werden unbestätigte Gesichter (<code>curation_status == 'KI_AUTO'</code>) bei Bilddetails automatisch ausgeblendet; nur archivisch geprüfte Identitäten (<code>VERIFIED</code>) werden ausgeliefert.</li>
+<li>Lokale SQLite-Benutzerverwaltung (<code>users</code> und <code>sessions</code> Tabellen) mit salzbarem PBKDF2-HMAC-SHA256 (100.000 Iterationen) ohne externe Abhängigkeiten.</li>
+<li>Standard-Accounts initial angelegt (<code>admin</code>, <code>archivar</code>, <code>lesesaal</code>).</li>
+<li>Flexible Schnittstellen: HttpOnly Session-Cookies, <code>Authorization: Bearer &lt;token&gt;</code> und <code>Authorization: Basic ...</code> (für AIS-Konnektoren und Skripte).</li>
+<li>Web-Frontend: Benutzer- &amp; Rollen-Badge im Header, Anmelde-Modal (<code>#auth-modal</code>), dynamische UI-Beschränkungen via <a href="file:///home/museum/Bildersuche/static/js/auth.js">static/js/auth.js</a>.</li>
+<li>100 % Testabdeckung in <a href="file:///home/museum/Bildersuche/tests/test_rbac_and_auth.py">tests/test_rbac_and_auth.py</a>.</li>
 </ul>
 </li>
 <li>[ ] <strong>Priorität 1: Robuster Kernel-CIFS-Mount statt Desktop-GVFS:</strong><ul>
@@ -967,14 +989,21 @@
 <ul>
 <li><strong>Vorteil gegenüber Konkurrenz:</strong> Kommerzielle Cloud-OCR scheitert an Datenschutz/KDG und historischer deutscher Schrift (Kurrent, Sütterlin, Fraktur).</li>
 <li><strong>Maßnahmen &amp; Meilensteine:</strong></li>
-<li>[ ] <strong>1.1 Air-Gapped HTR/OCR-Engine:</strong><ul>
-<li>Integration einer leichtgewichtigen, lokalen OCR-Pipeline (Tesseract 5 für Druck/Typoskripte und Stempel; TrOCR-Feintuning für deutsche Kurrent-Handschriften).</li>
-<li>Automatische Texterkennung beim Indexieren von Rückseiten-Scans (Verso) und Passepartouts ohne externe Cloud-Abhängigkeiten.</li>
+<li>[x] <strong>1.1 Air-Gapped HTR/OCR-Engine (Phase 1 implementiert):</strong><ul>
+<li>Integration einer leichtgewichtigen, lokalen OCR-Pipeline mit Tesseract 5 für Druck/Typoskripte, Fotografenstempel und Beschriftungen.</li>
+<li>Vorverarbeitung mit Kontrastspreizung, Auto-Kontrast und Kanten-Schärfung gegen Grauschleier vergilbter Rückseiten.</li>
+<li>Automatische Texterkennung beim Indexieren von Rückseiten-Scans (Verso) und REST-API (<code>/api/archive/ocr/*</code>) für On-Demand-Erkennung.</li>
 </ul>
 </li>
-<li>[ ] <strong>1.2 Hybride Volltext- &amp; Vektorsuche:</strong><ul>
-<li>Speicherung des extrahierten Texts im Feld <code>ocr_text</code> in SQLite und Qdrant mit deutscher Stemming-Tokenisierung.</li>
-<li>Kombinierte visuelle und textuelle Suche (z. B. <em>„Kruzifix 1928 P. Johannes“</em> findet sowohl visuell ähnliche Bildmotive als auch die passende rückseitige Widmung).</li>
+<li>[x] <strong>1.2 Hybride Volltext- &amp; Vektorsuche:</strong><ul>
+<li>Speicherung des extrahierten Texts im Feld <code>ocr_text</code> in SQLite und Qdrant.</li>
+<li>Kombinierte visuelle und textuelle Suche: Findet Bilder nach Rückseiten-Text und verknüpft automatisch die zugehörige Vorderseite.</li>
+</ul>
+</li>
+<li>[x] <strong>1.3 Handschriften-KI &amp; Kirchliches Latein (HTR / Phase 2 &amp; Erweiterung implementiert):</strong><ul>
+<li>Spezialisierte HTR-Vorverarbeitung mit Sauvola-Lokalvarianz-Binarisierung (<code>scipy.ndimage</code>) zur Isolierung feiner Tintenstriche von vergilbtem Trägerpapier und Unterdrückung von Bleed-Through.</li>
+<li>Integration historischer Sprachmodelle (<code>deu_latf</code>, <code>frk</code>, <code>lat</code>) und profilbasierte Erkennung (<code>handwritten</code>, <code>fraktur</code>, <code>latin</code>, <code>printed</code>, <code>stamp</code>, <code>auto</code>) in Backend und Web-UI.</li>
+<li>Tesseract-5-Fachwörterbücher (<code>church_archival.user-words</code> und <code>.user-patterns</code>) sowie historische Ligatur- und Fraktur-Korrekturen (<code>æ</code>, <code>œ</code>, <code>ſ</code>, <code>Meffgewand</code> -&gt; <code>Messgewand</code>).</li>
 </ul>
 </li>
 </ul>
@@ -999,16 +1028,18 @@
 <ul>
 <li><strong>Vorteil gegenüber Konkurrenz:</strong> Fachspezifische Deskriptoren (Kirchengeschichte, Sakralkunst, Liturgie) statt oberflächlicher KI-Tags (<em>„Himmel, Gebäude“</em>).</li>
 <li><strong>Maßnahmen &amp; Meilensteine:</strong></li>
-<li>[ ] <strong>3.1 Lokale GND-Normdatenbank (Offline-First):</strong><ul>
-<li>Vorkompilierte SQLite-Tabelle der <em>Gemeinsamen Normdatei (GND)</em> für Theologen, Bischöfe, Orden, Sakralbauten und Patrozinien.</li>
+<li>[x] <strong>3.1 Lokale GND-Normdatenbank (Offline-First):</strong><ul>
+<li>Vorkompilierte SQLite-Tabelle <code>gnd_authorities</code> der <em>Gemeinsamen Normdatei (GND)</em> für Theologen, Bischöfe, Orden, Sakralbauten, Vasa sacra, Paramente und Patrozinien inkl. Indizes und Volltextsuche.</li>
 </ul>
 </li>
-<li>[ ] <strong>3.2 Iconclass-Klassifikation:</strong><ul>
-<li>Hierarchisches Vokabular für christliche Ikonographie (z. B. <code>11H</code> Heilige, <code>11Q</code> Sakramente, <code>73</code> Biblische Szenen).</li>
+<li>[x] <strong>3.2 Iconclass-Klassifikation &amp; Query-Expansion:</strong><ul>
+<li>Hierarchisches Vokabular für christliche Ikonographie (z. B. <code>11Q71</code> Liturgie/Paramente, <code>11H</code> Heilige, <code>73</code> Biblische Szenen) mit bidirektionaler semantischer Vektoranreicherung.</li>
 </ul>
 </li>
-<li>[ ] <strong>3.3 Zero-Shot-Tagging mit OpenCLIP:</strong><ul>
-<li>Automatischer Vorschlag passender GND- und Iconclass-Begriffe über Bild-Embeddings ohne zusätzlichen VRAM-Bedarf.</li>
+<li>[x] <strong>3.3 Zero-Shot-Tagging mit OpenCLIP &amp; Historische Trägererkennung:</strong><ul>
+<li>Automatischer Vorschlag passender GND- und Iconclass-Begriffe über vorkompilierte Prompts ohne zusätzlichen VRAM-Bedarf (&lt; 2 ms Matrixmultiplikation).</li>
+<li>Heuristische physikalische Trägeranalyse: Albuminabzüge (Warmton/Sepia), Silbergelatine-Abzüge (SW), Cyanotypien (Eisenblaudruck), Farbverfahren und Formatschätzung (Carte de Visite / Kabinettformat).</li>
+<li>Vollständige REST-API (<code>/thesaurus/authorities</code>, <code>/thesaurus/suggest-for-image</code>, <code>/thesaurus/carrier</code>, <code>/thesaurus/apply-tags</code>) und interaktives Modal-Bedienfeld im Frontend.</li>
 </ul>
 </li>
 </ul>
@@ -1016,13 +1047,15 @@
 <ul>
 <li><strong>Vorteil gegenüber Konkurrenz:</strong> Schutz vor schleichender Datenkorruption auf Massenspeichern (Bitrot); revisionssichere Nachweisbarkeit nach ISO 14721.</li>
 <li><strong>Maßnahmen &amp; Meilensteine:</strong></li>
-<li>[ ] <strong>4.1 Hintergrund-Fixity-Wächter:</strong><ul>
-<li>Kontinuierliche Überprüfung von SHA-256 / BLAKE3-Prüfsummen aller Master-Scans im Hintergrund.</li>
-<li>Sofortige Alarmierung bei manipulierten oder defekten Sektoren auf NAS-/ZFS-Laufwerken.</li>
+<li>[x] <strong>4.1 Hintergrund-Fixity-Wächter &amp; Bitrot-Alarmierung:</strong><ul>
+<li>Kontinuierliche Überprüfung kryptographischer SHA-256 Prüfsummen aller Master-Scans im Streaming-Modus.</li>
+<li>Revisionssicheres Audit-Logging (<code>FIXITY_BITROT_ALERT</code>, <code>FIXITY_MISSING_ALERT</code>) bei beschädigten oder manipulierten Sektoren auf NAS-/ZFS-Speichern.</li>
+<li>Autonomer Daemon (<code>FixityService</code>) mit Thread-sicherem Progress-Monitoring, REST-API (<code>/api/fixity/status</code>, <code>/api/fixity/verify</code>, <code>/api/fixity/corrupted</code>), Live-Fortschrittsbalken und globalem Warnbanner im Web-Frontend.</li>
 </ul>
 </li>
-<li>[ ] <strong>4.2 PREMIS-Metadatenexport:</strong><ul>
-<li>Preservation Metadata Implementation Strategies (PREMIS) XML zur revisionssicheren Dokumentation von Fixity-Prüfungen.</li>
+<li>[x] <strong>4.2 PREMIS 3.0 Metadatenexport (ISO 14721 OAIS):</strong><ul>
+<li>Standardkonformer XML-Export nach <em>Preservation Metadata: Implementation Strategies (PREMIS 3.0)</em> mit vollständigen Object-, Event- und Agent-Entities.</li>
+<li>1-Klick-Download im Bild-Detailfenster (<code>GET /api/fixity/premis</code>) und Sammelmappen-Export aus dem Leuchttisch (<code>POST /api/fixity/premis/export</code>).</li>
 </ul>
 </li>
 </ul>
@@ -1030,13 +1063,14 @@
 <ul>
 <li><strong>Vorteil gegenüber Konkurrenz:</strong> Datenschutzkonforme Bereitstellung für externe Forscher und Lesesaal-Plätze ohne teure Lizenzgebühren.</li>
 <li><strong>Maßnahmen &amp; Meilensteine:</strong></li>
-<li>[ ] <strong>5.1 Rollenmodell (Lesesaal vs. Kurator vs. Admin):</strong><ul>
+<li>[x] <strong>5.1 Rollenmodell (Lesesaal vs. Kurator vs. Admin):</strong><ul>
 <li>Lesesaal-Modus: Recherche, Leuchttisch, Deep-Zoom und PDF-Export ohne Schreibrechte und ohne Zugriff auf unbestätigte biometrische Daten (§ 11 KDG).</li>
 <li>Kuratoren-Modus: Metadaten-Erfassung, Rückseiten-Transkription, Personen-Kuration.</li>
+<li>Admin-Modus: Vollzugriff auf Ingest, Batch-Rollback, System-Prunes und Benutzerverwaltung.</li>
 </ul>
 </li>
-<li>[ ] <strong>5.2 Lokale Session-Authentifizierung:</strong><ul>
-<li>Einfache, lokale Benutzerverwaltung ohne Cloud-Zwang.</li>
+<li>[x] <strong>5.2 Lokale Session-Authentifizierung:</strong><ul>
+<li>Einfache, lokale Benutzerverwaltung in SQLite ohne Cloud-Zwang, gesalzene PBKDF2-Passwörter, HttpOnly-Cookies, Bearer-Tokens und Basic-Auth-Support.</li>
 </ul>
 </li>
 </ul>

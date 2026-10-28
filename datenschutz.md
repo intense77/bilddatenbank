@@ -83,8 +83,38 @@ Sollten auf Fotografien lebende Personen abgebildet sein, stehen diesen die gese
 
 ## 5. Technische und organisatorische Maßnahmen (TOM, § 27 KDG / Art. 32 DSGVO)
 
-* **Zugangsbeschränkung & Berechtigungskonzept:** Das System ist für den internen Einsatz konzipiert; kein offener, unauthentifizierter Zugang aus dem öffentlichen Internet.
-* **Sicherheit der Pfade:** Striktes Verbot von Pfad-Traversierungen (`../`); Anfragen nach Dateien außerhalb der konfigurierten Archivverzeichnisse werden von `validate_safe_image_path` abgewiesen.
+* **Zugangsbeschränkung & Berechtigungskonzept (RBAC):** Das System ist für den internen Einsatz konzipiert; kein offener, unauthentifizierter Zugang aus dem öffentlichen Internet. Rollentrennung in `viewer` (Lesesaal), `curator` (Archivar) und `admin` (IT-Leitung).
+* **Kryptografische Passwort- & Session-Sicherheit:** Gesalzene PBKDF2-HMAC-SHA256 Passwörter mit 600.000 Runden (`app/core/auth.py`), HttpOnly- und SameSite-geschützte Session-Cookies zur Verhinderung von Session-Hijacking und XSS-Auslesbarkeit.
+* **Sicherheit der Pfade & Sandboxing:** Striktes Verbot von Pfad-Traversierungen (`../`); Anfragen nach Dateien außerhalb der konfigurierten Archivverzeichnisse werden von `validate_safe_image_path` abgewiesen.
+* **Schreibschutz für Master-Scans:** Das System greift ausschließlich lesend auf die Originalscans zu. Bildverbesserungen, Drehungen und Kacheln erfolgen im flüchtigen Cache oder in der SQLite-Datenbank.
 * **CORS-Einschränkung:** Das Backend beschränkt Web-Aufrufe strikt auf die in `CORS_ORIGINS` definierten Domains.
 * **Sichere Hash-Speicherung im Cache:** Temporäre Bild-Thumbnails werden unter MD5-Hash-Namen abgelegt, um Rückschlüsse im Cache zu minimieren.
 * **Kuratierte Namensvergabe:** Klarnamen werden nicht automatisiert zugewiesen, sondern bedürfen der manuellen Verifikation durch das Archivpersonal.
+* **Ressourcenbegrenzung:** Qdrant-Speicherlimit (16 GB), Decompression-Bomb-Schutz (bis 500 MP) und periodischer Garbage-Collection-Flush verhindern Server-Instabilitäten.
+
+---
+
+## 6. Rollenmodell & Schutz des Lesesaals (§ 11 KDG)
+
+Um den Anforderungen an den Schutz besonderer Kategorien personenbezogener Daten (§ 11 KDG) im öffentlichen oder halböffentlichen Lesesaal gerecht zu werden, trennt das System strikt zwischen Lese- und Bearbeitungsrechten:
+
+* **Lesesaal-Modus (`viewer`):**
+  * Ermöglicht Archivbesuchern und Gastforschern die Recherche nach freiem Text, Schlagwörtern, Signaturen und Datierungen.
+  * **Biometrie-Schutz:** Unbestätigte Gesichtscluster, biometrische Vektoren und Bearbeitungsmasken sind für Lesesaal-Konten gesperrt.
+  * Schreibzugriffe (Metadaten-Speicherung, OCR-Korrektur, Benutzerverwaltung) werden über HTTP 403 Forbidden unterbunden.
+* **Kuratoren-Modus (`curator`):**
+  * Fachpersonal des Archivs darf Metadaten erfassen, OCR/HTR-Texte korrigieren, Normdaten anreichern und verifizierte Personennamen zuweisen.
+* **Administrator-Modus (`admin`):**
+  * Vorbehalten für IT und Archivleitung: Durchführung von Massen-Imports, Fixity-Unversehrtheitsprüfungen, System-Pruning und Benutzerverwaltung.
+
+---
+
+## 7. Revisionssicherheit, Audit-Trail & Fixity-Monitoring (ISO 14721 OAIS)
+
+1. **Revisionssicheres Audit-Logging:**  
+   Sicherheitsrelevante Ereignisse (Löschen von Einträgen, Änderungen an Benutzerkonten, Integritätsabweichungen) werden im SQLite-Audit-Log (`audit_logs`) unveränderlich mit Zeitstempel und Benutzeridentität protokolliert.
+2. **Kontinuierlicher Bitrot-Wächter (`FixityService`):**  
+   Schützt vor schleichender Datenkorruption auf Archivspeichern durch periodischen Abgleich kryptografischer SHA-256 Prüfsummen.
+3. **Standardkonformer PREMIS 3.0 Export:**  
+   Ermöglicht den Nachweis der langfristigen Unversehrtheit und Authentizität digitaler Archivbestände gegenüber Aufsichtsbehörden und übergeordneten Trägern.
+

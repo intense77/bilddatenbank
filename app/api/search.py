@@ -11,6 +11,14 @@ from PIL import Image, ImageOps
 
 from app.core.config import settings
 from app.core.security import validate_safe_image_path
+from app.core.auth import (
+    User,
+    require_admin,
+    require_curator,
+    require_viewer,
+    get_current_user,
+    is_viewer_only,
+)
 from app.api.deps import (
     get_clip_service,
     get_face_service,
@@ -601,6 +609,10 @@ def search_semantic(
                     match_field = f"Urheber: {row['creator']}"
                 elif row.get("description") and term.lower() in str(row["description"]).lower():
                     match_field = f"Beschreibung: {str(row['description'])[:30]}..."
+                elif row.get("verso_notes") and term.lower() in str(row["verso_notes"]).lower():
+                    match_field = f"Rückseiten-Notiz: {str(row['verso_notes'])[:30]}..."
+                elif row.get("ocr_text") and term.lower() in str(row["ocr_text"]).lower():
+                    match_field = f"Volltext (OCR): {str(row['ocr_text'])[:30]}..."
 
                 matched_metadata_images[m_path] = {
                     "score": 0.90 if term == q else 0.88,
@@ -610,6 +622,28 @@ def search_semantic(
                     "iconclass": thesaurus_iconclass,
                     "thesaurus_category": thesaurus_category,
                 }
+
+                # Recto/Verso-Verknüpfung: Rückseiten-Treffer machen Vorderseite auffindbar
+                try:
+                    from app.services.recto_verso_service import recto_verso_service
+                    rv_rel = recto_verso_service.detect_relationship(m_path)
+                    if rv_rel and rv_rel.get("role") == "verso" and rv_rel.get("companion_path"):
+                        recto_p = rv_rel["companion_path"]
+                        if recto_p not in matched_person_images and recto_p not in matched_metadata_images:
+                            recto_row = metadata_db.get_metadata(recto_p) or {
+                                "file_path": recto_p,
+                                "file_name": rv_rel.get("companion_name"),
+                            }
+                            matched_metadata_images[recto_p] = {
+                                "score": 0.89 if term == q else 0.87,
+                                "match_type": "metadata",
+                                "matched_query": f"Rückseiten-Fund: {match_field}",
+                                "metadata_row": recto_row,
+                                "iconclass": thesaurus_iconclass,
+                                "thesaurus_category": thesaurus_category,
+                            }
+                except Exception:
+                    pass
     except Exception as e:
         logger.warning("Metadaten-Suche in SQLite fehlgeschlagen: %s", e)
 
@@ -964,6 +998,7 @@ def get_clusters(
     include_preview: bool = Query(default=True, description="Vorschaubild-Pfad erzeugen"),
     include_faces: bool = Query(default=False, description="Vollständige Gesichterliste pro Cluster beilegen (Standard: False für ultraschnelles Laden)"),
     clustering_service: ClusteringService = Depends(get_clustering_service),
+    current_user: Optional[User] = Depends(get_current_user),
 ):
     """
     Gibt alle gefundenen Personen-Cluster zurück (inkl. Vorschaubild-URLs).
@@ -973,6 +1008,9 @@ def get_clusters(
     if not settings.ENABLE_FACE_RECOGNITION:
         return []
     clusters = clustering_service.get_clusters(include_preview=include_preview, include_faces=include_faces)
+    if is_viewer_only(current_user):
+        # KDG § 11: Lesesaal-Gäste sehen nur namentlich erschlossene/kuratierte Personen-Cluster
+        clusters = [c for c in clusters if c.name and not c.name.startswith("Person #")]
     return clusters
 
 
@@ -1036,6 +1074,7 @@ def label_cluster(
     request: Optional[ClusterLabelRequest] = None,
     label: Optional[str] = Query(None, description="Alternativer Query-Parameter für das Label"),
     clustering_service: ClusteringService = Depends(get_clustering_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Weist einem Personen-Cluster einen Klarnamen zu (z. B. 'Bischof Müller').
@@ -1094,6 +1133,7 @@ def label_single_face(
     face_id: str,
     request: FaceLabelRequest,
     clustering_service: ClusteringService = Depends(get_clustering_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Weist einem einzelnen Gesicht einen Klarnamen zu.
@@ -1130,6 +1170,7 @@ def update_face_curation_status(
     face_id: str,
     request: FaceCurationStatusRequest,
     qdrant: QdrantService = Depends(get_qdrant_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Aktualisiert den kuratorischen Status eines Gesichts ('VERIFIED' oder 'KI_AUTO') in Qdrant
@@ -1180,7 +1221,11 @@ class ClusterNotesRequest(BaseModel):
 
 
 @router.post("/faces/clusters/{cluster_id}/notes")
-def update_cluster_notes(cluster_id: str, request: ClusterNotesRequest):
+def update_cluster_notes(
+    cluster_id: str,
+    request: ClusterNotesRequest,
+    curator: Optional[User] = Depends(require_curator),
+):
     """Speichert archivalische Notizen zu einem Personen-Cluster in der SQLite-Datenbank."""
     from app.services.metadata_db import metadata_db
     res = metadata_db.upsert_cluster(cluster_id=cluster_id, notes=request.notes)
@@ -1191,6 +1236,7 @@ def update_cluster_notes(cluster_id: str, request: ClusterNotesRequest):
 def merge_clusters(
     request: ClusterMergeRequest,
     clustering_service: ClusteringService = Depends(get_clustering_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Führt zwei Personen-Cluster zusammen (z. B. bei Altersunterschieden oder veränderten Lichtverhältnissen).
@@ -1232,6 +1278,7 @@ def merge_clusters(
 def remove_face_from_cluster(
     face_id: str,
     clustering_service: ClusteringService = Depends(get_clustering_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Entfernt ein fälschlicherweise zugeordnetes Gesicht aus seinem Cluster ('Nicht diese Person').
@@ -1266,6 +1313,7 @@ def trigger_clustering(
     eps: float = Query(default=0.35, ge=0.01, le=1.0, description="DBSCAN Epsilon (Cosine-Distanz, 0.35 für hohe Präzision)"),
     min_samples: int = Query(default=2, ge=1, description="Mindestanzahl Gesichter pro Cluster"),
     clustering_service: ClusteringService = Depends(get_clustering_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Führt das DBSCAN-Clustering (eps=0.35, min_samples=2, metric='cosine')
@@ -1284,6 +1332,7 @@ def trigger_clustering(
 @router.post("/faces/clusters/sync-labels")
 def sync_cluster_labels(
     clustering_service: ClusteringService = Depends(get_clustering_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Gleicht die Personen-Namen in SQLite exakt mit den in Qdrant gespeicherten Gesichts-Labels ab.
@@ -1347,6 +1396,7 @@ def serve_image(
 def rotate_image(
     req: RotateImageRequest,
     rotation_service = Depends(get_image_rotation_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Dreht ein Bild:
@@ -1370,6 +1420,7 @@ def rotate_image(
 def get_image_details(
     path: str = Query(..., description="Lokaler Dateipfad des Archivbildes"),
     qdrant: QdrantService = Depends(get_qdrant_service),
+    current_user: Optional[User] = Depends(get_current_user),
 ):
     """
     Gibt Metadaten und alle in diesem Bild erkannten Gesichter (inkl. Bounding Boxes und Cluster-Infos) zurück.
@@ -1468,6 +1519,10 @@ def get_image_details(
             "curation_status": p.get("curation_status") or ("VERIFIED" if label else "KI_AUTO"),
         })
 
+    # KDG § 11 / DSGVO Art. 9: Lesesaal-Gäste sehen nur archivisch verifizierte Gesichtsidentitäten
+    if is_viewer_only(current_user):
+        faces = [f for f in faces if f.get("curation_status") == "VERIFIED"]
+
     # Metadaten: Zuerst in relationaler SQLite-Datenbank nachschlagen
     metadata: Dict[str, Any] = {}
     db_meta = None
@@ -1482,6 +1537,11 @@ def get_image_details(
                 "date": db_meta.get("date"),
                 "creator": db_meta.get("creator"),
                 "description": db_meta.get("description"),
+                "keywords": db_meta.get("keywords") or [],
+                "persons": db_meta.get("persons") or [],
+                "fixity_status": db_meta.get("fixity_status") or "OK",
+                "sha256": db_meta.get("sha256"),
+                "last_fixity_check": db_meta.get("last_fixity_check"),
                 "source": "sqlite",
             }
     except Exception as e:
@@ -1511,6 +1571,20 @@ def get_image_details(
     elif img_records and img_records[0].payload:
         edit_settings = img_records[0].payload.get("edit_settings")
 
+    # OCR-Text & Zweiblatt (Recto/Verso) Daten abrufen
+    ocr_text = None
+    if db_meta and db_meta.get("ocr_text"):
+        ocr_text = db_meta.get("ocr_text")
+    else:
+        ocr_text = metadata_db.get_ocr_text(abs_path_str)
+        if not ocr_text and unquoted_abs_path != abs_path_str:
+            ocr_text = metadata_db.get_ocr_text(unquoted_abs_path)
+    if not ocr_text and img_records and img_records[0].payload:
+        ocr_text = img_records[0].payload.get("ocr_text")
+
+    from app.services.recto_verso_service import recto_verso_service
+    two_sided = recto_verso_service.get_two_sided_info(abs_path_str)
+
     return {
         "file_path": abs_path_str,
         "file_name": file_path.name,
@@ -1519,7 +1593,10 @@ def get_image_details(
         "faces": faces,
         "metadata": metadata,
         "edit_settings": edit_settings or {},
+        "ocr_text": ocr_text or "",
+        "two_sided": two_sided,
     }
+
 
 
 class ImageMetadataUpdateRequest(BaseModel):
@@ -1536,6 +1613,7 @@ class ImageMetadataUpdateRequest(BaseModel):
 def update_image_metadata(
     data: ImageMetadataUpdateRequest,
     qdrant: QdrantService = Depends(get_qdrant_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Speichert archivische Metadaten (Signatur, Titel, Datum, Urheber, Notizen, Personen)
@@ -1567,6 +1645,7 @@ def update_image_metadata(
             "creator": data.creator,
             "date": data.date,
         },
+        operator=curator.username if curator else "local_archivist",
     )
 
     # 2. In Qdrant synchronisieren (Volltext- / Semantiksuche)
@@ -1643,6 +1722,7 @@ class ImageEditSettingsRequest(BaseModel):
 def save_image_edit_settings(
     data: ImageEditSettingsRequest,
     qdrant: QdrantService = Depends(get_qdrant_service),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Speichert non-destruktive Transformations-Parameter in SQLite
@@ -1930,6 +2010,7 @@ def delete_image_record(
     path: Optional[str] = Query(None, description="Dateipfad des aus dem Index zu entfernenden Bildes"),
     image_id: Optional[str] = Query(None, description="Qdrant Point-ID des Bildes"),
     qdrant: QdrantService = Depends(get_qdrant_service),
+    admin: Optional[User] = Depends(require_admin),
 ):
     """
     Löscht ein Bild und alle assoziierten Gesichtsvektoren aus Qdrant (Recht auf Vergessenwerden, Art. 17 DSGVO).
@@ -1955,6 +2036,7 @@ def delete_image_record(
             target_type="IMAGE",
             target_id=p,
             details={"path": p, "law": "KDG § 19 / DSGVO Art. 17"},
+            operator=admin.username if admin else "local_archivist",
         )
     for tid in target_ids:
         metadata_db.add_audit_log(
@@ -1962,6 +2044,7 @@ def delete_image_record(
             target_type="IMAGE_ID",
             target_id=tid,
             details={"image_id": tid, "law": "KDG § 19 / DSGVO Art. 17"},
+            operator=admin.username if admin else "local_archivist",
         )
 
     return {
@@ -1976,6 +2059,7 @@ def get_audit_log(
     limit: int = Query(default=100, ge=1, le=1000, description="Maximale Anzahl der Einträge"),
     target_type: Optional[str] = Query(None, description="Optionaler Filter nach Zieltyp (IMAGE, CLUSTER, FACE)"),
     target_id: Optional[str] = Query(None, description="Optionaler Filter nach Ziel-ID"),
+    curator: Optional[User] = Depends(require_curator),
 ):
     """
     Liefert das archivische KDG/DSGVO-Audit-Log für Kuration,

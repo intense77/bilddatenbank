@@ -20,6 +20,12 @@ DOCS = [
         "badge": "Archivsystem • Übersicht",
     },
     {
+        "md": "freigabe_it_datenschutz.md",
+        "html": "freigabe_it_datenschutz.html",
+        "title": "Freigabedokument für IT & Datenschutz — Bildarchiv",
+        "badge": "Compliance • IT-Sicherheit & KDG/DSGVO Freigabe",
+    },
+    {
         "md": "anleitung.md",
         "html": "anleitung.html",
         "title": "Bedienungsanleitung — Lokales Bildarchiv-Suchsystem",
@@ -29,7 +35,7 @@ DOCS = [
         "md": "datenschutz.md",
         "html": "datenschutz.html",
         "title": "Datenschutzkonzept & DSGVO-Hinweise — Bildarchiv",
-        "badge": "Recht • DSGVO Art. 9 & 17",
+        "badge": "Recht • DSGVO Art. 9 & 17 • KDG",
     },
     {
         "md": "lizenzen.md",
@@ -47,8 +53,9 @@ DOCS = [
 
 NAV_ITEMS = [
     ("README.html", "Übersicht"),
+    ("freigabe_it_datenschutz.html", "IT- & DS-Freigabe"),
     ("anleitung.html", "Anleitung"),
-    ("datenschutz.html", "Datenschutz & DSGVO"),
+    ("datenschutz.html", "Datenschutz & KDG"),
     ("lizenzen.html", "Lizenzen"),
     ("todo.html", "Roadmap"),
     ("/", "← Zurück zur Bildersuche"),

@@ -183,8 +183,9 @@
   <div class="container">
     <nav class="doc-nav">
       <a href="README.html">Übersicht</a>
+      <a href="freigabe_it_datenschutz.html">IT- & DS-Freigabe</a>
       <a href="anleitung.html" class="active">Anleitung</a>
-      <a href="datenschutz.html">Datenschutz & DSGVO</a>
+      <a href="datenschutz.html">Datenschutz & KDG</a>
       <a href="lizenzen.html">Lizenzen</a>
       <a href="todo.html">Roadmap</a>
       <a href="/">← Zurück zur Bildersuche</a>
@@ -377,6 +378,17 @@ Bei Archiven mit mehr als 5.000 Gesichtern wird das automatische Clustering nach
 <hr />
 <h2 id="5-nutzung-des-web-frontends">5. Nutzung des Web-Frontends</h2>
 <p>Nach dem Start erreichen Sie die Oberfläche unter <strong><a href="http://localhost:8000/">http://localhost:8000/</a></strong>.</p>
+<h3 id="benutzer-anmeldung-rollenmodell-rbac">Benutzer-Anmeldung &amp; Rollenmodell (RBAC)</h3>
+<p>Rechts oben in der Menüleiste befindet sich die Benutzeranmeldung (<strong>„Anmelden“</strong>):<br />
+* <strong>Rolle „Lesesaal“ (<code>viewer</code>):</strong><br />
+  * Gedacht für Gastforscher, Wissenschaftler und Recherche im Lesesaal.<br />
+  * Kann alle Bilder suchen, filtern, vergrößern (Deep Zoom), Leuchttische anlegen und Kontaktabzüge/PDFs exportieren.<br />
+  * <strong>Datenschutz (§ 11 KDG):</strong> Kein Zugriff auf unbestätigte Gesichtscluster oder biometrische Rohdaten. Schreibfunktionen (Metadaten-Speicherung, OCR-Korrektur) sind gesperrt.<br />
+* <strong>Rolle „Kurator / Archivar“ (<code>curator</code>):</strong><br />
+  * Fachkräfte des Archivs: Erfassen und Korrigieren von Metadaten, 1-Klick-Handschriften-KI (OCR/HTR), Freigabe von Personen-Clustern, Anreicherung mit GND/Iconclass-Normdaten.<br />
+* <strong>Rolle „Administrator“ (<code>admin</code>):</strong><br />
+  * Vollzugriff: Bestände neu einbinden, Massen-Imports starten, Fixity-Unversehrtheitsprüfungen durchführen, System-Pruning und Benutzerkonten verwalten.</p>
+<hr />
 <h3 id="tab-1-freitext-suche-historische-zeitleiste">Tab 1: Freitext-Suche &amp; Historische Zeitleiste</h3>
 <ol>
 <li><strong>Suchleiste:</strong> Geben Sie ein Motiv, ein Thema, eine Epoche oder einen Personennamen ein (z. B. <em>„gotischer Altar“</em>, <em>„Marktplatz 1910“</em>, <em>„Soldaten im Feld“</em> oder <em>„Bischof Ulrich“</em>).</li>
@@ -458,6 +470,21 @@ Bei Archiven mit mehr als 5.000 Gesichtern wird das automatische Clustering nach
 * <strong>Bildausschnitt-Suche (Crop-to-Search):</strong><br />
   * Klicken Sie auf <strong>„Ausschnitt suchen“</strong> und ziehen Sie mit der Maus einen Rahmen um ein Motivdetail (z. B. ein Altaraufsatz, Wappen, liturgisches Gerät oder Inschrift).<br />
   * Das Backend schneidet das Detail zu, berechnet das Embedding und findet alle Scans mit diesem oder ähnlichen Motiven.<br />
+* <strong>Handschriften-KI &amp; Texterkennung (OCR / HTR):</strong><br />
+  * Im Tab <strong>„Texterkennung (OCR/HTR)“</strong> in der rechten Seitenleiste können handschriftliche Vermerke, Stempel und Drucktexte mit einem Klick entziffert werden.<br />
+  * <strong>Profil-Auswahl:</strong><br />
+    * <em>✨ Auto-Erkennung</em>: Erkennt automatisch gemischte Druck- und Handschriften.<br />
+    * <em>✍️ Handschrift / Notizen (HTR Sauvola)</em>: Spezialisierte lokale Sauvola-Binarisierung zur Isolierung feiner Tinten- und Bleistiftstriche auf vergilbtem Papier (unterdrückt Durchscheinen von Rückseiten).<br />
+    * <em>🔤 Druck / Typoskripte</em>: Klassisches OCR-Profil für Typoskripte, Karteikarten und moderne Bücher.<br />
+    * <em>📜 Frakturschrift (Altdeutsch)</em>: Verwendet historische Sprachmodelle (<code>frk</code>, <code>deu_latf</code>) für alte Druckschriften.<br />
+    * <em>⛪ Kirchliches Latein &amp; Liturgica</em>: Spezialprofil für kirchliches Latein (<code>lat</code>) mit kuratierten Fachwörterbüchern (z. B. <em>Tabernaculum, Ciborium, Consecratio, Casula</em>).<br />
+    * <em>🔍 Stempel &amp; Randvermerke</em>: Sparse-Text-Modus für Datumsstempel und Signaturen am Bildrand.<br />
+  * <strong>Text korrigieren &amp; speichern:</strong> Der erkannte Text kann direkt im Textfeld redigiert und mit dem Button <strong>„Text speichern“</strong> dauerhaft in SQLite und Qdrant hinterlegt werden. Bei der nächsten Suche ist das Bild sofort über diese Worte auffindbar.<br />
+* <strong>Normdaten-Anreicherung (GND &amp; Iconclass) &amp; Trägererkennung:</strong><br />
+  * <strong>Thesaurus-Vorschläge:</strong> Über die integrierte Offline-Normdatenbank schlägt das System passende GND-Begriffe (Personen, Sakralbauten, liturgische Gefäße, Paramente) und Iconclass-Notationen vor.<br />
+  * <strong>Physikalische Trägeranalyse:</strong> Erkennt automatisch historische Foto-Verfahren (Albuminabzüge im Sepiaton, Silbergelatine-SW-Abzüge, Cyanotypien / Eisenblaudrucke) und schätzt historische Formate (z. B. Carte de Visite).<br />
+* <strong>Langzeit-Bestandserhaltung &amp; PREMIS 3.0 Export:</strong><br />
+  * Über das Aktionsmenü kann ein standardkonformer <strong>PREMIS 3.0 XML-Datensatz</strong> nach ISO 14721 heruntergeladen werden. Er belegt die kryptografische Unversehrtheit (SHA-256) und den Lebenszyklus des Digitalisats für übergeordnete Archive.<br />
 * <strong>Adobe XMP Sidecars:</strong><br />
   * Über das Dropdown-Menü <strong>„XMP“</strong> lassen sich Dublin-Core-konforme <code>.xmp</code>-Metadaten-Dateien herunterladen oder direkt neben dem Original-Masterbild auf der Festplatte sichern.<br />
 * <strong>Navigation &amp; Schließen:</strong><br />

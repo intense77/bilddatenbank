@@ -69,6 +69,7 @@ async def add_no_cache_headers(request, call_next):
 import os
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
+from app.api.routes.auth import router as auth_router
 from app.api.search import router as search_router
 from app.api.routes.archive import router as archive_router
 from app.api.routes.iiif import router as iiif_router
@@ -76,6 +77,7 @@ from app.api.network import router as network_router
 from app.api.thesaurus import router as thesaurus_router
 
 app.include_router(api_router)
+app.include_router(auth_router)
 app.include_router(iiif_router)
 app.include_router(search_router)
 app.include_router(archive_router)

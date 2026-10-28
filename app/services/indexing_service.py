@@ -199,6 +199,22 @@ class IndexingService:
             pass
         prepared["pil_img"] = None
 
+        # OCR-Text abrufen bzw. für Rückseiten (Verso) automatisch per Tesseract extrahieren
+        ocr_text = metadata_db.get_ocr_text(path_str)
+        if not ocr_text and getattr(settings, "OCR_ENABLED", True) and getattr(settings, "OCR_AUTO_VERSO", True):
+            try:
+                from app.services.recto_verso_service import recto_verso_service
+                rel = recto_verso_service.detect_relationship(path_str)
+                if rel and rel.get("role") == "verso":
+                    from app.services.ocr_service import ocr_service
+                    if ocr_service.is_available():
+                        extracted = ocr_service.extract_text(path_str)
+                        if extracted:
+                            ocr_text = extracted
+                            metadata_db.save_ocr_text(path_str, ocr_text)
+            except Exception as ocr_err:
+                logger.debug("Automatisches Verso-OCR übersprungen für %s: %s", path_str, ocr_err)
+
         # 4. Bild-Point für archive_images
         image_point = rest_models.PointStruct(
             id=image_id,
@@ -224,6 +240,7 @@ class IndexingService:
                 "copyright": meta.get("copyright"),
                 "keywords": meta.get("keywords", []),
                 "metadata": meta,
+                "ocr_text": ocr_text or "",
                 "import_id": import_id,
                 "sha256": prepared.get("sha256"),
                 "fixity_status": "OK",

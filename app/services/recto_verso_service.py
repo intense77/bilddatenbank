@@ -126,6 +126,14 @@ class RectoVersoService:
         rel["recto_path"] = recto_path
         rel["verso_path"] = verso_path
 
+        # OCR-Texte abrufen
+        current_ocr = metadata_db.get_ocr_text(rel["current_path"]) if rel.get("current_path") else None
+        companion_ocr = metadata_db.get_ocr_text(rel["companion_path"]) if rel.get("companion_path") else None
+        rel["ocr_text"] = current_ocr or ""
+        rel["companion_ocr_text"] = companion_ocr or ""
+        rel["verso_ocr_text"] = (current_ocr if rel["role"] == "verso" else companion_ocr) or ""
+        rel["recto_ocr_text"] = (current_ocr if rel["role"] == "recto" else companion_ocr) or ""
+
         # URLs für Frontend-Auslieferung vorbereiten
         if rel["companion_path"]:
             from urllib.parse import quote
@@ -134,6 +142,11 @@ class RectoVersoService:
             rel["companion_raw_url"] = f"/images/serve?path={quote(rel['companion_path'])}"
 
         return rel
+
+    def save_ocr_text(self, file_path: Union[str, Path], text: str) -> bool:
+        """Speichert OCR-Text für ein Digitalisat in der Metadatenbank."""
+        path_str = str(Path(file_path).resolve())
+        return metadata_db.save_ocr_text(path_str, text)
 
     def save_verso_notes(self, file_path: Union[str, Path], notes: str) -> bool:
         """

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, B
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.core.auth import User, require_admin, require_curator
 from app.core.security import (
     ALLOWED_IMAGE_EXTENSIONS,
     register_allowed_archive_dir,
@@ -83,7 +84,10 @@ async def get_indexing_progress():
 
 
 @router.get("/browse-folders")
-def browse_folders(path: Optional[str] = None):
+def browse_folders(
+    path: Optional[str] = None,
+    admin: Optional[User] = Depends(require_admin),
+):
     """
     Ermöglicht das grafische Navigieren durch Verzeichnisse im Web-Interface,
     um Archiv-Ordner ohne manuelles Tippen von Pfaden auswählen zu können.
@@ -241,7 +245,10 @@ def browse_folders(path: Optional[str] = None):
 
 
 @router.post("/scan-folder")
-def scan_folder(request: ScanFolderRequest):
+def scan_folder(
+    request: ScanFolderRequest,
+    admin: Optional[User] = Depends(require_admin),
+):
     """
     Schnelle Ordner-Vorschau: Prüft Pfad-Existenz, zählt vorhandene Bilddateien
     und gleicht sie mit bereits indexierten Aufnahmen in Qdrant ab.
@@ -329,6 +336,7 @@ def scan_folder(request: ScanFolderRequest):
 @router.post("/index-folder")
 async def index_existing_folder(
     request: IndexFolderRequest,
+    admin: Optional[User] = Depends(require_admin),
 ):
     """
     Bindet einen bestehenden Ordner auf dem Rechner/Server ohne Verschieben ein
@@ -443,6 +451,7 @@ async def upload_archive_images(
     enable_clustering: bool = Form(default=True, description="Clustering nach Upload ausführen"),
     indexing_service: IndexingService = Depends(get_indexing_service),
     clustering_service: ClusteringService = Depends(get_clustering_service),
+    admin: Optional[User] = Depends(require_admin),
 ):
     """
     Nimmt per Drag-and-Drop hochgeladene Bilder (und optionale .json-Sidecars) entgegen,
@@ -560,7 +569,10 @@ def get_two_sided_info(path: str):
 
 
 @router.post("/two-sided/notes")
-def save_two_sided_notes(req: TwoSidedNotesRequest):
+def save_two_sided_notes(
+    req: TwoSidedNotesRequest,
+    curator: Optional[User] = Depends(require_curator),
+):
     """
     Speichert oder aktualisiert Notizen / Transkriptionen der Rückseite
     und verknüpft sie mit beiden Blattseiten.
@@ -578,6 +590,217 @@ def save_two_sided_notes(req: TwoSidedNotesRequest):
         "path": str(safe_path),
         "notes": req.notes,
     }
+
+
+# =========================================================================
+# Optische Zeichenerkennung (OCR / HTR) & Handschriften-Transkription
+# =========================================================================
+
+class OcrExtractRequest(BaseModel):
+    path: str = Field(..., description="Dateipfad des Archivbildes")
+    languages: Optional[str] = Field(default=None, description="Tesseract-Sprachcode (z. B. 'deu', 'deu_latf', 'deu+eng')")
+    psm: Optional[int] = Field(default=3, description="Page Segmentation Mode (3=Auto, 11=Sparse text/Stempel)")
+    profile: Optional[str] = Field(default="auto", description="Erkennungsprofil ('auto', 'handwritten', 'printed', 'fraktur', 'stamp')")
+    save_result: bool = Field(default=True, description="Ergebnis direkt in SQLite und Qdrant speichern")
+    process_companion: bool = Field(default=False, description="Auch zugehörige Rückseite/Vorderseite erkennen falls vorhanden")
+
+
+class OcrSaveRequest(BaseModel):
+    path: str = Field(..., description="Dateipfad des Archivbildes")
+    ocr_text: str = Field(..., description="Manuell korrigierter oder kuratierter OCR-Text")
+
+
+@router.get("/ocr")
+def get_ocr_details(path: str):
+    """
+    Liefert den erkannten OCR-Text sowie Status und Zweiblatt-Zusammenhang für ein Digitalisat.
+    """
+    from app.core.security import validate_safe_image_path
+    from app.services.metadata_db import metadata_db
+    from app.services.ocr_service import ocr_service
+    from app.services.recto_verso_service import recto_verso_service
+
+    safe_path = validate_safe_image_path(path)
+    abs_str = str(safe_path.resolve())
+
+    ocr_text = metadata_db.get_ocr_text(abs_str) or ""
+    two_sided = recto_verso_service.get_two_sided_info(safe_path)
+
+    return {
+        "file_path": abs_str,
+        "ocr_text": ocr_text,
+        "engine_available": ocr_service.is_available(),
+        "available_languages": ocr_service.get_available_languages(),
+        "available_profiles": ocr_service.get_available_profiles(),
+        "tessdata_dir": ocr_service.get_effective_tessdata_dir(),
+        "is_two_sided": two_sided.get("is_two_sided", False),
+        "sheet_role": two_sided.get("role", "single"),
+        "companion_path": two_sided.get("companion_path"),
+        "companion_ocr_text": two_sided.get("companion_ocr_text", ""),
+        "verso_notes": two_sided.get("verso_notes", ""),
+    }
+
+
+@router.post("/ocr/extract")
+def extract_ocr(
+    req: OcrExtractRequest,
+    curator: Optional[User] = Depends(require_curator),
+):
+    """
+    Führt lokale OCR mit Tesseract 5 auf dem Bild durch.
+    Optimiert für historische Digitalisate (Binarisierung, Kontrastnormierung, Stempelentdeckung).
+    Kann bei Bedarf automatisch auch die Rückseite mitverarbeiten.
+    """
+    from app.core.security import validate_safe_image_path
+    from app.services.metadata_db import metadata_db
+    from app.services.ocr_service import ocr_service
+    from app.services.recto_verso_service import recto_verso_service
+    from qdrant_client.http import models as rest_models
+
+    if not ocr_service.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Tesseract OCR ist auf dem Server nicht installiert oder nicht ausführbar.",
+        )
+
+    safe_path = validate_safe_image_path(req.path)
+    abs_str = str(safe_path.resolve())
+
+    # OCR / HTR ausführen
+    profile_to_use = req.profile or getattr(settings, "OCR_DEFAULT_PROFILE", "auto")
+    result = ocr_service.extract_text_from_image(
+        safe_path,
+        languages=req.languages,
+        psm=req.psm or 3,
+        profile=profile_to_use,
+    )
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=f"OCR-Fehler: {result.get('error')}")
+
+    ocr_text = result.get("ocr_text", "")
+
+    companion_result_text = None
+    if req.process_companion:
+        two_sided = recto_verso_service.detect_relationship(safe_path)
+        if two_sided and two_sided.get("companion_path") and two_sided.get("companion_exists"):
+            comp_path = validate_safe_image_path(two_sided["companion_path"])
+            comp_res = ocr_service.extract_text_from_image(
+                comp_path,
+                languages=req.languages,
+                psm=req.psm or 3,
+                profile=profile_to_use,
+            )
+            companion_result_text = comp_res.get("ocr_text", "")
+            if req.save_result:
+                metadata_db.save_ocr_text(str(comp_path.resolve()), companion_result_text)
+
+    if req.save_result:
+        metadata_db.save_ocr_text(abs_str, ocr_text)
+        metadata_db.add_audit_log(
+            action="OCR_EXTRACT",
+            target_type="IMAGE",
+            target_id=abs_str,
+            details={
+                "word_count": result.get("word_count"),
+                "language": result.get("language"),
+                "profile": result.get("profile_used"),
+            },
+            operator=curator.username if curator else "curator",
+        )
+
+        # Qdrant Payload synchronisieren
+        try:
+            from app.api.deps import get_qdrant_service
+            qdrant = get_qdrant_service()
+            records, _ = qdrant.client.scroll(
+                collection_name=settings.COLLECTION_IMAGES,
+                scroll_filter=rest_models.Filter(
+                    should=[
+                        rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_str)),
+                        rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_str)),
+                    ]
+                ),
+                limit=1,
+                with_payload=False,
+            )
+            if records:
+                qdrant.client.set_payload(
+                    collection_name=settings.COLLECTION_IMAGES,
+                    payload={"ocr_text": ocr_text},
+                    points=[records[0].id],
+                )
+        except Exception as q_err:
+            logger.debug("Qdrant Payload-Update nach OCR übersprungen: %s", q_err)
+
+    return {
+        "success": True,
+        "file_path": abs_str,
+        "ocr_text": ocr_text,
+        "word_count": result.get("word_count", 0),
+        "profile_used": result.get("profile_used", profile_to_use),
+        "language": result.get("language"),
+        "raw_text": result.get("raw_text", ""),
+        "companion_ocr_text": companion_result_text,
+    }
+
+
+@router.post("/ocr/save")
+def save_ocr(
+    req: OcrSaveRequest,
+    curator: Optional[User] = Depends(require_curator),
+):
+    """
+    Speichert redigierten/korrigierten OCR-Text transaktionssicher in SQLite und Qdrant.
+    """
+    from app.core.security import validate_safe_image_path
+    from app.services.metadata_db import metadata_db
+    from qdrant_client.http import models as rest_models
+
+    safe_path = validate_safe_image_path(req.path)
+    abs_str = str(safe_path.resolve())
+
+    success = metadata_db.save_ocr_text(abs_str, req.ocr_text)
+    if not success:
+        raise HTTPException(status_code=500, detail="Konnte OCR-Text in Datenbank nicht speichern.")
+
+    metadata_db.add_audit_log(
+        action="OCR_SAVE",
+        target_type="IMAGE",
+        target_id=abs_str,
+        details={"char_count": len(req.ocr_text)},
+        operator=curator.username if curator else "curator",
+    )
+
+    try:
+        from app.api.deps import get_qdrant_service
+        qdrant = get_qdrant_service()
+        records, _ = qdrant.client.scroll(
+            collection_name=settings.COLLECTION_IMAGES,
+            scroll_filter=rest_models.Filter(
+                should=[
+                    rest_models.FieldCondition(key="file_path", match=rest_models.MatchValue(value=abs_str)),
+                    rest_models.FieldCondition(key="image_path", match=rest_models.MatchValue(value=abs_str)),
+                ]
+            ),
+            limit=1,
+            with_payload=False,
+        )
+        if records:
+            qdrant.client.set_payload(
+                collection_name=settings.COLLECTION_IMAGES,
+                payload={"ocr_text": req.ocr_text},
+                points=[records[0].id],
+            )
+    except Exception as q_err:
+        logger.debug("Qdrant Payload-Update nach OCR-Speichern übersprungen: %s", q_err)
+
+    return {
+        "success": True,
+        "file_path": abs_str,
+        "ocr_text": req.ocr_text,
+    }
+
 
 
 # =========================================================================
@@ -608,7 +831,11 @@ def get_import_batch_details(batch_id: str):
 
 
 @router.patch("/batches/{batch_id}")
-def update_import_batch(batch_id: str, req: UpdateBatchRequest):
+def update_import_batch(
+    batch_id: str,
+    req: UpdateBatchRequest,
+    curator: Optional[User] = Depends(require_curator),
+):
     """Aktualisiert die Bestandsbezeichnung oder Notizen einer Charge."""
     from app.services.metadata_db import metadata_db
     batch = metadata_db.get_import_batch(batch_id)
@@ -627,7 +854,10 @@ def update_import_batch(batch_id: str, req: UpdateBatchRequest):
 
 
 @router.delete("/batches/{batch_id}")
-def rollback_import_batch(batch_id: str):
+def rollback_import_batch(
+    batch_id: str,
+    admin: Optional[User] = Depends(require_admin),
+):
     """
     Führt ein selektives Rollback für einen Import-Batch aus:
     Löscht alle zugehörigen Bild- und Gesichts-Vektorpunkte aus Qdrant

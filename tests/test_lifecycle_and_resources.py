@@ -108,6 +108,7 @@ def test_memory_guard_rejection():
 def test_thumbnail_cache_api_endpoints():
     """Testet die REST-Endpunkte für Thumbnail-Cache Stats und Pruning."""
     client = TestClient(app)
+    client.headers["Authorization"] = "Basic YWRtaW46YXJjaGl2YWRtaW4yMDI2"
 
     # 1. Stats
     res_stats = client.get("/api/system/thumbnail-cache/stats")

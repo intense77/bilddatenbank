@@ -85,6 +85,7 @@ def test_audit_log_database(tmp_path):
 def test_delete_metadata_and_audit_api():
     """Prüft den Endpunkt /system/audit-log und die Löschung aus SQLite."""
     client = TestClient(app)
+    client.headers["Authorization"] = "Basic YXJjaGl2YXI6a3VyYXRvcjIwMjY="
     res = client.get("/system/audit-log")
     assert res.status_code == 200
     assert isinstance(res.json(), list)

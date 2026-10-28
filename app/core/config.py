@@ -1,3 +1,4 @@
+from typing import Optional, List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -68,6 +69,38 @@ class Settings(BaseSettings):
 
     # Sicherheit & CORS
     CORS_ORIGINS: list[str] = ["http://localhost:8000", "http://127.0.0.1:8000"]
+
+    # KDG-konforme Authentifizierung & Rollenverwaltung (RBAC)
+    AUTH_ENABLED: bool = Field(default=True, description="Aktiviert die rollenbasierte Zugriffskontrolle (RBAC)")
+    AUTH_SECRET_KEY: str = Field(default="historisches-archiv-geheimer-schluessel-2026", description="Geheimschlüssel für Sessions/Tokens")
+    AUTH_SESSION_EXPIRE_HOURS: int = Field(default=24, description="Gültigkeitsdauer einer Session in Stunden")
+    AUTH_LESESAAL_ANONYMOUS: bool = Field(
+        default=True,
+        description="Erlaubt unauthentifizierten Nutzern den Lesesaal-Modus (Viewer). Bei False ist vor der Recherche ein Login nötig."
+    )
+    AUTH_DEFAULT_ADMIN_USER: str = Field(default="admin", description="Standard-Admin-Benutzername")
+    AUTH_DEFAULT_ADMIN_PASSWORD: str = Field(default="archivadmin2026", description="Standard-Admin-Passwort für Initial-Seeding")
+    AUTH_DEFAULT_CURATOR_USER: str = Field(default="archivar", description="Standard-Kurator-Benutzername")
+    AUTH_DEFAULT_CURATOR_PASSWORD: str = Field(default="kurator2026", description="Standard-Kurator-Passwort")
+    AUTH_DEFAULT_VIEWER_USER: str = Field(default="lesesaal", description="Standard-Lesesaal-Benutzername")
+    AUTH_DEFAULT_VIEWER_PASSWORD: str = Field(default="lesesaal2026", description="Standard-Lesesaal-Passwort")
+
+    # Lokale Texterkennung & Handschriften-KI (OCR / HTR für Rückseiten, Stempel, Kurrent & Fraktur)
+    OCR_ENABLED: bool = Field(default=True, description="Aktiviert die lokale OCR-Pipeline (Tesseract 5)")
+    OCR_LANGUAGES: str = Field(default="deu+deu_latf+eng", description="Tesseract-Sprachmodelle (z. B. deu, deu+deu_latf+eng)")
+    OCR_TESSERACT_CMD: str = Field(default="tesseract", description="Pfad zur Tesseract-Binärdatei")
+    OCR_TESSDATA_DIR: Optional[str] = Field(
+        default="./data/tessdata",
+        description="Verzeichnis für historische Sprachmodelle (z. B. Fraktur, Kurrent). Fallback auf Systempfad."
+    )
+    OCR_DEFAULT_PROFILE: str = Field(
+        default="auto",
+        description="Standard-Erkennungsprofil ('auto', 'handwritten', 'printed', 'fraktur')"
+    )
+    OCR_AUTO_VERSO: bool = Field(
+        default=True,
+        description="Führt beim Indexieren von Rückseiten (_v, _verso) automatisch OCR durch und verknüpft das Ergebnis mit dem Vorderseiten-Foto"
+    )
 
     @property
     def effective_device(self) -> str:

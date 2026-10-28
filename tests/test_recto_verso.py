@@ -8,6 +8,7 @@ from app.services.recto_verso_service import recto_verso_service
 from app.services.metadata_db import metadata_db
 
 client = TestClient(app)
+client.headers["Authorization"] = "Basic YXJjaGl2YXI6a3VyYXRvcjIwMjY="
 
 
 def test_recto_verso_pattern_detection():

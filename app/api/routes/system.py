@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from app.api.deps import get_qdrant_service, clear_face_service_cache
 from app.core.config import settings
+from app.core.auth import User, require_admin
 from app.services.qdrant_service import QdrantService
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,10 @@ class FaceRecognitionToggleRequest(BaseModel):
 
 
 @router.post("/settings/face-recognition")
-def toggle_face_recognition(request: FaceRecognitionToggleRequest):
+def toggle_face_recognition(
+    request: FaceRecognitionToggleRequest,
+    admin: User = Depends(require_admin),
+):
     """
     Schaltet die biometrische Gesichtserkennung zur Laufzeit um und persistiert
     die Einstellung in der .env-Datei für zukünftige Server-Neustarts.
@@ -90,6 +94,7 @@ def get_collections_status(qdrant: QdrantService = Depends(get_qdrant_service)):
 def prune_database(
     dry_run: bool = Query(default=True, description="Wenn True, wird nur analysiert ohne zu löschen"),
     qdrant: QdrantService = Depends(get_qdrant_service),
+    admin: User = Depends(require_admin),
 ):
     """
     Prüft alle Einträge in Qdrant gegen das Archivverzeichnis und löscht verwaiste Datensätze (Art. 17 DSGVO).
@@ -110,6 +115,7 @@ def get_thumbnail_cache_stats():
 def prune_thumbnail_cache(
     target_mb: Optional[int] = Query(None, description="Zielgröße in MB (Standard: 80% des Limits)"),
     force: bool = Query(False, description="Erzwingt Bereinigung auch unterhalb des Limits"),
+    admin: User = Depends(require_admin),
 ):
     """
     Bereinigt älteste WebP-Thumbnails und Gesichts-Crops (LRU: Least Recently Used),

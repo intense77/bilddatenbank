@@ -183,14 +183,15 @@
   <div class="container">
     <nav class="doc-nav">
       <a href="README.html">Übersicht</a>
+      <a href="freigabe_it_datenschutz.html">IT- & DS-Freigabe</a>
       <a href="anleitung.html">Anleitung</a>
-      <a href="datenschutz.html" class="active">Datenschutz & DSGVO</a>
+      <a href="datenschutz.html" class="active">Datenschutz & KDG</a>
       <a href="lizenzen.html">Lizenzen</a>
       <a href="todo.html">Roadmap</a>
       <a href="/">← Zurück zur Bildersuche</a>
     </nav>
     <div class="doc-header">
-      <span class="badge">Recht • DSGVO Art. 9 & 17</span>
+      <span class="badge">Recht • DSGVO Art. 9 & 17 • KDG</span>
       <button class="print-btn" onclick="window.print()">Drucken / Als PDF speichern</button>
     </div>
     <article>
@@ -275,12 +276,38 @@ Der Konfigurationsschalter <code>ENABLE_FACE_RECOGNITION=false/true</code> ist v
 <hr />
 <h2 id="5-technische-und-organisatorische-manahmen-tom-27-kdg-art-32-dsgvo">5. Technische und organisatorische Maßnahmen (TOM, § 27 KDG / Art. 32 DSGVO)</h2>
 <ul>
-<li><strong>Zugangsbeschränkung &amp; Berechtigungskonzept:</strong> Das System ist für den internen Einsatz konzipiert; kein offener, unauthentifizierter Zugang aus dem öffentlichen Internet.</li>
-<li><strong>Sicherheit der Pfade:</strong> Striktes Verbot von Pfad-Traversierungen (<code>../</code>); Anfragen nach Dateien außerhalb der konfigurierten Archivverzeichnisse werden von <code>validate_safe_image_path</code> abgewiesen.</li>
+<li><strong>Zugangsbeschränkung &amp; Berechtigungskonzept (RBAC):</strong> Das System ist für den internen Einsatz konzipiert; kein offener, unauthentifizierter Zugang aus dem öffentlichen Internet. Rollentrennung in <code>viewer</code> (Lesesaal), <code>curator</code> (Archivar) und <code>admin</code> (IT-Leitung).</li>
+<li><strong>Kryptografische Passwort- &amp; Session-Sicherheit:</strong> Gesalzene PBKDF2-HMAC-SHA256 Passwörter mit 600.000 Runden (<code>app/core/auth.py</code>), HttpOnly- und SameSite-geschützte Session-Cookies zur Verhinderung von Session-Hijacking und XSS-Auslesbarkeit.</li>
+<li><strong>Sicherheit der Pfade &amp; Sandboxing:</strong> Striktes Verbot von Pfad-Traversierungen (<code>../</code>); Anfragen nach Dateien außerhalb der konfigurierten Archivverzeichnisse werden von <code>validate_safe_image_path</code> abgewiesen.</li>
+<li><strong>Schreibschutz für Master-Scans:</strong> Das System greift ausschließlich lesend auf die Originalscans zu. Bildverbesserungen, Drehungen und Kacheln erfolgen im flüchtigen Cache oder in der SQLite-Datenbank.</li>
 <li><strong>CORS-Einschränkung:</strong> Das Backend beschränkt Web-Aufrufe strikt auf die in <code>CORS_ORIGINS</code> definierten Domains.</li>
 <li><strong>Sichere Hash-Speicherung im Cache:</strong> Temporäre Bild-Thumbnails werden unter MD5-Hash-Namen abgelegt, um Rückschlüsse im Cache zu minimieren.</li>
 <li><strong>Kuratierte Namensvergabe:</strong> Klarnamen werden nicht automatisiert zugewiesen, sondern bedürfen der manuellen Verifikation durch das Archivpersonal.</li>
+<li><strong>Ressourcenbegrenzung:</strong> Qdrant-Speicherlimit (16 GB), Decompression-Bomb-Schutz (bis 500 MP) und periodischer Garbage-Collection-Flush verhindern Server-Instabilitäten.</li>
 </ul>
+<hr />
+<h2 id="6-rollenmodell-schutz-des-lesesaals-11-kdg">6. Rollenmodell &amp; Schutz des Lesesaals (§ 11 KDG)</h2>
+<p>Um den Anforderungen an den Schutz besonderer Kategorien personenbezogener Daten (§ 11 KDG) im öffentlichen oder halböffentlichen Lesesaal gerecht zu werden, trennt das System strikt zwischen Lese- und Bearbeitungsrechten:</p>
+<ul>
+<li><strong>Lesesaal-Modus (<code>viewer</code>):</strong></li>
+<li>Ermöglicht Archivbesuchern und Gastforschern die Recherche nach freiem Text, Schlagwörtern, Signaturen und Datierungen.</li>
+<li><strong>Biometrie-Schutz:</strong> Unbestätigte Gesichtscluster, biometrische Vektoren und Bearbeitungsmasken sind für Lesesaal-Konten gesperrt.</li>
+<li>Schreibzugriffe (Metadaten-Speicherung, OCR-Korrektur, Benutzerverwaltung) werden über HTTP 403 Forbidden unterbunden.</li>
+<li><strong>Kuratoren-Modus (<code>curator</code>):</strong></li>
+<li>Fachpersonal des Archivs darf Metadaten erfassen, OCR/HTR-Texte korrigieren, Normdaten anreichern und verifizierte Personennamen zuweisen.</li>
+<li><strong>Administrator-Modus (<code>admin</code>):</strong></li>
+<li>Vorbehalten für IT und Archivleitung: Durchführung von Massen-Imports, Fixity-Unversehrtheitsprüfungen, System-Pruning und Benutzerverwaltung.</li>
+</ul>
+<hr />
+<h2 id="7-revisionssicherheit-audit-trail-fixity-monitoring-iso-14721-oais">7. Revisionssicherheit, Audit-Trail &amp; Fixity-Monitoring (ISO 14721 OAIS)</h2>
+<ol>
+<li><strong>Revisionssicheres Audit-Logging:</strong><br />
+   Sicherheitsrelevante Ereignisse (Löschen von Einträgen, Änderungen an Benutzerkonten, Integritätsabweichungen) werden im SQLite-Audit-Log (<code>audit_logs</code>) unveränderlich mit Zeitstempel und Benutzeridentität protokolliert.</li>
+<li><strong>Kontinuierlicher Bitrot-Wächter (<code>FixityService</code>):</strong><br />
+   Schützt vor schleichender Datenkorruption auf Archivspeichern durch periodischen Abgleich kryptografischer SHA-256 Prüfsummen.</li>
+<li><strong>Standardkonformer PREMIS 3.0 Export:</strong><br />
+   Ermöglicht den Nachweis der langfristigen Unversehrtheit und Authentizität digitaler Archivbestände gegenüber Aufsichtsbehörden und übergeordneten Trägern.</li>
+</ol>
     </article>
     <footer>
       <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>

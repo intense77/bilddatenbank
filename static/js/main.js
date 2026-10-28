@@ -72,10 +72,31 @@ import {
   handleNetworkPersonChange
 } from './network.js';
 
+import {
+  currentUser,
+  fetchCurrentUser,
+  updateAuthUI,
+  openAuthModal,
+  closeAuthModal,
+  handleAuthFormSubmit,
+  handleLogoutClick,
+  fillQuickAuth
+} from './auth.js';
+
 // --- Window-Bridge für 100%ige Abwärtskompatibilität mit HTML onclick/onchange Attributen ---
 
 window.api = api;
 window.apiFetch = apiFetch;
+
+// Authentifizierung & Rollenverwaltung (KDG / RBAC)
+window.currentUser = currentUser;
+window.fetchCurrentUser = fetchCurrentUser;
+window.updateAuthUI = updateAuthUI;
+window.openAuthModal = openAuthModal;
+window.closeAuthModal = closeAuthModal;
+window.handleAuthFormSubmit = handleAuthFormSubmit;
+window.handleLogoutClick = handleLogoutClick;
+window.fillQuickAuth = fillQuickAuth;
 
 // Dialoge & Benachrichtigungen
 window.showToast = showToast;
@@ -142,5 +163,12 @@ window.clearClusterSharedFilter = clearClusterSharedFilter;
 window.jumpToCluster = jumpToCluster;
 window.openNetworkForActiveCluster = openNetworkForActiveCluster;
 window.handleNetworkPersonChange = handleNetworkPersonChange;
+
+// Initialisierung bei Start
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => fetchCurrentUser());
+} else {
+  fetchCurrentUser();
+}
 
 console.info('ArchiveApp ES6 Core Modules erfolgreich initialisiert.');

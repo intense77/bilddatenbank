@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initConfirmAndUndoModals();
   setupMetadataDirtyListeners();
   restoreStateFromUrl();
+  checkGlobalFixityStatus();
 
   // Hintergrund-Import sofort reaktivieren, wenn Tab wieder in den Vordergrund tritt
   document.addEventListener('visibilitychange', () => {
@@ -2467,6 +2468,11 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
   toggleDeepZoomMode(false);
   toggleModalCardFlip(false);
   currentTwoSidedInfo = null;
+  const gndResInit = document.getElementById('modal-gnd-results');
+  if (gndResInit) gndResInit.classList.add('hidden');
+  const gndChipsInit = document.getElementById('modal-gnd-chips-container');
+  if (gndChipsInit) gndChipsInit.innerHTML = '';
+  currentGndSuggestions = null;
   resetModalZoom();
   isMetadataDirty = false;
   updateModalNavigationButtons();
@@ -2621,6 +2627,12 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
     resetImageEditHistory();
     loadModalEditSettings(data.edit_settings || null);
 
+    // OCR-Volltext initialisieren
+    const ocrInput = document.getElementById('modal-ocr-text-input');
+    if (ocrInput) {
+      ocrInput.value = data.ocr_text || (data.two_sided && data.two_sided.ocr_text) || '';
+    }
+
     // Archivalische Metadaten Seitenleiste befüllen
     if (metaContainer) {
       const meta = data.metadata || {};
@@ -2744,6 +2756,26 @@ async function openImageModal(filePath, fileName, cacheBuster = null, targetFace
               <span>Speichern</span>
             </button>
           </div>
+        </div>`;
+
+      // PREMIS Fixity Status & OAIS Download
+      const fixStatus = meta.fixity_status || 'OK';
+      let fixBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">🛡️ Bitstream OK</span>';
+      if (fixStatus === 'CORRUPTED' || fixStatus === 'READ_ERROR') {
+        fixBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 border border-rose-500/50 text-rose-300 animate-pulse">⚠️ Bitrot / Korrupt</span>';
+      } else if (fixStatus === 'MISSING') {
+        fixBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 border border-rose-500/50 text-rose-300">❌ Datei fehlt</span>';
+      }
+
+      metaHtml += `
+        <div class="pt-3 border-t border-slate-800 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">PREMIS Fixity (ISO 14721)</span>
+            ${fixBadge}
+          </div>
+          <button type="button" onclick="downloadCurrentModalPremis()" class="w-full py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-emerald-400 border border-slate-700 text-[11px] font-medium transition flex items-center justify-center gap-1.5 shadow-sm" title="Lädt den PREMIS 3.0 Prüfsummen- und Erhaltungsnachweis als XML herunter">
+            <span class="text-emerald-400">🛡️</span> <span>PREMIS XML herunterladen</span>
+          </button>
         </div>`;
 
       if (!metaHtml) {
@@ -2976,8 +3008,15 @@ async function closeImageModal(force = false) {
   currentTwoSidedInfo = null;
   document.getElementById('modal-flip-btn')?.classList.add('hidden');
   document.getElementById('modal-verso-panel')?.classList.add('hidden');
+  const ocrInput = document.getElementById('modal-ocr-text-input');
+  if (ocrInput) ocrInput.value = '';
   const versoImg = document.getElementById('modal-verso-img');
   if (versoImg) versoImg.src = '';
+  const gndRes = document.getElementById('modal-gnd-results');
+  if (gndRes) gndRes.classList.add('hidden');
+  const gndChips = document.getElementById('modal-gnd-chips-container');
+  if (gndChips) gndChips.innerHTML = '';
+  currentGndSuggestions = null;
   currentModalImageDetails = null;
 }
 
@@ -3126,7 +3165,288 @@ async function saveModalVersoNotes() {
   }
 }
 
+// ================= OCR & HANDSCHRIFTEN-TRANSKRIPTION =================
+
+async function triggerModalOcrExtract() {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) return;
+  const btn = document.getElementById('modal-ocr-extract-btn');
+  const label = document.getElementById('modal-ocr-extract-label');
+  const ocrInput = document.getElementById('modal-ocr-text-input');
+  const profileSelect = document.getElementById('modal-ocr-profile-select');
+  const badge = document.getElementById('modal-ocr-status-badge');
+  const origText = label ? label.textContent : '';
+
+  const profile = profileSelect ? profileSelect.value : 'auto';
+
+  if (btn) btn.disabled = true;
+  if (label) label.textContent = 'Analysiere Handschrift/Text...';
+
+  try {
+    const res = await fetch('/api/archive/ocr/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: currentModalImageDetails.filePath,
+        profile: profile,
+        process_companion: true,
+        save_result: true,
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'OCR/HTR-Texterkennung fehlgeschlagen');
+    }
+
+    const data = await res.json();
+    if (ocrInput) {
+      ocrInput.value = data.ocr_text || '';
+    }
+
+    if (badge && data.profile_used) {
+      const profileLabels = {
+        'handwritten': '✍️ HTR Handschrift',
+        'fraktur': '📜 Frakturschrift',
+        'latin': '⛪ Kirchliches Latein',
+        'printed': '🔤 Druck / Typo',
+        'stamp': '🔍 Stempel / Vermerk',
+        'auto': '✨ HTR Auto',
+      };
+      badge.textContent = profileLabels[data.profile_used] || 'Tesseract 5 & HTR';
+    }
+
+    if (data.ocr_text) {
+      const profName = data.profile_used === 'handwritten' ? 'Handschriften-KI' : 'Texterkennung';
+      showToast(`${profName} abgeschlossen: ${data.word_count || 0} Wörter erkannt und indexiert!`, false);
+    } else {
+      showToast('Kein lesbarer Text auf dem Digitalisat gefunden.', false);
+    }
+  } catch (err) {
+    console.error('Fehler bei OCR/HTR-Extraktion:', err);
+    showToast(`Fehler: ${err.message}`, true);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (label) label.textContent = origText;
+  }
+}
+
+async function saveModalOcrText() {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) return;
+  const ocrInput = document.getElementById('modal-ocr-text-input');
+  if (!ocrInput) return;
+
+  const text = ocrInput.value.trim();
+  const saveBtn = document.getElementById('modal-ocr-save-btn');
+  const origText = saveBtn ? saveBtn.innerHTML : '';
+
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span>⏳</span> <span>Speichern...</span>';
+  }
+
+  try {
+    const res = await fetch('/api/archive/ocr/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: currentModalImageDetails.filePath,
+        ocr_text: text,
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Fehler beim Speichern');
+    }
+
+    showToast('OCR-Volltext gespeichert & für Suche indexiert!', false);
+  } catch (err) {
+    console.error('Fehler beim Speichern des OCR-Textes:', err);
+    showToast(`Fehler: ${err.message}`, true);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = origText;
+    }
+  }
+}
+
+// ================= ZERO-SHOT FACHVERSCHLAGWORTUNG & GND-NORMEN =================
+
+let currentGndSuggestions = null;
+
+async function triggerModalGndSuggest() {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
+    showToast('Kein Bild geöffnet.', true);
+    return;
+  }
+  const btn = document.getElementById('modal-suggest-gnd-btn');
+  const label = document.getElementById('modal-suggest-gnd-label');
+  const origText = label ? label.textContent : '';
+
+  if (btn) btn.disabled = true;
+  if (label) label.textContent = 'Analysiere Bildträger & GND-Katalog...';
+
+  try {
+    const res = await fetch(`/thesaurus/suggest-for-image?path=${encodeURIComponent(currentModalImageDetails.filePath)}&top_k=6`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Fehler beim Abrufen der Vorschläge');
+    }
+    const data = await res.json();
+    currentGndSuggestions = data;
+
+    // Träger anzeigen
+    const resultsContainer = document.getElementById('modal-gnd-results');
+    const carrierBadge = document.getElementById('modal-carrier-badge');
+    const carrierDesc = document.getElementById('modal-carrier-desc');
+    const chipsContainer = document.getElementById('modal-gnd-chips-container');
+
+    if (resultsContainer) resultsContainer.classList.remove('hidden');
+
+    if (data.carrier_analysis) {
+      const ca = data.carrier_analysis;
+      if (carrierBadge) {
+        carrierBadge.textContent = `${ca.carrier_label || 'Unbekannt'} (${ca.aspect_ratio_name || ''})`;
+      }
+      if (carrierDesc) {
+        let descParts = [];
+        if (ca.description) descParts.push(ca.description);
+        if (ca.period_estimate) descParts.push(`⏱️ Geschätzte Epoche: ${ca.period_estimate}`);
+        if (ca.condition_notes && ca.condition_notes.length > 0) {
+          descParts.push(`⚠️ Erhaltungszustand: ${ca.condition_notes.join(', ')}`);
+        }
+        carrierDesc.innerHTML = descParts.map(p => `<div>${escapeHtml(p)}</div>`).join('');
+      }
+    }
+
+    // GND-Chips generieren
+    if (chipsContainer) {
+      chipsContainer.innerHTML = '';
+      const suggestions = data.suggestions || [];
+      if (suggestions.length === 0) {
+        chipsContainer.innerHTML = '<span class="text-xs text-slate-500 italic">Keine eindeutigen Fachbegriffe mit Mindestkonfidenz ermittelt.</span>';
+      } else {
+        suggestions.forEach(s => {
+          const chip = document.createElement('div');
+          chip.className = 'gnd-suggest-chip cursor-pointer select-none px-2.5 py-1 rounded-lg border text-xs flex items-center gap-1.5 transition bg-sky-500/15 border-sky-500/40 text-sky-200 hover:bg-sky-500/25';
+          chip.dataset.term = s.canonical;
+          chip.dataset.selected = 'true';
+          const confPercent = Math.round((s.confidence || 0) * 100);
+          const gndPart = s.gnd ? `<span class="text-[9px] font-mono text-slate-400">GND:${escapeHtml(s.gnd)}</span>` : '';
+          const iconPart = s.iconclass ? `<span class="text-[9px] font-mono text-amber-300">Icon:${escapeHtml(s.iconclass)}</span>` : '';
+          
+          chip.innerHTML = `
+            <input type="checkbox" checked class="rounded border-slate-700 bg-slate-900 text-sky-500 pointer-events-none" />
+            <span class="font-medium">${escapeHtml(s.canonical)}</span>
+            <span class="text-[10px] text-sky-400 font-mono">(${confPercent}%)</span>
+            ${gndPart}
+            ${iconPart}
+          `;
+
+          chip.onclick = () => {
+            const isSel = chip.dataset.selected === 'true';
+            chip.dataset.selected = isSel ? 'false' : 'true';
+            const cb = chip.querySelector('input[type="checkbox"]');
+            if (cb) cb.checked = !isSel;
+            if (isSel) {
+              chip.className = 'gnd-suggest-chip cursor-pointer select-none px-2.5 py-1 rounded-lg border text-xs flex items-center gap-1.5 transition bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-600';
+            } else {
+              chip.className = 'gnd-suggest-chip cursor-pointer select-none px-2.5 py-1 rounded-lg border text-xs flex items-center gap-1.5 transition bg-sky-500/15 border-sky-500/40 text-sky-200 hover:bg-sky-500/25';
+            }
+          };
+
+          chipsContainer.appendChild(chip);
+        });
+      }
+    }
+
+    showToast(`Vorschläge berechnet: ${(data.suggestions || []).length} GND-Begriffe & Bildträger analysiert.`, false);
+  } catch (err) {
+    console.error('Fehler bei GND-Vorschlägen:', err);
+    showToast(`Fehler: ${err.message}`, true);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (label) label.textContent = origText;
+  }
+}
+
+async function applySelectedGndTags() {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) return;
+
+  const chips = document.querySelectorAll('#modal-gnd-chips-container .gnd-suggest-chip');
+  const selectedTags = [];
+  chips.forEach(c => {
+    if (c.dataset.selected === 'true' && c.dataset.term) {
+      selectedTags.push(c.dataset.term);
+    }
+  });
+
+  const carrierType = currentGndSuggestions?.carrier_analysis?.carrier_label || null;
+
+  if (selectedTags.length === 0 && !carrierType) {
+    showToast('Keine Deskriptoren ausgewählt.', true);
+    return;
+  }
+
+  const btn = document.getElementById('modal-apply-gnd-btn');
+  const origHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> <span>Wird übernommen...</span>';
+  }
+
+  try {
+    const res = await fetch('/thesaurus/apply-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: currentModalImageDetails.filePath,
+        tags: selectedTags,
+        carrier_type: carrierType,
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Fehler beim Übernehmen');
+    }
+
+    const resData = await res.json();
+    showToast(`${resData.tags_count || selectedTags.length} Deskriptoren erfolgreich in Metadaten & Vektor-Index übernommen!`, false);
+
+    // Aktualisiere lokale Details
+    if (currentModalImageDetails) {
+      const merged = Array.from(new Set([...(currentModalImageDetails.keywords || []), ...selectedTags, ...(carrierType ? [carrierType] : [])]));
+      currentModalImageDetails.keywords = merged;
+    }
+
+    // Button optisch als erledigt kennzeichnen
+    if (btn) {
+      btn.innerHTML = '<span>✅</span> <span>Deskriptoren übernommen</span>';
+      btn.classList.remove('bg-sky-600', 'hover:bg-sky-500');
+      btn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+      setTimeout(() => {
+        if (btn) {
+          btn.innerHTML = origHtml;
+          btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500');
+          btn.classList.add('bg-sky-600', 'hover:bg-sky-500');
+          btn.disabled = false;
+        }
+      }, 3000);
+    }
+  } catch (err) {
+    console.error('Fehler beim Übernehmen der Deskriptoren:', err);
+    showToast(`Fehler: ${err.message}`, true);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  }
+}
+
 // ================= IIIF IMAGE API 3.0 & OPEN SEADRAGON DEEP ZOOM =================
+
 
 function encodeBase64Url(str) {
   try {
@@ -4895,6 +5215,12 @@ document.addEventListener('keydown', (e) => {
       resolveConfirmModal(false);
       return;
     }
+    // 0aa. Auth-Modal schließen
+    const authModal = document.getElementById('auth-modal');
+    if (authModal && !authModal.classList.contains('hidden')) {
+      if (window.closeAuthModal) window.closeAuthModal();
+      return;
+    }
     // 0. Kirchlicher Thesaurus Modal schließen
     const thModal = document.getElementById('thesaurus-modal');
     if (thModal && !thModal.classList.contains('hidden')) {
@@ -5779,6 +6105,25 @@ function downloadCurrentModalXmp() {
   showToast(`XMP-Sidecar für "${fileName}" heruntergeladen.`, false);
 }
 
+function downloadCurrentModalPremis() {
+  if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
+    showToast('Kein aktives Bild im Detailfenster gefunden.', true);
+    return;
+  }
+  const filePath = currentModalImageDetails.filePath;
+  const fileName = currentModalImageDetails.fileName || filePath.split('/').pop();
+  const baseName = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+
+  const url = `/api/fixity/premis?path=${encodeURIComponent(filePath)}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `PREMIS_${baseName}.xml`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast(`PREMIS 3.0 Fixity-Manifest für "${fileName}" heruntergeladen.`, false);
+}
+
 async function writeCurrentModalXmp() {
   if (!currentModalImageDetails || !currentModalImageDetails.filePath) {
     showToast('Kein aktives Bild im Detailfenster gefunden.', true);
@@ -6050,6 +6395,57 @@ async function exportLightboxLidoXml() {
   } catch (err) {
     console.error('Fehler beim LIDO-Export:', err);
     showToast(`LIDO-Export fehlgeschlagen: ${err.message}`, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+
+async function exportLightboxPremisXml() {
+  if (lightboxItems.length === 0) {
+    showToast('Fügen Sie zuerst Bilder zum Leuchttisch hinzu.', true);
+    return;
+  }
+
+  const btn = document.getElementById('lightbox-export-premis-btn');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Exportiere...</span>';
+  }
+
+  try {
+    showToast(`Generiere PREMIS 3.0 XML für ${lightboxItems.length} Einheiten...`, false);
+    const payload = {
+      paths: lightboxItems.map(it => it.file_path),
+      archive_name: 'Historisches Bildarchiv',
+    };
+
+    const res = await fetch('/api/fixity/premis/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error(`Server-Fehler beim PREMIS-Export (${res.status})`);
+
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.download = `PREMIS_Batch_${now}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    a.remove();
+
+    showToast(`✓ PREMIS 3.0 Fixity-Paket (${lightboxItems.length} Einheiten) erfolgreich exportiert!`, false);
+  } catch (err) {
+    console.error('Fehler beim PREMIS-Export:', err);
+    showToast(`PREMIS-Export fehlgeschlagen: ${err.message}`, true);
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -8974,6 +9370,190 @@ async function executeBatchRollback() {
   }
 }
 
+// ================= LANGZEIT-BESTANDSERHALTUNG & FIXITY-MONITORING (ISO 14721 OAIS) =================
+
+let fixityPollInterval = null;
+
+async function checkGlobalFixityStatus() {
+  try {
+    const res = await fetch('/api/fixity/status');
+    if (!res.ok) return;
+    const data = await res.json();
+    const banner = document.getElementById('fixity-alert-banner');
+    const msg = document.getElementById('fixity-alert-msg');
+    if (data.alert_active && banner) {
+      banner.classList.remove('hidden');
+      const corruptedCount = data.summary?.corrupted || 0;
+      const missingCount = data.summary?.missing || 0;
+      if (msg) {
+        msg.textContent = `${corruptedCount} beschädigte (Bit-Rot) und ${missingCount} fehlende Master-Scans entdeckt!`;
+      }
+    } else if (banner) {
+      banner.classList.add('hidden');
+    }
+  } catch (err) {
+    // Stille Fehlerunterdrückung beim Hintergrund-Check
+  }
+}
+
+async function openFixityAuditModal() {
+  const modal = document.getElementById('fixity-audit-modal');
+  if (modal) modal.classList.remove('hidden');
+  await refreshFixityAuditData();
+}
+
+function closeFixityAuditModal() {
+  const modal = document.getElementById('fixity-audit-modal');
+  if (modal) modal.classList.add('hidden');
+  if (fixityPollInterval) {
+    clearInterval(fixityPollInterval);
+    fixityPollInterval = null;
+  }
+}
+
+async function refreshFixityAuditData() {
+  try {
+    const res = await fetch('/api/fixity/status');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const sum = data.summary || {};
+    const statTotal = document.getElementById('fixity-stat-total');
+    const statIntact = document.getElementById('fixity-stat-intact');
+    const statCorrupted = document.getElementById('fixity-stat-corrupted');
+    const statMissing = document.getElementById('fixity-stat-missing');
+    const lastCheck = document.getElementById('fixity-last-check');
+
+    if (statTotal) statTotal.textContent = sum.total || 0;
+    if (statIntact) statIntact.textContent = sum.intact || 0;
+    if (statCorrupted) statCorrupted.textContent = sum.corrupted || 0;
+    if (statMissing) statMissing.textContent = sum.missing || 0;
+    if (lastCheck) {
+      if (sum.last_check) {
+        const dt = new Date(sum.last_check);
+        lastCheck.textContent = dt.toLocaleString('de-DE');
+      } else {
+        lastCheck.textContent = 'Nie';
+      }
+    }
+
+    // Progress
+    const progBox = document.getElementById('fixity-progress-box');
+    const progFile = document.getElementById('fixity-progress-file');
+    const progPct = document.getElementById('fixity-progress-pct');
+    const progBar = document.getElementById('fixity-progress-bar');
+    const triggerBtn = document.getElementById('trigger-fixity-btn');
+
+    if (data.is_running) {
+      if (progBox) progBox.classList.remove('hidden');
+      if (progFile) progFile.textContent = data.progress?.current_file || 'Prüfe...';
+      const pct = data.progress?.percent || 0;
+      if (progPct) progPct.textContent = `${pct}%`;
+      if (progBar) progBar.style.width = `${pct}%`;
+      if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Prüfung läuft...</span>';
+      }
+      if (!fixityPollInterval) {
+        fixityPollInterval = setInterval(refreshFixityAuditData, 1500);
+      }
+    } else {
+      if (progBox) progBox.classList.add('hidden');
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.innerHTML = '<span>🛡️</span> <span>Integritätsprüfung starten</span>';
+      }
+      if (fixityPollInterval) {
+        clearInterval(fixityPollInterval);
+        fixityPollInterval = null;
+      }
+    }
+
+    // Corrupted Items Table
+    await loadCorruptedItemsTable();
+  } catch (err) {
+    console.error('Fehler beim Aktualisieren der Fixity-Daten:', err);
+  }
+}
+
+async function loadCorruptedItemsTable() {
+  const tbody = document.getElementById('fixity-corrupted-tbody');
+  const badge = document.getElementById('fixity-corrupted-badge');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch('/api/fixity/corrupted');
+    if (!res.ok) {
+      if (res.status === 403) {
+        tbody.innerHTML = '<tr><td colspan="4" class="p-3 text-center text-slate-500 italic font-sans">Details nur für Kuratoren & Administratoren einsehbar.</td></tr>';
+      }
+      return;
+    }
+    const data = await res.json();
+    const items = data.corrupted_items || [];
+
+    if (badge) badge.textContent = `${items.length} Auffälligkeiten`;
+
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-emerald-400 font-sans">✓ Keine beschädigten oder fehlenden Originale entdeckt. Alle Master-Scans sind unversehrt.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(it => {
+      const isBitrot = it.fixity_status === 'CORRUPTED';
+      const statusBadge = isBitrot
+        ? '<span class="px-2 py-0.5 rounded text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/40">⚠️ BIT-ROT</span>'
+        : '<span class="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40">❌ FEHLT</span>';
+      return `
+        <tr class="hover:bg-slate-900/50">
+          <td class="p-2.5">${statusBadge}</td>
+          <td class="p-2.5 text-slate-200 truncate max-w-xs" title="${escapeHtml(it.file_path || '')}">${escapeHtml(it.file_name || it.file_path)}</td>
+          <td class="p-2.5 text-slate-400 text-[10px] truncate max-w-xs font-mono hidden sm:table-cell" title="${escapeHtml(it.sha256 || 'Keine Checksumme')}">${escapeHtml(it.sha256 || '-')}</td>
+          <td class="p-2.5 text-right">
+            <button type="button" onclick="openImageModal('${escapeHtml(it.file_path).replace(/'/g, "\\'")}', '${escapeHtml(it.file_name).replace(/'/g, "\\'")}'); closeFixityAuditModal();"
+              class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 text-[11px] transition">
+              Öffnen →
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Fehler beim Laden der beschädigten Dateien:', err);
+  }
+}
+
+async function triggerFixityAudit() {
+  const btn = document.getElementById('trigger-fixity-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Starte Audit...</span>';
+  }
+
+  try {
+    const res = await fetch('/api/fixity/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calculate_missing: true })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Fehler beim Starten der Prüfung');
+    }
+
+    showToast('Fixity-Audit gestartet! Fortschritt wird live aktualisiert.', false);
+    await refreshFixityAuditData();
+  } catch (err) {
+    console.error('Fehler beim Starten des Fixity-Audits:', err);
+    showToast(`Fehler: ${err.message}`, true);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>🛡️</span> <span>Integritätsprüfung starten</span>';
+    }
+  }
+}
+
 // Explizite Bindung für HTML-Inline-Handler (onclick)
 window.loadImportBatches = loadImportBatches;
 window.renderImportBatchesTable = renderImportBatchesTable;
@@ -8983,5 +9563,15 @@ window.openBatchRollbackModal = openBatchRollbackModal;
 window.closeBatchRollbackModal = closeBatchRollbackModal;
 window.executeBatchRollback = executeBatchRollback;
 window.syncClusterLabels = syncClusterLabels;
+window.triggerModalOcrExtract = triggerModalOcrExtract;
+window.saveModalOcrText = saveModalOcrText;
+window.triggerModalGndSuggest = triggerModalGndSuggest;
+window.applySelectedGndTags = applySelectedGndTags;
+window.downloadCurrentModalPremis = downloadCurrentModalPremis;
+window.exportLightboxPremisXml = exportLightboxPremisXml;
+window.checkGlobalFixityStatus = checkGlobalFixityStatus;
+window.openFixityAuditModal = openFixityAuditModal;
+window.closeFixityAuditModal = closeFixityAuditModal;
+window.triggerFixityAudit = triggerFixityAudit;
 
 

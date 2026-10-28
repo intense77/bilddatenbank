@@ -6,13 +6,28 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
 
 ## 🏛️ Archivfachliche & Technische Kernmerkmale
 
-* **100 % Lokaler Betrieb & Datenschutz by Design (Art. 5 / 9 DSGVO):**
+* **100 % Lokaler Betrieb & Datenschutz by Design (Art. 5 / 9 DSGVO / KDG):**
   * Keine Cloud-Verbindungen, keine externen APIs, keine externen CDNs oder Tracking-Skripte.
-  * Standardmäßig **deaktivierte biometrische Gesichtserkennung** (`ENABLE_FACE_RECOGNITION=false`) zur Schonung von Arbeitsspeicher (~1,5–2 GB RAM/VRAM-Einsparung) und zur strikten Einhaltung von Art. 9 DSGVO. Bei Bedarf granular aktivierbar.
-* **Archivische Metadaten & JSON-Sidecars:**
-  * Konsolidierte Extraktion aus EXIF/TIFF-Headern, IPTC Core, XMP (Dublin Core) und JSON-Begleitdateien (`datei.json` / `datei.ext.json`).
-  * Indexierung standardisierter Kernfelder: Titel/Objektbezeichnung, Datierung, Urheber/Fotograf, Archivsignatur/Inventarnummer, Beschreibung, Rechte/Lizenz und Schlagwörter.
-  * Anklickbare Schlagwort-Filterchips in der Web-Oberfläche für explorative Recherche.
+  * Standardmäßig **deaktivierte biometrische Gesichtserkennung** (`ENABLE_FACE_RECOGNITION=false`) zur Schonung von Arbeitsspeicher (~1,5–2 GB RAM/VRAM-Einsparung) und zur strikten Einhaltung von Art. 9 DSGVO / § 11 KDG. Bei Bedarf granular aktivierbar.
+* **Rollenbasiertes Zugriffskontrollmodell (RBAC) & Lesesaal-Schutz:**
+  * Strikte Rollentrennung in **Lesesaal** (`viewer`), **Archivar/Kurator** (`curator`) und **IT-Leitung** (`admin`).
+  * Schutz biometrischer Daten (§ 11 KDG): Lesesaal-Benutzer haben keinen Zugriff auf unbestätigte Gesichtscluster oder biometrische Rohdaten.
+  * Gesalzene PBKDF2-HMAC-SHA256 Passwörter (600k Runden), HttpOnly- und SameSite-Cookies gegen XSS und Session-Hijacking.
+* **Handschriften-KI & Kirchliches Latein (HTR / OCR):**
+  * Integriertes lokales Tesseract 5 mit adaptiver **Sauvola-Lokalvarianz-Binarisierung** zur Entzifferung von verblichener Tinte und Bleistiftnotizen auf vergilbtem Papier (Unterdrückung von Bleed-Through).
+  * Spezialmodelle für historische Fraktur (`frk`, `deu_latf`) und kirchliches Latein / Liturgica (`lat`).
+  * Kuratierte Tesseract-5-Wörterbücher (`church_archival.user-words` & `.user-patterns`) mit über 300 kirchenhistorischen Fachbegriffen und Signaturmustern.
+  * Automatische Korrektur historischer Ligaturen (`æ`, `œ`, `ſ`) und Fraktur-OCR-Artefakte (`Meffgewand` -> `Messgewand`).
+* **Archivische Metadaten, Normdaten (GND/Iconclass) & Trägererkennung:**
+  * Konsolidierte Extraktion aus EXIF/TIFF, IPTC Core, XMP (Dublin Core) und JSON-Sidecars (`datei.json`).
+  * Offline-Normdatenbank der **Gemeinsamen Normdatei (GND)** und hierarchische **Iconclass-Klassifikation** für christliche Ikonographie.
+  * Zero-Shot-Tagging mit OpenCLIP und physikalische Trägererkennung (Albuminabzug/Sepia, Silbergelatine/SW, Cyanotypie, Carte de Visite).
+* **Standardisierte AIS- & Portalschnittstellen (EAD3 & LIDO 1.1):**
+  * Standardkonformer **EAD3-XML-Export** nach ISAD(G) für das *Archivportal-D*, das *Bundesarchiv* und kommunale/kirchliche Archivsysteme (ACTApro, ScopeArchiv, Augias).
+  * **LIDO 1.1 XML-Export** zur direkten Einlieferung von Kulturgütern an die *Deutsche Digitale Bibliothek (DDB)* und die europäische Plattform *Europeana*.
+* **Bestandserhaltung & Bitrot-Monitoring (OAIS / PREMIS 3.0):**
+  * Kontinuierlicher Hintergrund-Daemon (`FixityService`) zur Erkennung schleichender Datenkorruption auf Massenspeichern (Bitrot) mittels SHA-256 Prüfsummen.
+  * Revisionssicheres Audit-Logging und standardkonformer **PREMIS 3.0 XML-Export** (ISO 14721).
 * **Personen-Kuratierung & Hybride Freitextsuche:**
   * Automatisches DBSCAN-Personen-Clustering mit Klarnamenzuweisung (*„Bischof Ulrich“*).
   * Integrierte Kuratierungs-Werkzeuge: **Cluster-Merge** zum Zusammenführen getrennter Bestände und **Cluster-Split / Ausschluss** (*„Nicht diese Person“*) zum Entfernen falsch zugeordneter Porträts.
@@ -80,6 +95,7 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
 │   ├── core/
 │   │   ├── config.py        # Pydantic-Settings & Umgebungsvariablen
 │   │   ├── security.py      # Pfadvalidierung (Sandbox gegen Path Traversal)
+│   │   ├── auth.py          # PBKDF2-Hashing, RBAC-Rollen & Session-Tokens
 │   │   └── system_profiler.py # Automatische Hardware-Erkennung & Performance-Tuning
 │   ├── workers/
 │   │   └── indexing_worker.py # Isolierter OS-Worker für ressourcenschonende Batch-Imports
@@ -87,8 +103,11 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
 │   │   ├── qdrant_service.py   # Qdrant Client, Collections & Art. 17 Pruning
 │   │   ├── metadata_db.py      # SQLite Archiv-Metadatenbank (WAL-Modus) & Job-State
 │   │   ├── recto_verso_service.py # Zweiblatt-Logik (Recto/Verso) & Paar-Erkennung
+│   │   ├── ocr_service.py      # Tesseract 5 HTR, Sauvola-Binarisierung, Fraktur & Latein
+│   │   ├── fixity_service.py   # OAIS Bitrot-Wächter & SHA-256 Integritätsprüfung
+│   │   ├── premis_service.py   # PREMIS 3.0 XML-Export nach ISO 14721
 │   │   ├── iiif_service.py     # IIIF Image API 3.0 & Pyramidales Kacheln
-│   │   ├── thesaurus_service.py # Kirchlicher Fachthesaurus & Iconclass
+│   │   ├── thesaurus_service.py # Kirchlicher Fachthesaurus, GND & Iconclass
 │   │   ├── clip_service.py     # OpenCLIP Text- & Bild-Embeddings
 │   │   ├── face_service.py     # InsightFace Gesichtserkennung & ArcFace
 │   │   ├── clustering_service.py # Skalierbares Chunked Cosine-DBSCAN (< 1,5 GB RAM)
@@ -98,18 +117,24 @@ Ein datensparsames, ressourcenschonendes und vollständig lokales Suchsystem fü
 │   └── api/
 │       ├── deps.py          # Dependency Injection & Lazy Service Loading
 │       ├── search.py        # Such-, Cluster-, Detail- & Bildauslieferungs-Routen
-│       ├── thesaurus.py     # Thesaurus- und Schlagwort-Routen
+│       ├── thesaurus.py     # Thesaurus-, GND- und Schlagwort-Routen
 │       ├── network.py       # Beziehungs- und Netzwerkgraphen
 │       └── routes/
-│           ├── archive.py   # Ordner-Scan, Inkrementelle Indexierung, Zweiblatt-API, Live-Progress
+│           ├── archive.py   # Ordner-Scan, Inkrementelle Indexierung, Zweiblatt-API, OCR, EAD3/LIDO
+│           ├── auth.py      # Session-Login, Rollenprüfung, Benutzerverwaltung
+│           ├── fixity.py    # Bitrot-Wächter, Integritätsstatus, PREMIS 3.0 Export
 │           ├── iiif.py      # IIIF Image API 3.0 Endpunkte & Kachelauslieferung
 │           └── system.py    # Health-Check, DB-Info, System-Profil & Pruning
+├── data/
+│   ├── tessdata/            # Offline-OCR-Modelle (deu, deu_latf, frk, lat) & Fachwörterbücher
+│   └── gnd_iconclass_authorities.json # Lokale GND- & Iconclass-Normdaten
 └── static/
-    ├── index.html           # Web-Frontend mit 3D-Karten-Flip & OpenSeadragon
+    ├── index.html           # Web-Frontend mit 3D-Karten-Flip, OpenSeadragon & OCR-Panel
     ├── app.js               # Anwendungslogik & Bounding-Box-Visualisierung
     ├── style.css            # Minifiziertes, 100 % lokales Stylesheet mit 3D-CSS
     ├── anleitung.html       # Interaktive Bedienungsanleitung
-    ├── datenschutz.html     # DSGVO-Dokumentation & Art. 9/17 Leitfaden
+    ├── datenschutz.html     # DSGVO-/KDG-Dokumentation & Leitfaden
+    ├── freigabe_it_datenschutz.html # IT- & Datenschutz-Freigabedokument
     └── lizenzen.html        # Lizenzübersicht für Software & Modelle
 ```
 
@@ -189,14 +214,23 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 | `GET` | `/api/iiif/{id}/{region}/{size}/{rot}/{qual}.{fmt}` | IIIF 3.0 Dynamische Kachelauslieferung (JPEG/WebP) mit SSD-Cache. |
 | `GET` | `/api/system/profile` | Hardware-Profil des Host-Systems (RAM, CPU-Kerne, GPU/VRAM, Tuning). |
 | `GET` | `/api/thesaurus/suggest` | Autocomplete & Vorschläge aus dem kirchlichen Fachthesaurus. |
-
+| `POST` | `/api/archive/ocr/extract` | On-Demand HTR/OCR-Texterkennung (Sauvola, Kurrent, Fraktur, Latein). |
+| `POST` | `/api/archive/ocr/save` | Manuelle Kuration und revisionssichere Speicherung des OCR-Texts. |
+| `POST` | `/export/ead-xml` | EAD3 XML Findbuch-Export für Archivportal-D / Bundesarchiv / AIS. |
+| `POST` | `/export/lido-xml` | LIDO 1.1 XML Export für Deutsche Digitale Bibliothek (DDB) & Europeana. |
+| `GET` | `/api/fixity/status` | Integritätsstatus aller Masterdateien (Bitrot-Monitoring nach OAIS). |
+| `POST` | `/api/fixity/verify` | Manuelle oder automatische SHA-256 Integritätsprüfung im Hintergrund. |
+| `GET` / `POST` | `/api/fixity/premis` | PREMIS 3.0 XML-Export für Einzelbilder oder Sammelmappen. |
+| `POST` | `/api/auth/login` | Session-Login mit rollenbasierter Zugriffskontrolle (RBAC). |
+| `GET` | `/api/auth/me` | Abruf der aktuellen Benutzerrolle (`viewer`, `curator`, `admin`). |
 
 ---
 
 ## 📄 Dokumentation & Weitergabe
 
-Zusätzlich zu dieser Datei stehen für die Weitergabe an Archivpersonal, Museumsleitung und Datenschutzbeauftragte eigenständige Dokumente bereit:
-* **[anleitung.html](anleitung.html)** / **[anleitung.md](anleitung.md)**: Ausführliche Anleitung für Archivare und Kuratoren.
-* **[datenschutz.html](datenschutz.html)** / **[datenschutz.md](datenschutz.md)**: Datenschutzkonzept, TOMs und Rechtsgrundlagen (Art. 6, 9, 17, 89 DSGVO).
-* **[lizenzen.html](lizenzen.html)** / **[lizenzen.md](lizenzen.md)**: Lizenzen der verwendeten Open-Source-Bibliotheken und KI-Modelle.
-* **[todo.html](todo.html)** / **[todo.md](todo.md)**: Roadmap & Status aller Entwicklungsziele.
+Zusätzlich zu dieser Datei stehen für die Weitergabe an Archivpersonal, Museumsleitung, IT-Abteilung und Datenschutzbeauftragte eigenständige Dokumente bereit:
+* **[freigabe_it_datenschutz.html](freigabe_it_datenschutz.html)** / **[freigabe_it_datenschutz.md](freigabe_it_datenschutz.md)**: **Offizielles Freigabedokument für IT & Datenschutz** (Kurzbeschreibung, Netzwerkarchitektur, Sicherheitskonzept, KDG/DSGVO, TOMs & Freigabematrix).
+* **[anleitung.html](anleitung.html)** / **[anleitung.md](anleitung.md)**: Ausführliche Bedienungsanleitung für Archivare, Kuratoren und Lesesaal-Gäste.
+* **[datenschutz.html](datenschutz.html)** / **[datenschutz.md](datenschutz.md)**: Datenschutzkonzept, TOMs und Rechtsgrundlagen (Art. 6, 9, 17, 89 DSGVO / §§ 11, 27, 29 KDG).
+* **[lizenzen.html](lizenzen.html)** / **[lizenzen.md](lizenzen.md)**: Lizenzübersicht für Software, Modelle und Schriftarten (100 % Open Source).
+* **[todo.html](todo.html)** / **[todo.md](todo.md)**: Roadmap & wissenschaftlicher Status aller Entwicklungsziele.

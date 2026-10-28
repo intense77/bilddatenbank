@@ -1,0 +1,22 @@
+# Tesseract 5 user-patterns für Archivsignaturen, Datumsangaben und Inventarnummern
+# \d = Ziffer, \a = Buchstabe, \c = Großbuchstabe
+\d{1,2}\.\d{1,2}\.\d{4}
+\d{1,2}\. \d{1,2}\. \d{4}
+\d{4}-\d{2}-\d{2}
+\d{4}
+Sign\. \a+/\d+
+Sign\. \d+/\d+
+Signatur \d+
+Inv\.-Nr\. \d+
+Inv\. \d+
+Karton \d+
+Fasz\. \d+
+Pos\. \d+
+Nr\. \d+
+No\. \d+
+A\.D\. \d{4}
+Anno \d{4}
+ca\. \d{4}
+\d{1,2}\. \a+ \d{4}
+\d{1,2}\. Jahrhundert
+Saec\. \c+

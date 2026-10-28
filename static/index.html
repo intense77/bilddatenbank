@@ -13,6 +13,23 @@
 <body
   class="min-h-full flex flex-col bg-slate-950 text-slate-200 antialiased selection:bg-amber-500 selection:text-black">
 
+  <!-- Globaler Bitrot- & Fixity-Alarm-Banner (ISO 14721 OAIS) -->
+  <div id="fixity-alert-banner" class="hidden bg-rose-950/95 border-b border-rose-500/50 text-rose-200 px-4 py-2.5 text-xs flex items-center justify-between z-40 sticky top-0 shadow-xl backdrop-blur-md">
+    <div class="flex items-center gap-2">
+      <span class="text-base animate-pulse">⚠️</span>
+      <span class="font-bold text-rose-300">BITROT-ALARM (Bestandserhaltung):</span>
+      <span id="fixity-alert-msg" class="font-medium">Prüfsummen-Mismatch oder Dateiverlust auf dem Speicher erkannt!</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button type="button" onclick="openFixityAuditModal()" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-[11px] transition shadow">
+        Details & Audit anzeigen
+      </button>
+      <button type="button" onclick="document.getElementById('fixity-alert-banner').classList.add('hidden')" class="text-rose-400 hover:text-rose-200 text-sm px-1.5 py-0.5 rounded transition">
+        ✕
+      </button>
+    </div>
+  </div>
+
   <!-- Header -->
   <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-30">
     <div class="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -119,6 +136,19 @@
         <span class="font-mono text-amber-400 font-bold">?</span>
         <span class="hidden xl:inline text-[11px] font-medium">Kürzel</span>
       </button>
+
+      <!-- Benutzer & Rolle (KDG-Modus / RBAC) -->
+      <div id="auth-status-container" class="flex items-center gap-1.5 bg-slate-950/80 px-2 py-1.5 rounded-xl border border-slate-800 text-xs shadow-sm">
+        <div id="auth-role-badge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 font-mono text-[11px]" title="Aktive Zugriffsrolle nach KDG / DSGVO">
+          <span id="auth-role-icon">👤</span>
+          <span id="auth-role-text" class="font-medium">Lesesaal</span>
+        </div>
+        <button id="auth-action-btn" type="button" onclick="openAuthModal()"
+          class="px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 text-[11px] font-semibold border border-amber-500/30 transition cursor-pointer"
+          title="Rolle wechseln oder anmelden">
+          Anmelden
+        </button>
+      </div>
 
       <!-- System Health Indicator -->
       <div id="health-badge"
@@ -1079,6 +1109,15 @@
               <span>LIDO (XML)</span>
             </button>
 
+            <!-- PREMIS 3.0 XML Export Button (Fixity & OAIS) -->
+            <button type="button" onclick="exportLightboxPremisXml()"
+              id="lightbox-export-premis-btn"
+              class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-emerald-400 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+              title="PREMIS 3.0 XML (ISO 14721 OAIS) zur Dokumentation der Fixity-Prüfungen und Langzeit-Bestandserhaltung herunterladen">
+              <span class="text-emerald-400 font-mono text-xs">🛡️</span>
+              <span>PREMIS (XML)</span>
+            </button>
+
             <!-- Batch Person Zuweisen -->
             <button type="button" onclick="openLightboxBatchPersonModal()"
               id="lightbox-batch-person-btn"
@@ -1310,7 +1349,9 @@
         <a href="/anleitung.html" target="_blank"
           class="hover:text-amber-400 transition underline underline-offset-4">Bedienungsanleitung</a>
         <a href="/datenschutz.html" target="_blank"
-          class="hover:text-amber-400 transition underline underline-offset-4">Datenschutz &amp; DSGVO</a>
+          class="hover:text-amber-400 transition underline underline-offset-4">Datenschutz &amp; KDG</a>
+        <a href="/freigabe_it_datenschutz.html" target="_blank"
+          class="hover:text-amber-400 transition underline underline-offset-4 font-semibold text-slate-400 hover:text-amber-300">📋 IT- &amp; DS-Freigabe</a>
         <button type="button" onclick="openLicensesModal()"
           class="hover:text-amber-400 transition underline underline-offset-4 cursor-pointer inline-flex items-center gap-1">
           <span>⚖️ Lizenzen &amp; Urheberrecht</span>
@@ -1800,7 +1841,95 @@
                 </button>
               </div>
             </div>
+
+            <!-- OCR & Handschriften-KI (HTR / Tesseract 5 / Fraktur) -->
+            <div id="modal-ocr-panel" class="mt-4 pt-3 border-t border-slate-800 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <span>✍️</span> <span>Handschriften-KI & OCR (HTR)</span>
+                </span>
+                <span id="modal-ocr-status-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+                  Tesseract 5 & HTR
+                </span>
+              </div>
+              <p class="text-[11px] text-slate-400 leading-relaxed">
+                Entziffert handschriftliche Notizen, Frakturschrift, Stempel und Typoskripte lokal auf dem Server mittels adaptiver Sauvola-Binarisierung.
+              </p>
+              
+              <!-- Profilauswahl -->
+              <div class="flex items-center gap-2">
+                <label for="modal-ocr-profile-select" class="text-[10px] uppercase tracking-wider font-semibold text-slate-400 whitespace-nowrap">Profil:</label>
+                <select id="modal-ocr-profile-select" class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                  <option value="auto" selected>✨ Auto-Erkennung (HTR & Druck)</option>
+                  <option value="handwritten">✍️ Handschrift / Notizen (HTR Sauvola)</option>
+                  <option value="printed">🔤 Druck / Typoskripte (Standard)</option>
+                  <option value="fraktur">📜 Frakturschrift (Altdeutsch)</option>
+                  <option value="latin">⛪ Kirchliches Latein &amp; Liturgica</option>
+                  <option value="stamp">🔍 Stempel & Randvermerke (Sparse)</option>
+                </select>
+              </div>
+
+              <textarea id="modal-ocr-text-input" rows="3" placeholder="Kein Text erkannt. Klicken Sie auf 'Text erkennen', um die Handschriften-KI auszuführen..."
+                class="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono text-[11px]"></textarea>
+              <div class="flex items-center justify-between gap-2">
+                <button type="button" id="modal-ocr-extract-btn" onclick="triggerModalOcrExtract()"
+                  class="auth-require-curator px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-emerald-400 border border-slate-700 text-xs font-medium transition flex items-center gap-1">
+                  <span>⚡</span> <span id="modal-ocr-extract-label">Text erkennen</span>
+                </button>
+                <button type="button" id="modal-ocr-save-btn" onclick="saveModalOcrText()"
+                  class="auth-require-curator px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center gap-1 shadow-md">
+                  <span>💾</span> <span>Text speichern</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- GND-Normdaten & Zero-Shot Fachbegriffe (OpenCLIP) -->
+            <div id="modal-gnd-panel" class="mt-4 pt-3 border-t border-slate-800 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-semibold text-sky-400 flex items-center gap-1.5">
+                  <span>🏛️</span> <span>GND-Normdaten & Bildträger (KI)</span>
+                </span>
+                <span id="modal-gnd-status-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-sky-500/10 border border-sky-500/30 text-sky-300">
+                  OpenCLIP Zero-Shot
+                </span>
+              </div>
+              <p class="text-[11px] text-slate-400 leading-relaxed">
+                Schlägt fachspezifische GND-Deskriptoren (Vasa sacra, Paramente, Ikonographie) und historische Bildträger (Albumin, SW, Cyanotypie) vor.
+              </p>
+              
+              <div class="flex items-center gap-2">
+                <button type="button" id="modal-suggest-gnd-btn" onclick="triggerModalGndSuggest()"
+                  class="auth-require-curator w-full py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-sky-400 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-1.5">
+                  <span>💡</span> <span id="modal-suggest-gnd-label">Fachbegriffe & Träger vorschlagen</span>
+                </button>
+              </div>
+
+              <!-- Vorschlag-Ergebnisse Container -->
+              <div id="modal-gnd-results" class="hidden space-y-2 pt-1">
+                <!-- Erkannter Träger / Format -->
+                <div id="modal-carrier-card" class="p-2 rounded-lg bg-slate-950 border border-slate-800 text-[11px] space-y-1">
+                  <div class="flex items-center justify-between text-slate-400 font-medium">
+                    <span>📷 Bildträger & Epoche:</span>
+                    <span id="modal-carrier-badge" class="text-sky-300 font-mono text-[10px]"></span>
+                  </div>
+                  <div id="modal-carrier-desc" class="text-slate-300"></div>
+                </div>
+
+                <!-- Vorgeschlagene Schlagwörter Chips -->
+                <div class="space-y-1.5">
+                  <span class="text-[10px] uppercase tracking-wider font-semibold text-slate-400 block">Vorgeschlagene Deskriptoren:</span>
+                  <div id="modal-gnd-chips-container" class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto"></div>
+                </div>
+
+                <button type="button" id="modal-apply-gnd-btn" onclick="applySelectedGndTags()"
+                  class="auth-require-curator w-full py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition flex items-center justify-center gap-1.5 shadow-md">
+                  <span>➕</span> <span>Ausgewählte Deskriptoren übernehmen</span>
+                </button>
+              </div>
+            </div>
           </div>
+
+
 
           <!-- TAB 2: NON-DESTRUKTIVE BILDBEARBEITUNG -->
           <div id="modal-tab-content-edit" class="hidden p-3.5 sm:p-4 flex-1 overflow-y-auto space-y-3.5">
@@ -2684,6 +2813,123 @@
     </div>
   </div>
 
+  <!-- Modal: Fixity-Audit & Bitrot-Monitoring (ISO 14721 OAIS) -->
+  <div id="fixity-audit-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-fadeIn select-none">
+    <div class="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden select-text">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 sticky top-0 z-20">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-xl">
+            🛡️
+          </div>
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
+              <span>Langzeit-Bestandserhaltung &amp; Bitrot-Monitoring</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
+                ISO 14721 / OAIS
+              </span>
+            </h2>
+            <p class="text-xs text-slate-400">
+              Kryptographische SHA-256 Bitstream-Prüfung gegen schleichenden Datenverlust auf Storage/NAS.
+            </p>
+          </div>
+        </div>
+        <button type="button" onclick="closeFixityAuditModal()" class="text-slate-400 hover:text-slate-200 text-lg p-1.5 rounded-lg hover:bg-slate-800 transition">
+          ✕
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-5 flex-1 overflow-y-auto space-y-4">
+        
+        <!-- Metriken Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+            <span class="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">Geprüfte Scans</span>
+            <span id="fixity-stat-total" class="text-xl font-bold text-slate-100 font-mono mt-0.5 block">0</span>
+          </div>
+          <div class="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30">
+            <span class="text-[10px] uppercase tracking-wider text-emerald-400 block font-semibold">Intakt (Bitstream OK)</span>
+            <span id="fixity-stat-intact" class="text-xl font-bold text-emerald-300 font-mono mt-0.5 block">0</span>
+          </div>
+          <div class="p-3.5 rounded-xl bg-rose-950/30 border border-rose-500/40">
+            <span class="text-[10px] uppercase tracking-wider text-rose-400 block font-semibold">Bit-Rot / Korrupt</span>
+            <span id="fixity-stat-corrupted" class="text-xl font-bold text-rose-300 font-mono mt-0.5 block">0</span>
+          </div>
+          <div class="p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/30">
+            <span class="text-[10px] uppercase tracking-wider text-amber-400 block font-semibold">Fehlende Dateien</span>
+            <span id="fixity-stat-missing" class="text-xl font-bold text-amber-300 font-mono mt-0.5 block">0</span>
+          </div>
+        </div>
+
+        <!-- Progress Box (wenn aktiv) -->
+        <div id="fixity-progress-box" class="hidden p-3.5 rounded-xl bg-slate-950 border border-sky-500/30 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-sky-300 font-medium flex items-center gap-1.5">
+              <span class="animate-spin inline-block">⏳</span> <span>Prüfung läuft:</span>
+              <span id="fixity-progress-file" class="text-slate-300 font-mono truncate max-w-xs sm:max-w-md">...</span>
+            </span>
+            <span id="fixity-progress-pct" class="font-mono text-sky-400 font-bold">0%</span>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div id="fixity-progress-bar" class="bg-gradient-to-r from-sky-500 to-emerald-500 h-2 rounded-full transition-all duration-200" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Letzter Prüfzeitpunkt & Aktionen -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+          <div class="text-slate-400">
+            <span>Letztes vollständiges Audit: </span>
+            <span id="fixity-last-check" class="font-mono text-slate-200 font-medium">Nie</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="trigger-fixity-btn" onclick="triggerFixityAudit()"
+              class="auth-require-curator px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-md">
+              <span>🛡️</span> <span>Integritätsprüfung starten</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Liste beschädigter oder fehlender Dateien -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-300">Auffällige &amp; beschädigte Originale:</span>
+            <span id="fixity-corrupted-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700">0 Auffälligkeiten</span>
+          </div>
+          <div id="fixity-corrupted-table-container" class="max-h-60 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-900/80 border-b border-slate-800 text-[10px] uppercase tracking-wider text-slate-400 sticky top-0">
+                <tr>
+                  <th class="p-2.5">Status</th>
+                  <th class="p-2.5">Dateiname</th>
+                  <th class="p-2.5 hidden sm:table-cell">Erwartete SHA-256 Prüfsumme</th>
+                  <th class="p-2.5 text-right">Aktion</th>
+                </tr>
+              </thead>
+              <tbody id="fixity-corrupted-tbody" class="divide-y divide-slate-800/60 font-mono text-[11px]">
+                <tr>
+                  <td colspan="4" class="p-4 text-center text-slate-500 font-sans italic">Keine beschädigten oder fehlenden Originale entdeckt. Alle Master-Scans sind intakt.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-3.5 border-t border-slate-800 flex items-center justify-between bg-slate-900/90 text-xs">
+        <span class="text-slate-500 text-[11px]">
+          Revisionssicher nach ISO 14721 (OAIS) &amp; KDG § 18/19
+        </span>
+        <button type="button" onclick="closeFixityAuditModal()"
+          class="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition">
+          Schließen
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Import-Batch Rollback / Löschen -->
   <div id="batch-rollback-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
     <div class="bg-slate-900 border border-rose-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -2954,6 +3200,78 @@ SECRET LABS AB AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTW
         </button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- Auth Modal (KDG / RBAC Anmeldung & Rollenwechsel) -->
+  <div id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" class="fixed inset-0 z-[105] bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+          </div>
+          <div>
+            <h3 id="auth-modal-title" class="text-base font-semibold text-slate-100">Archiv-Anmeldung &amp; Rollen</h3>
+            <p class="text-xs text-slate-400">Zugriffsberechtigung nach KDG / DSGVO</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeAuthModal()" class="text-slate-400 hover:text-slate-200 p-1 rounded-lg transition cursor-pointer" title="Schließen">
+          ✕
+        </button>
+      </div>
+
+      <form onsubmit="handleAuthFormSubmit(event)" class="p-5 space-y-4">
+        <div id="auth-error-msg" class="hidden p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium"></div>
+
+        <div>
+          <label for="auth-username" class="block text-xs font-medium text-slate-300 mb-1">Benutzername</label>
+          <input type="text" id="auth-username" required autocomplete="username"
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 transition placeholder:text-slate-600"
+            placeholder="z. B. archivar oder admin" />
+        </div>
+
+        <div>
+          <label for="auth-password" class="block text-xs font-medium text-slate-300 mb-1">Passwort</label>
+          <input type="password" id="auth-password" required autocomplete="current-password"
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 transition placeholder:text-slate-600"
+            placeholder="Passwort eingeben" />
+        </div>
+
+        <!-- Schnell-Auswahl für Standard-Rollen -->
+        <div class="pt-2 border-t border-slate-800/80">
+          <div class="text-[11px] font-medium text-slate-400 mb-2">Schnell-Login für Arbeitsstationen:</div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <button type="button" onclick="fillQuickAuth('archivar', 'kurator2026')"
+              class="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition flex items-center gap-2 text-slate-300 hover:text-emerald-400 cursor-pointer">
+              <span>✍️</span>
+              <div>
+                <div class="font-semibold text-[11px]">Archivar</div>
+                <div class="text-[9px] text-slate-500">Kuration &amp; Notizen</div>
+              </div>
+            </button>
+            <button type="button" onclick="fillQuickAuth('admin', 'archivadmin2026')"
+              class="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition flex items-center gap-2 text-slate-300 hover:text-amber-400 cursor-pointer">
+              <span>👑</span>
+              <div>
+                <div class="font-semibold text-[11px]">Administrator</div>
+                <div class="text-[9px] text-slate-500">Vollzugriff &amp; System</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-2.5">
+          <button type="button" onclick="closeAuthModal()" class="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition cursor-pointer">
+            Abbrechen
+          </button>
+          <button id="auth-submit-btn" type="submit" class="px-4 py-1.5 rounded-xl text-xs font-semibold text-slate-950 bg-amber-500 hover:bg-amber-400 transition shadow-sm cursor-pointer">
+            Anmelden
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

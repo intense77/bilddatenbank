@@ -98,6 +98,7 @@ def test_update_face_curation_status_endpoint():
 
     app.dependency_overrides[get_qdrant_service] = lambda: mock_qdrant
     client = TestClient(app)
+    client.headers["Authorization"] = "Basic YXJjaGl2YXI6a3VyYXRvcjIwMjY="
 
     try:
         # 1. Successful update to VERIFIED
