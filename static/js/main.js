@@ -89,7 +89,10 @@ window.api = api;
 window.apiFetch = apiFetch;
 
 // Authentifizierung & Rollenverwaltung (KDG / RBAC)
-window.currentUser = currentUser;
+Object.defineProperty(window, 'currentUser', {
+  get: () => currentUser,
+  configurable: true,
+});
 window.fetchCurrentUser = fetchCurrentUser;
 window.updateAuthUI = updateAuthUI;
 window.openAuthModal = openAuthModal;

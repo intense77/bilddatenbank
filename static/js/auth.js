@@ -11,9 +11,9 @@ export let currentUser = null;
 
 export async function fetchCurrentUser() {
   try {
-    const res = await apiFetch('/api/auth/me');
-    if (res.ok) {
-      currentUser = await res.json();
+    const data = await apiFetch('/api/auth/me');
+    if (data && data.username) {
+      currentUser = data;
     } else {
       currentUser = { username: 'lesesaal_gast', role: 'viewer', display_name: 'Lesesaal-Gast' };
     }
@@ -129,23 +129,17 @@ export async function handleAuthFormSubmit(event) {
   }
 
   try {
-    const res = await apiFetch('/api/auth/login', {
+    const data = await apiFetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || 'Anmeldung fehlgeschlagen.');
-    }
-
-    const data = await res.json();
-    currentUser = data.user;
+    currentUser = data.user || data;
     updateAuthUI();
     closeAuthModal();
 
-    showToast(`Erfolgreich angemeldet als ${currentUser.display_name} (${currentUser.role.toUpperCase()})`, 'info');
+    showToast(`Erfolgreich angemeldet als ${currentUser.display_name} (${(currentUser.role || '').toUpperCase()})`, false);
 
     // Aktualisiere Ansicht (z. B. Cluster und Gesichter-Berechtigungen neu laden)
     if (window.loadClusters) {
@@ -172,7 +166,7 @@ export async function handleLogoutClick() {
   }
   currentUser = { username: 'lesesaal_gast', role: 'viewer', display_name: 'Lesesaal-Gast' };
   updateAuthUI();
-  showToast('Erfolgreich abgemeldet. Lesesaal-Modus aktiv.', 'info');
+  showToast('Erfolgreich abgemeldet. Lesesaal-Modus aktiv.', false);
 
   if (window.loadClusters) {
     window.loadClusters(false);

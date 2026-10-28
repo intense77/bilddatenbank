@@ -1010,7 +1010,12 @@ def get_clusters(
     clusters = clustering_service.get_clusters(include_preview=include_preview, include_faces=include_faces)
     if is_viewer_only(current_user):
         # KDG § 11: Lesesaal-Gäste sehen nur namentlich erschlossene/kuratierte Personen-Cluster
-        clusters = [c for c in clusters if c.name and not c.name.startswith("Person #")]
+        def _get_name(c):
+            if isinstance(c, dict):
+                return c.get("label") or c.get("name")
+            return getattr(c, "label", None) or getattr(c, "name", None)
+
+        clusters = [c for c in clusters if _get_name(c) and not str(_get_name(c)).startswith("Person #")]
     return clusters
 
 

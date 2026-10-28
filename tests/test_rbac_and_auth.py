@@ -258,3 +258,39 @@ def test_kdg_section_11_biometrics_filtering_for_viewer(tmp_path):
     finally:
         app.dependency_overrides.pop(get_qdrant_service, None)
         test_img.unlink(missing_ok=True)
+
+
+def test_kdg_section_11_cluster_filtering_for_viewer():
+    """
+    Testet § 11 KDG Filterung für Personen-Cluster:
+    - Viewer sieht nur namentlich benannte Cluster (z. B. 'Bischof Müller'), keine anonymen 'cluster_X' / 'Person #X'.
+    - Stellt sicher, dass Dictionary-Repräsentationen von Clustern nicht zum AttributeError führen.
+    """
+    from app.api.deps import get_clustering_service
+    mock_clustering = MagicMock()
+    mock_clustering.get_clusters.return_value = [
+        {"cluster_id": "cluster_1", "label": "Bischof Müller", "face_count": 5, "preview_image": "/p1", "faces": []},
+        {"cluster_id": "cluster_2", "label": "Person #2", "face_count": 12, "preview_image": "/p2", "faces": []},
+        {"cluster_id": "cluster_3", "label": None, "face_count": 8, "preview_image": "/p3", "faces": []},
+    ]
+    app.dependency_overrides[get_clustering_service] = lambda: mock_clustering
+
+    try:
+        # 1. Unauthentifizierter Viewer
+        client_viewer = TestClient(app)
+        res_v = client_viewer.get("/faces/clusters")
+        assert res_v.status_code == 200
+        clusters_v = res_v.json()
+        assert len(clusters_v) == 1
+        assert clusters_v[0]["label"] == "Bischof Müller"
+
+        # 2. Kurator
+        client_curator = TestClient(app)
+        client_curator.headers["Authorization"] = "Basic YXJjaGl2YXI6a3VyYXRvcjIwMjY="
+        res_c = client_curator.get("/faces/clusters")
+        assert res_c.status_code == 200
+        clusters_c = res_c.json()
+        assert len(clusters_c) == 3
+    finally:
+        app.dependency_overrides.pop(get_clustering_service, None)
+
