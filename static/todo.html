@@ -957,6 +957,89 @@
 </ul>
 </li>
 </ul>
+<hr />
+<h2 id="32-uberflugelung-der-kommerziellen-konkurrenz-strategische-roadmap-zur-marktfuhrerschaft">32. Überflügelung der kommerziellen Konkurrenz (Strategische Roadmap zur Marktführerschaft)</h2>
+<ul>
+<li><strong>Ziel:</strong> Das System zum technologischen und fachlichen Maßstab für historische Bildarchive und Diözesanarchive ausbauen – überlegen gegenüber generischen DAMs (<em>Canto, Bynder, FotoWare</em>), traditionellen AIS (<em>ScopeArchiv, ACTApro, Augias</em>) und Consumer-Tools (<em>Immich, PhotoPrism</em>).</li>
+<li><strong>Die 5 strategischen Differenzierungs-Säulen:</strong></li>
+</ul>
+<h3 id="saule-1-lokale-handschriften-ruckseiten-texterkennung-htr-ocr">Säule 1: Lokale Handschriften- &amp; Rückseiten-Texterkennung (HTR / OCR)</h3>
+<ul>
+<li><strong>Vorteil gegenüber Konkurrenz:</strong> Kommerzielle Cloud-OCR scheitert an Datenschutz/KDG und historischer deutscher Schrift (Kurrent, Sütterlin, Fraktur).</li>
+<li><strong>Maßnahmen &amp; Meilensteine:</strong></li>
+<li>[ ] <strong>1.1 Air-Gapped HTR/OCR-Engine:</strong><ul>
+<li>Integration einer leichtgewichtigen, lokalen OCR-Pipeline (Tesseract 5 für Druck/Typoskripte und Stempel; TrOCR-Feintuning für deutsche Kurrent-Handschriften).</li>
+<li>Automatische Texterkennung beim Indexieren von Rückseiten-Scans (Verso) und Passepartouts ohne externe Cloud-Abhängigkeiten.</li>
+</ul>
+</li>
+<li>[ ] <strong>1.2 Hybride Volltext- &amp; Vektorsuche:</strong><ul>
+<li>Speicherung des extrahierten Texts im Feld <code>ocr_text</code> in SQLite und Qdrant mit deutscher Stemming-Tokenisierung.</li>
+<li>Kombinierte visuelle und textuelle Suche (z. B. <em>„Kruzifix 1928 P. Johannes“</em> findet sowohl visuell ähnliche Bildmotive als auch die passende rückseitige Widmung).</li>
+</ul>
+</li>
+</ul>
+<h3 id="saule-2-standardisierte-ais-portalschnittstellen-ead-lido-ddb-europeana">Säule 2: Standardisierte AIS- &amp; Portalschnittstellen (EAD, LIDO, DDB &amp; Europeana)</h3>
+<ul>
+<li><strong>Vorteil gegenüber Konkurrenz:</strong> Keine proprietären Datenbank-Lock-ins oder teure Migrations-Schnittstellen; sofortige Kompatibilität mit nationalen Kulturportalen.</li>
+<li><strong>Maßnahmen &amp; Meilensteine:</strong></li>
+<li>[x] <strong>2.1 EAD3-Findbuch-Export (<code>POST /export/ead-xml</code>):</strong><ul>
+<li>Standardkonformes Encoded Archival Description (EAD3 / EAD 2002) XML-Format nach ISAD(G) für das <em>Archivportal-D</em>, das <em>Bundesarchiv</em> und kommunale/kirchliche Archivinformationssysteme (ACTApro, ScopeArchiv, Augias).</li>
+</ul>
+</li>
+<li>[x] <strong>2.2 LIDO 1.1 Museums- &amp; Kulturgüter-Export (<code>POST /export/lido-xml</code>):</strong><ul>
+<li>XML-Export nach Lightweight Information Describing Objects (LIDO) zur direkten Einlieferung von Beständen an die <em>Deutsche Digitale Bibliothek (DDB)</em> und die europäische Kulturplattform <em>Europeana</em>.</li>
+</ul>
+</li>
+<li>[x] <strong>2.3 Leuchttisch-Integrationsbuttons:</strong><ul>
+<li>1-Klick-Download von EAD3- und LIDO-XML-Dateien direkt aus dem digitalen Leuchttisch.</li>
+</ul>
+</li>
+</ul>
+<h3 id="saule-3-offline-gnd-iconclass-normdatenanreicherung-fachontologien">Säule 3: Offline-GND- &amp; Iconclass-Normdatenanreicherung (Fachontologien)</h3>
+<ul>
+<li><strong>Vorteil gegenüber Konkurrenz:</strong> Fachspezifische Deskriptoren (Kirchengeschichte, Sakralkunst, Liturgie) statt oberflächlicher KI-Tags (<em>„Himmel, Gebäude“</em>).</li>
+<li><strong>Maßnahmen &amp; Meilensteine:</strong></li>
+<li>[ ] <strong>3.1 Lokale GND-Normdatenbank (Offline-First):</strong><ul>
+<li>Vorkompilierte SQLite-Tabelle der <em>Gemeinsamen Normdatei (GND)</em> für Theologen, Bischöfe, Orden, Sakralbauten und Patrozinien.</li>
+</ul>
+</li>
+<li>[ ] <strong>3.2 Iconclass-Klassifikation:</strong><ul>
+<li>Hierarchisches Vokabular für christliche Ikonographie (z. B. <code>11H</code> Heilige, <code>11Q</code> Sakramente, <code>73</code> Biblische Szenen).</li>
+</ul>
+</li>
+<li>[ ] <strong>3.3 Zero-Shot-Tagging mit OpenCLIP:</strong><ul>
+<li>Automatischer Vorschlag passender GND- und Iconclass-Begriffe über Bild-Embeddings ohne zusätzlichen VRAM-Bedarf.</li>
+</ul>
+</li>
+</ul>
+<h3 id="saule-4-langzeit-bestandserhaltung-bitrot-monitoring-oais-fixity">Säule 4: Langzeit-Bestandserhaltung &amp; Bitrot-Monitoring (OAIS / Fixity)</h3>
+<ul>
+<li><strong>Vorteil gegenüber Konkurrenz:</strong> Schutz vor schleichender Datenkorruption auf Massenspeichern (Bitrot); revisionssichere Nachweisbarkeit nach ISO 14721.</li>
+<li><strong>Maßnahmen &amp; Meilensteine:</strong></li>
+<li>[ ] <strong>4.1 Hintergrund-Fixity-Wächter:</strong><ul>
+<li>Kontinuierliche Überprüfung von SHA-256 / BLAKE3-Prüfsummen aller Master-Scans im Hintergrund.</li>
+<li>Sofortige Alarmierung bei manipulierten oder defekten Sektoren auf NAS-/ZFS-Laufwerken.</li>
+</ul>
+</li>
+<li>[ ] <strong>4.2 PREMIS-Metadatenexport:</strong><ul>
+<li>Preservation Metadata Implementation Strategies (PREMIS) XML zur revisionssicheren Dokumentation von Fixity-Prüfungen.</li>
+</ul>
+</li>
+</ul>
+<h3 id="saule-5-kdg-konformes-mehrbenutzer-lesesaal-rollenmodell">Säule 5: KDG-konformes Mehrbenutzer- &amp; Lesesaal-Rollenmodell</h3>
+<ul>
+<li><strong>Vorteil gegenüber Konkurrenz:</strong> Datenschutzkonforme Bereitstellung für externe Forscher und Lesesaal-Plätze ohne teure Lizenzgebühren.</li>
+<li><strong>Maßnahmen &amp; Meilensteine:</strong></li>
+<li>[ ] <strong>5.1 Rollenmodell (Lesesaal vs. Kurator vs. Admin):</strong><ul>
+<li>Lesesaal-Modus: Recherche, Leuchttisch, Deep-Zoom und PDF-Export ohne Schreibrechte und ohne Zugriff auf unbestätigte biometrische Daten (§ 11 KDG).</li>
+<li>Kuratoren-Modus: Metadaten-Erfassung, Rückseiten-Transkription, Personen-Kuration.</li>
+</ul>
+</li>
+<li>[ ] <strong>5.2 Lokale Session-Authentifizierung:</strong><ul>
+<li>Einfache, lokale Benutzerverwaltung ohne Cloud-Zwang.</li>
+</ul>
+</li>
+</ul>
     </article>
     <footer>
       <span>Historisches Bildarchiv &bull; Stand: Oktober 2026</span>

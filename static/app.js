@@ -5930,6 +5930,134 @@ async function exportLightboxFindbuchCsv() {
   }
 }
 
+async function exportLightboxEadXml() {
+  if (lightboxItems.length === 0) {
+    showToast('Fügen Sie zuerst Bilder zum Leuchttisch hinzu.', true);
+    return;
+  }
+
+  const btn = document.getElementById('lightbox-export-ead-btn');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Exportiere...</span>';
+  }
+
+  try {
+    showToast(`Generiere EAD3-XML nach ISAD(G) für ${lightboxItems.length} Verzeichnungseinheiten...`, false);
+    const titleInput = document.getElementById('lightbox-project-title') || document.getElementById('lightbox-title-input');
+    const folderTitle = (titleInput && titleInput.value.trim()) || 'Leuchttisch-Mappe';
+
+    const payload = {
+      items: lightboxItems.map(it => ({
+        file_path: it.file_path,
+        file_name: it.file_name,
+        title: it.title,
+        date: it.date,
+        creator: it.creator,
+        signature: it.signature,
+        persons: Array.isArray(it.persons) ? it.persons : (it.persons ? [it.persons] : []),
+        notes: it.notes || null,
+      })),
+      archive_name: 'Historisches Bildarchiv',
+      collection_title: folderTitle,
+    };
+
+    const res = await fetch('/export/ead-xml', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error(`Server-Fehler beim EAD3-Export (${res.status})`);
+
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.download = `EAD3_${now}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    a.remove();
+
+    showToast(`✓ EAD3-Findbuch (${lightboxItems.length} Einheiten) erfolgreich als XML exportiert!`, false);
+  } catch (err) {
+    console.error('Fehler beim EAD3-Export:', err);
+    showToast(`EAD3-Export fehlgeschlagen: ${err.message}`, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+
+async function exportLightboxLidoXml() {
+  if (lightboxItems.length === 0) {
+    showToast('Fügen Sie zuerst Bilder zum Leuchttisch hinzu.', true);
+    return;
+  }
+
+  const btn = document.getElementById('lightbox-export-lido-btn');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> <span>Exportiere...</span>';
+  }
+
+  try {
+    showToast(`Generiere LIDO 1.1 XML für ${lightboxItems.length} Kulturgüter...`, false);
+    const titleInput = document.getElementById('lightbox-project-title') || document.getElementById('lightbox-title-input');
+    const folderTitle = (titleInput && titleInput.value.trim()) || 'Leuchttisch-Mappe';
+
+    const payload = {
+      items: lightboxItems.map(it => ({
+        file_path: it.file_path,
+        file_name: it.file_name,
+        title: it.title,
+        date: it.date,
+        creator: it.creator,
+        signature: it.signature,
+        persons: Array.isArray(it.persons) ? it.persons : (it.persons ? [it.persons] : []),
+        notes: it.notes || null,
+      })),
+      archive_name: 'Historisches Bildarchiv',
+      collection_title: folderTitle,
+    };
+
+    const res = await fetch('/export/lido-xml', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error(`Server-Fehler beim LIDO-Export (${res.status})`);
+
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.download = `LIDO_${now}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    a.remove();
+
+    showToast(`✓ LIDO 1.1 Datensatz (${lightboxItems.length} Objekte) für DDB/Europeana exportiert!`, false);
+  } catch (err) {
+    console.error('Fehler beim LIDO-Export:', err);
+    showToast(`LIDO-Export fehlgeschlagen: ${err.message}`, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+
 // ================= NON-DESTRUKTIVE BILDBEARBEITUNG (CROPPER, SLIDERS & PILLOW EXPORT) =================
 
 let areFaceBoxesVisible = true;

@@ -219,6 +219,17 @@ Ermöglicht das Hinzufügen von Bildern direkt über die Weboberfläche:
    * Ziehen Sie Bilddateien (JPG, PNG, WEBP, TIF/TIFF) und optionale `.json`-Sidecars direkt in die gestrichelte Ablagezone.
    * Das System speichert die Dateien im Archiv und berechnet sofort alle Merkmals-Embeddings und Metadaten.
 
+### Tab 4: Digitaler Leuchttisch & Archiv-Export (Findbuch, EAD3, LIDO, PDF)
+Der digitale Leuchttisch dient als visuelle Arbeitsmappe für Kuration, Ausstellungen, Publikationen und den standardisierten Datenaustausch:
+1. **Bilder sammeln:** Fügen Sie beliebige Suchergebnisse oder Gesichts-Cluster per Klick auf das Leuchttisch-Symbol (`📌`) zur Arbeitsmappe hinzu.
+2. **Archivische Notizen:** Zu jedem Bild auf dem Leuchttisch können arbeitsmappen-spezifische Kurationsnotizen erfasst werden.
+3. **Multi-Format-Export:**
+   * **PDF-Kontaktabzug:** Druckfähiges DIN-A4-Dokument (wahlweise als 2x3 Raster-Kontaktabzug oder Einzeldossier).
+   * **Findbuch (CSV):** Excel-kompatible Tabelle (UTF-8 mit BOM, Semikolon) nach ISAD(G) / Dublin Core für Archivinformationssysteme (AIS).
+   * **EAD3 (XML):** Standardkonformes *Encoded Archival Description Version 3* Findbuch nach ISAD(G) für das *Archivportal-D*, das *Bundesarchiv* und kommunale/kirchliche Fachsoftware (*ScopeArchiv, ACTApro, Augias*).
+   * **LIDO 1.1 (XML):** Standardisiertes *Lightweight Information Describing Objects* Metadatenpaket zur direkten Einlieferung von Bild- und Kunstbeständen an die *Deutsche Digitale Bibliothek (DDB)* und die europäische Kulturplattform *Europeana*.
+   * **XMP-Sidecars (ZIP):** Paket aller Dublin Core & MWG-Regionen `.xmp`-Dateien zur Weitergabe an Fotografen und Bildagenturen.
+
 ### Bild-Detailansicht (Modal)
 Klick auf ein beliebiges Bild öffnet die vergrößerte Detailansicht:
 * **Bild & Bounding Boxes:** Anzeige des Bildes mit interaktiven Markierungen aller erkannten Gesichter. Gesichtsrahmen lassen sich über den Button oben rechts jederzeit ein- oder ausblenden.

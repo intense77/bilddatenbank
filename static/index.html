@@ -1061,6 +1061,24 @@
               <span>Findbuch (CSV)</span>
             </button>
 
+            <!-- EAD3 XML Export Button -->
+            <button type="button" onclick="exportLightboxEadXml()"
+              id="lightbox-export-ead-btn"
+              class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-amber-400 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+              title="Archivisches EAD3-XML nach ISAD(G) für Archivportal-D, Bundesarchiv und AIS (ScopeArchiv, ACTApro) herunterladen">
+              <span class="text-amber-400 font-mono text-xs">🏛️</span>
+              <span>EAD3 (XML)</span>
+            </button>
+
+            <!-- LIDO 1.1 XML Export Button -->
+            <button type="button" onclick="exportLightboxLidoXml()"
+              id="lightbox-export-lido-btn"
+              class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-cyan-400 border border-slate-700 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-sm"
+              title="LIDO 1.1 XML für Museen, Sammlungen, Deutsche Digitale Bibliothek (DDB) und Europeana herunterladen">
+              <span class="text-cyan-400 font-mono text-xs">🌐</span>
+              <span>LIDO (XML)</span>
+            </button>
+
             <!-- Batch Person Zuweisen -->
             <button type="button" onclick="openLightboxBatchPersonModal()"
               id="lightbox-batch-person-btn"

@@ -49,7 +49,9 @@ import {
   openPdfExportModal,
   closePdfExportModal,
   handlePdfExportSubmit,
-  exportLightboxFindbuchCsv
+  exportLightboxFindbuchCsv,
+  exportLightboxEadXml,
+  exportLightboxLidoXml
 } from './lightbox.js';
 import {
   initNetworkTab,
@@ -120,6 +122,8 @@ window.openPdfExportModal = openPdfExportModal;
 window.closePdfExportModal = closePdfExportModal;
 window.handlePdfExportSubmit = handlePdfExportSubmit;
 window.exportLightboxFindbuchCsv = exportLightboxFindbuchCsv;
+window.exportLightboxEadXml = exportLightboxEadXml;
+window.exportLightboxLidoXml = exportLightboxLidoXml;
 
 // Personen-Netzwerk
 window.initNetworkTab = initNetworkTab;

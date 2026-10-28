@@ -2254,4 +2254,61 @@ def export_findbuch_csv(request: FindbuchExportRequest):
     )
 
 
+@router.post("/export/ead-xml")
+def export_ead_xml(request: FindbuchExportRequest):
+    """
+    Erzeugt ein standardkonformes EAD3-XML-Paket (Encoded Archival Description)
+    nach ISAD(G) für Archivportale (Archivportal-D, Bundesarchiv) und AIS (ScopeArchiv, ACTApro).
+    """
+    from datetime import datetime
+    from app.services.ead_lido_service import ead_lido_service
+
+    items_dict = [it.model_dump() for it in request.items]
+    xml_bytes = ead_lido_service.generate_ead3(
+        items=items_dict,
+        archive_name=request.archive_name or "Historisches Archiv",
+        collection_title=request.collection_title or "Archivischer Bildbestand",
+    )
+    date_str = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"EAD3_{date_str}.xml"
+
+    return Response(
+        content=xml_bytes,
+        media_type="application/xml; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
+@router.post("/export/lido-xml")
+def export_lido_xml(request: FindbuchExportRequest):
+    """
+    Erzeugt ein standardkonformes LIDO 1.1 XML-Paket (Lightweight Information Describing Objects)
+    für Museen, Sammlungen, die Deutsche Digitale Bibliothek (DDB) und Europeana.
+    """
+    from datetime import datetime
+    from app.services.ead_lido_service import ead_lido_service
+
+    items_dict = [it.model_dump() for it in request.items]
+    xml_bytes = ead_lido_service.generate_lido(
+        items=items_dict,
+        archive_name=request.archive_name or "Historisches Archiv",
+        collection_title=request.collection_title or "Archivischer Bildbestand",
+    )
+    date_str = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"LIDO_{date_str}.xml"
+
+    return Response(
+        content=xml_bytes,
+        media_type="application/xml; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
+
 
